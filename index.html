@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>2台スマホ VR操作テスト</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0e1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="VRテスト">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root{
+  --bg:#f5f4f0; --fg:#1f1e1a; --card:#ffffff; --muted:#6b6a63; --line:#dcdad2;
+  --accent:#3b6fe0; --accent-fg:#ffffff; --ok:#1f9d55; --ng:#c0392b;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16171a; --fg:#ecebe6; --card:#22242a; --muted:#a3a29b; --line:#383a42;
+    --accent:#6b93f0; --accent-fg:#0b1020; --ok:#4cc07e; --ng:#ef7a6c;
+  }
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0; height:100%; background:var(--bg); color:var(--fg);
+  font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+  overflow:hidden; overscroll-behavior:none;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;
+}
+input{-webkit-user-select:text; user-select:text}
+.hidden{display:none !important}
+.screen{position:fixed; inset:0; overflow-y:auto}
+.screen.dark{background:#0e1117; color:#e8ecf3; overflow:hidden; touch-action:none}
+
+/* ---------- 役割選択・コード入力 ---------- */
+#select,#pair{display:flex; align-items:center; justify-content:center; padding:16px}
+.card{
+  width:100%; max-width:440px; background:var(--card); border:1px solid var(--line);
+  border-radius:18px; padding:22px 20px; margin:auto;
+}
+h1{font-size:20px; margin:0 0 8px}
+.lead{margin:0 0 16px; color:var(--muted); font-size:14px; line-height:1.6}
+.role{
+  display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%;
+  padding:16px 18px; margin:0 0 10px; border-radius:14px; border:1px solid var(--line);
+  background:var(--bg); color:var(--fg); font:inherit; text-align:left; cursor:pointer;
+}
+.role b{font-size:18px}
+.role span{font-size:13px; color:var(--muted)}
+.role:active{background:var(--accent); color:var(--accent-fg)}
+.role:active span{color:var(--accent-fg)}
+.status{font-size:13px; color:var(--muted); margin:12px 0 6px; line-height:1.6; min-height:1.6em}
+.status.err{color:var(--ng)}
+.tips{margin:8px 0 0; padding-left:18px; font-size:12.5px; color:var(--muted); line-height:1.7}
+.codein{
+  width:100%; font:inherit; font-size:32px; letter-spacing:.3em; text-align:center; padding:12px;
+  border-radius:12px; border:1px solid var(--line); background:var(--bg); color:var(--fg); margin:0 0 12px;
+}
+.primary{
+  width:100%; font:inherit; font-size:17px; font-weight:600; padding:14px; border:none; border-radius:12px;
+  background:var(--accent); color:var(--accent-fg); cursor:pointer; margin:0 0 8px;
+}
+.primary:disabled{opacity:.5}
+.ghost{
+  width:100%; font:inherit; font-size:14px; padding:10px; border-radius:12px; cursor:pointer;
+  background:transparent; color:var(--muted); border:1px solid var(--line);
+}
+
+/* ---------- 共通の小ボタン ---------- */
+.mini{
+  font:inherit; font-size:13px; color:#e8ecf3; background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:7px 14px; cursor:pointer;
+}
+.mini:active{background:rgba(255,255,255,.3)}
+.pill{
+  font-size:12px; padding:5px 12px; border-radius:999px;
+  background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
+}
+.pill.ok{color:#6fe3a0; border-color:#3f8f66}
+.pill.ng{color:#ff9a8b; border-color:#9a4a3f}
+
+/* ---------- コントローラー ---------- */
+#ctrl{--s:min(40vw, 66vh, 250px)}
+.topbar{
+  position:absolute; left:0; right:0; top:calc(env(safe-area-inset-top,0px) + 8px);
+  padding:0 max(10px, env(safe-area-inset-left,0px)); display:flex; justify-content:space-between; align-items:center; gap:8px; z-index:5;
+}
+.readout{
+  position:absolute; left:0; right:0; top:calc(env(safe-area-inset-top,0px) + 52px);
+  text-align:center; font:12px ui-monospace,Menlo,monospace; color:#9aa6bd; pointer-events:none;
+}
+.stickwrap{
+  position:absolute; left:calc(env(safe-area-inset-left,0px) + 5vw);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 16px);
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+}
+.cap{font-size:12px; color:#8590a6}
+.stick{
+  position:relative; width:var(--s); height:var(--s); border-radius:50%;
+  background:rgba(255,255,255,.06); border:2px solid rgba(255,255,255,.25); touch-action:none;
+}
+.stick::before,.stick::after{content:""; position:absolute; background:rgba(255,255,255,.1)}
+.stick::before{left:50%; top:10%; bottom:10%; width:1px}
+.stick::after{top:50%; left:10%; right:10%; height:1px}
+.knob{
+  position:absolute; left:50%; top:50%; width:40%; height:40%; margin:-20% 0 0 -20%;
+  border-radius:50%; background:rgba(255,255,255,.6); box-shadow:0 2px 10px rgba(0,0,0,.45); pointer-events:none;
+}
+.btnpad{
+  position:absolute; right:calc(env(safe-area-inset-right,0px) + 5vw);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 16px);
+  width:min(32vw,200px); display:flex; flex-direction:column; gap:12px;
+}
+.bigbtn{
+  width:100%; height:min(17vh,64px); min-height:52px;
+  font:inherit; font-size:16px; font-weight:600; color:#fff; border:none; border-radius:16px;
+  background:#3b6fe0; touch-action:none; cursor:pointer;
+}
+.bigbtn.act{background:#e0623b}
+.bigbtn.pressed{filter:brightness(1.5); transform:scale(.96)}
+.btnpad .mini{width:100%; text-align:center; padding:10px 14px}
+
+/* ---------- 表示（VR） ---------- */
+#cv{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
+#seam{position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:#000; display:none; pointer-events:none}
+body.stereo #seam{display:block}
+.hud{
+  position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
+  font:12px/1.55 ui-monospace,Menlo,monospace; color:#fff; background:rgba(0,0,0,.45);
+  padding:8px 10px; border-radius:10px; pointer-events:none; white-space:pre;
+}
+body.stereo .hud{display:none}
+.dispbar{
+  position:absolute; left:50%; transform:translateX(-50%);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
+}
+body.stereo .dispbar{opacity:.55}
+.wait{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center;
+  font-size:14px; color:#fff; background:rgba(0,0,0,.6); padding:14px 20px; border-radius:14px; pointer-events:none; line-height:1.7;
+  width:min(86vw,420px);
+}
+.wait .code{font:700 44px/1.2 ui-monospace,Menlo,monospace; letter-spacing:.18em; margin:6px 0}
+</style>
+</head>
+<body>
+
+<!-- 役割選択 -->
+<div id="select" class="screen">
+  <div class="card">
+    <h1>2台スマホ VR操作テスト</h1>
+    <p class="lead">同じページを2台のスマホで開き、1台を「表示」、もう1台を「操作」にします。表示側に出る6桁のコードを操作側で入力すると接続されます。</p>
+    <button class="role" id="pickDisp"><b>表示する</b><span>VR画面を映す（スマホの傾き・向きで見回せます）。先にこちらを選ぶ</span></button>
+    <button class="role" id="pickCtrl"><b>操作する</b><span>コントローラーとして使う（コードを入力）</span></button>
+    <ul class="tips">
+      <li>「表示する」を押すと、モーションセンサーの許可を求められることがあります。許可してください。</li>
+      <li>視点は表示側スマホの向きで変わります。右スティックはありません。</li>
+      <li>表示側は「VR分割」でゴーグル用の左右2画面になります（操作側からも切替可）。</li>
+    </ul>
+  </div>
+</div>
+
+<!-- コード入力 -->
+<div id="pair" class="screen hidden">
+  <div class="card">
+    <h1>表示側のコードを入力</h1>
+    <p class="lead">表示側の画面に出ている6桁の数字を入れてください。</p>
+    <input class="codein" id="codeIn" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="off">
+    <button class="primary" id="pairGo">接続</button>
+    <button class="ghost" id="pairBack">戻る</button>
+    <p class="status" id="pairStatus"></p>
+  </div>
+</div>
+
+<!-- コントローラー -->
+<div id="ctrl" class="screen dark hidden">
+  <div class="topbar">
+    <button class="mini" id="ctrlBack">← 切断</button>
+    <span class="pill ng" id="ctrlStatus">表示側: 未接続</span>
+    <button class="mini" id="btnVr">VR分割: OFF</button>
+  </div>
+  <div class="readout" id="ctrlReadout"></div>
+
+  <div class="stickwrap">
+    <div class="stick" id="stickL"><div class="knob"></div></div>
+    <div class="cap">移動（見ている方向が前）</div>
+  </div>
+
+  <div class="btnpad">
+    <button class="bigbtn act" id="btnAct">発射</button>
+    <button class="bigbtn" id="btnJump">ジャンプ</button>
+    <button class="mini" id="btnReset">視点リセット</button>
+  </div>
+</div>
+
+<!-- 表示（VR画面） -->
+<div id="disp" class="screen dark hidden">
+  <canvas id="cv"></canvas>
+  <div id="seam"></div>
+  <div class="hud" id="hud"></div>
+  <div class="wait" id="wait">
+    <div id="waitMsg">接続を準備中…</div>
+    <div class="code" id="codeText">------</div>
+    <div id="waitSub">もう1台で「操作する」を選び、このコードを入力してください</div>
+  </div>
+  <div class="dispbar">
+    <button class="mini" id="dispBack">← 戻る</button>
+    <button class="mini" id="dispVr">VR分割 切替</button>
+    <button class="mini" id="dispReset">視点リセット</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const num = (v) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -1, 1) : 0;
+  const int = (v) => (typeof v === 'number' && isFinite(v)) ? Math.floor(v) : 0;
+
+  let role = null;
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+
+  // ホーム画面アプリ化の要件（HTTPS上でのみ登録）
+  try {
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  } catch (e) {}
+
+  function show(name) {
+    for (const k in screens) screens[k].classList.toggle('hidden', k !== name);
+  }
+  async function keepAwake() {
+    try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+  function tryFullscreen() {
+    try {
+      const f = document.documentElement.requestFullscreen;
+      if (f) { const p = f.call(document.documentElement); if (p && p.catch) p.catch(() => {}); }
+    } catch (e) {}
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        const p = screen.orientation.lock('landscape'); if (p && p.catch) p.catch(() => {});
+      }
+    } catch (e) {}
+  }
+  function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+  /* ================= 通信（PeerJS / WebRTC） ================= */
+  const ID_PREFIX = 'vr2phone-test-';
+  let peer = null, conn = null;
+  let linked = false;
+  let lastMsgAt = 0;
+  let needInit = false;
+  let code = '';
+  let hbTimer = null;
+
+  function genCode() { return String(Math.floor(Math.random() * 1000000)).padStart(6, '0'); }
+
+  function teardown() {
+    linked = false; needInit = false; lastMsgAt = 0;
+    if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
+    try { if (conn) conn.close(); } catch (e) {}
+    try { if (peer) peer.destroy(); } catch (e) {}
+    conn = null; peer = null;
+  }
+
+  // ---- 表示側 ----
+  const inp = { mx: 0, my: 0, jump: 0, act: 0, vr: 0, rc: 0 };
+
+  function setWait(msg, showCode, sub) {
+    $('#waitMsg').textContent = msg;
+    $('#codeText').textContent = showCode ? code : '';
+    $('#waitSub').textContent = sub || '';
+  }
+
+  function startDisplayPeer() {
+    teardown();
+    if (typeof Peer === 'undefined') { setWait('通信ライブラリを読み込めませんでした（ネット接続を確認）', false, ''); return; }
+    code = genCode();
+    setWait('接続を準備中…', false, '');
+    const p = new Peer(ID_PREFIX + code);
+    peer = p;
+    p.on('open', () => {
+      setWait('接続コード', true, 'もう1台で「操作する」を選び、このコードを入力してください');
+    });
+    p.on('connection', (c) => {
+      if (conn && conn !== c) { try { conn.close(); } catch (e) {} }
+      conn = c;
+      c.on('open', () => { linked = true; needInit = true; lastMsgAt = 0; });
+      c.on('data', onData);
+      c.on('close', () => { if (conn === c) { linked = false; conn = null; setWait('操作側が切断されました', true, '同じコードで再接続できます'); } });
+      c.on('error', () => {});
+    });
+    p.on('disconnected', () => { try { p.reconnect(); } catch (e) {} });
+    p.on('error', (e) => {
+      if (e && e.type === 'unavailable-id') { startDisplayPeer(); return; }
+      setWait('通信エラー: ' + (e && e.type ? e.type : 'unknown'), false, '戻ってやり直してください');
+    });
+  }
+
+  function onData(d) {
+    if (!d || typeof d !== 'object') return;
+    lastMsgAt = performance.now();
+    inp.mx = num(d.mx); inp.my = num(d.my);
+    inp.jump = int(d.jump); inp.act = int(d.act); inp.vr = int(d.vr); inp.rc = int(d.rc);
+  }
+
+  // ---- 操作側 ----
+  const st = { mx: 0, my: 0, jump: 0, act: 0, vr: 0, rc: 0 };
+  const r2 = (v) => Math.round(v * 100) / 100;
+
+  function sendState() {
+    if (!conn || !conn.open) return;
+    try {
+      conn.send({ mx: r2(st.mx), my: r2(st.my), jump: st.jump, act: st.act, vr: st.vr, rc: st.rc });
+    } catch (e) {}
+  }
+  function pushCtrl() {
+    sendState();
+    $('#ctrlReadout').textContent =
+      '移動(' + st.mx.toFixed(2) + ', ' + st.my.toFixed(2) + ')  J:' + st.jump + ' A:' + st.act;
+  }
+  function setCtrlPill(ok) {
+    const pill = $('#ctrlStatus');
+    pill.textContent = ok ? '表示側: 接続中' : '表示側: 未接続';
+    pill.classList.toggle('ok', ok);
+    pill.classList.toggle('ng', !ok);
+  }
+  function pairStatus(msg, err) {
+    const el = $('#pairStatus');
+    el.textContent = msg || '';
+    el.classList.toggle('err', !!err);
+  }
+
+  function startControllerPeer(codeStr) {
+    teardown();
+    if (typeof Peer === 'undefined') { pairStatus('通信ライブラリを読み込めませんでした（ネット接続を確認）', true); $('#pairGo').disabled = false; return; }
+    pairStatus('接続中…', false);
+    $('#pairGo').disabled = true;
+    const p = new Peer();
+    peer = p;
+    let done = false;
+    const fail = (msg) => { if (done) return; done = true; teardown(); pairStatus(msg, true); $('#pairGo').disabled = false; };
+    const timer = setTimeout(() => fail('接続できませんでした。コードと、両方のネット接続を確認してください'), 15000);
+
+    p.on('open', () => {
+      const c = p.connect(ID_PREFIX + codeStr, { reliable: true });
+      conn = c;
+      c.on('open', () => {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        linked = true;
+        role = 'controller';
+        show('ctrl'); tryFullscreen(); keepAwake();
+        setCtrlPill(true);
+        pushCtrl();
+        hbTimer = setInterval(sendState, 500);
+      });
+      c.on('close', () => {
+        linked = false; setCtrlPill(false);
+        if (role === 'controller') { $('#ctrlReadout').textContent = '切断されました。「切断」で戻ってやり直してください'; }
+      });
+      c.on('error', () => {});
+    });
+    p.on('disconnected', () => { try { p.reconnect(); } catch (e) {} });
+    p.on('error', (e) => {
+      clearTimeout(timer);
+      if (e && e.type === 'peer-unavailable') fail('そのコードの表示側が見つかりません');
+      else if (role === 'controller') { linked = false; setCtrlPill(false); }
+      else fail('通信エラー: ' + (e && e.type ? e.type : 'unknown'));
+    });
+  }
+
+  /* ================= 画面遷移 ================= */
+  $('#pickDisp').addEventListener('click', () => {
+    role = 'display'; show('disp'); tryFullscreen(); keepAwake();
+    enableGyro();          // ユーザー操作の中で呼ぶ（iOSの許可ダイアログのため）
+    initScene(); startDisplayPeer();
+  });
+  $('#pickCtrl').addEventListener('click', () => { pairStatus(''); $('#pairGo').disabled = false; show('pair'); $('#codeIn').focus(); });
+  $('#pairBack').addEventListener('click', () => { teardown(); show('select'); });
+  $('#pairGo').addEventListener('click', () => {
+    const v = $('#codeIn').value.replace(/\D/g, '');
+    if (v.length !== 6) { pairStatus('6桁の数字を入力してください', true); return; }
+    startControllerPeer(v);
+  });
+  $('#codeIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#pairGo').click(); });
+  function backToSelect() { role = null; teardown(); setStereo(false); show('select'); }
+  $('#ctrlBack').addEventListener('click', backToSelect);
+  $('#dispBack').addEventListener('click', backToSelect);
+
+  /* ================= コントローラーUI ================= */
+  function makeStick(el, onChange) {
+    const knob = el.querySelector('.knob');
+    let pid = null;
+    function update(e) {
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let dx = e.clientX - cx, dy = e.clientY - cy;
+      const max = r.width / 2 * 0.6;
+      const len = Math.hypot(dx, dy);
+      if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+      knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      let x = dx / max, y = -dy / max;
+      if (Math.hypot(x, y) < 0.1) { x = 0; y = 0; }
+      onChange(x, y);
+    }
+    el.addEventListener('pointerdown', (e) => {
+      if (pid !== null) return;
+      pid = e.pointerId;
+      try { el.setPointerCapture(pid); } catch (err) {}
+      update(e); e.preventDefault();
+    });
+    el.addEventListener('pointermove', (e) => { if (e.pointerId === pid) update(e); });
+    const end = (e) => {
+      if (e.pointerId !== pid) return;
+      pid = null; knob.style.transform = 'translate(0,0)'; onChange(0, 0);
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+  makeStick($('#stickL'), (x, y) => { st.mx = x; st.my = y; pushCtrl(); });
+
+  function bindButton(el, fn) {
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); el.classList.add('pressed'); fn(); buzz(15); pushCtrl();
+    });
+    const off = () => el.classList.remove('pressed');
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointercancel', off);
+    el.addEventListener('pointerleave', off);
+  }
+  bindButton($('#btnJump'), () => { st.jump = (st.jump + 1) % 1000000; });
+  bindButton($('#btnAct'), () => { st.act = (st.act + 1) % 1000000; });
+  $('#btnReset').addEventListener('click', () => { st.rc = (st.rc + 1) % 1000000; buzz(15); pushCtrl(); });
+  $('#btnVr').addEventListener('click', () => {
+    st.vr = st.vr ? 0 : 1;
+    $('#btnVr').textContent = 'VR分割: ' + (st.vr ? 'ON' : 'OFF');
+    pushCtrl();
+  });
+
+  /* ================= ジャイロ（表示側） ================= */
+  const gyro = { state: 'off', a: 0, b: 0, g: 0, t: 0, startedAt: 0 };
+  let recenterPending = true;
+
+  function onOrient(e) {
+    if (e.alpha === null || e.beta === null || e.gamma === null ||
+        e.alpha === undefined || e.beta === undefined || e.gamma === undefined) return;
+    gyro.a = e.alpha; gyro.b = e.beta; gyro.g = e.gamma; gyro.t = performance.now();
+    if (gyro.state !== 'active') { gyro.state = 'active'; recenterPending = true; }
+  }
+  async function enableGyro() {
+    if (gyro.state === 'active' || gyro.state === 'waiting') return;
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') { gyro.state = 'denied'; return; }
+      }
+      window.addEventListener('deviceorientation', onOrient, true);
+      gyro.state = 'waiting'; gyro.startedAt = performance.now();
+    } catch (e) { gyro.state = 'error'; }
+  }
+
+  /* ================= 表示（VR画面） ================= */
+  let stereo = false;
+  function setStereo(v) {
+    stereo = !!v;
+    document.body.classList.toggle('stereo', stereo);
+  }
+  $('#dispVr').addEventListener('click', () => setStereo(!stereo));
+  $('#dispReset').addEventListener('click', () => { recenterPending = true; });
+
+  const P = { x: 0, y: 0, z: 0, vy: 0 };
+  const balls = [];
+  let R = null, T = null;
+  let yawOffset = 0;
+  let dragYaw = 0, dragPitch = 0;   // ジャイロが使えない時の代用（画面ドラッグ）
+  let lastFx = 0, lastFz = -1;
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function initScene() {
+    if (R) return;
+    const hud = $('#hud');
+    try {
+      if (!window.THREE) throw new Error('three.js を読み込めませんでした');
+      const canvas = $('#cv');
+      const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x9cc4ee);
+      scene.fog = new THREE.Fog(0x9cc4ee, 25, 95);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x556677, 0.95));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+      sun.position.set(20, 40, 10); scene.add(sun);
+
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshLambertMaterial({ color: 0x6f9a5b }));
+      floor.rotation.x = -Math.PI / 2; scene.add(floor);
+      const grid = new THREE.GridHelper(90, 45, 0x2f4f2f, 0x4c7a4c);
+      grid.position.y = 0.02; scene.add(grid);
+
+      // 方角の目印（北=赤 / 東=緑 / 南=青 / 西=黄）
+      const tower = (x, z, color) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(2, 14, 2), new THREE.MeshLambertMaterial({ color: color }));
+        m.position.set(x, 7, z); scene.add(m);
+      };
+      tower(0, -30, 0xe74c3c);
+      tower(30, 0, 0x2ecc71);
+      tower(0, 30, 0x3498db);
+      tower(-30, 0, 0xf1c40f);
+
+      const rnd = mulberry32(20260919);
+      for (let i = 0; i < 42; i++) {
+        let x = (rnd() * 2 - 1) * 40, z = (rnd() * 2 - 1) * 40;
+        if (Math.hypot(x, z) < 5) { x += 8; z += 8; }
+        const w = 1 + rnd() * 2.5, h = 0.8 + rnd() * 5, d = 1 + rnd() * 2.5;
+        const c = new THREE.Color().setHSL(rnd(), 0.55, 0.55);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: c }));
+        m.position.set(x, h / 2, z); scene.add(m);
+      }
+
+      const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
+
+      R = {
+        renderer: renderer, scene: scene, camera: camera,
+        ballGeo: new THREE.SphereGeometry(0.16, 12, 12),
+        ballMat: new THREE.MeshBasicMaterial({ color: 0xff5533 }),
+        W: 0, H: 0
+      };
+      T = {
+        zee: new THREE.Vector3(0, 0, 1), yAxis: new THREE.Vector3(0, 1, 0),
+        euler: new THREE.Euler(), q0: new THREE.Quaternion(),
+        q1: new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)),
+        qd: new THREE.Quaternion(), qy: new THREE.Quaternion(), camQ: new THREE.Quaternion(),
+        fwd: new THREE.Vector3(), right: new THREE.Vector3()
+      };
+
+      // ジャイロが使えない時（PCなど）は画面ドラッグで見回せる
+      let dragId = null, dx0 = 0, dy0 = 0;
+      canvas.addEventListener('pointerdown', (e) => { dragId = e.pointerId; dx0 = e.clientX; dy0 = e.clientY; });
+      canvas.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== dragId) return;
+        if (gyro.state !== 'active') {
+          dragYaw -= (e.clientX - dx0) * 0.005;
+          dragPitch = clamp(dragPitch - (e.clientY - dy0) * 0.005, -1.4, 1.4);
+        }
+        dx0 = e.clientX; dy0 = e.clientY;
+      });
+      const endDrag = (e) => { if (e.pointerId === dragId) dragId = null; };
+      canvas.addEventListener('pointerup', endDrag);
+      canvas.addEventListener('pointercancel', endDrag);
+
+      requestAnimationFrame(frame);
+    } catch (e) {
+      hud.textContent = '3D表示を開始できません: ' + (e && e.message ? e.message : e);
+    }
+  }
+
+  // 端末の向き → カメラの向き（three.js標準の変換）
+  function deviceQuat(out, aDeg, bDeg, gDeg) {
+    const d = Math.PI / 180;
+    const ang = (screen.orientation && typeof screen.orientation.angle === 'number')
+      ? screen.orientation.angle : (window.orientation || 0);
+    T.euler.set(bDeg * d, aDeg * d, -gDeg * d, 'YXZ');
+    out.setFromEuler(T.euler);
+    out.multiply(T.q1);
+    out.multiply(T.q0.setFromAxisAngle(T.zee, -ang * d));
+  }
+
+  let lastJump = 0, lastAct = 0, lastVr = 0, lastRc = 0;
+
+  function fire() {
+    T.fwd.set(0, 0, -1).applyQuaternion(T.camQ);
+    const m = new THREE.Mesh(R.ballGeo, R.ballMat);
+    m.position.set(P.x + T.fwd.x * 0.6, P.y + 1.45 + T.fwd.y * 0.6, P.z + T.fwd.z * 0.6);
+    R.scene.add(m);
+    balls.push({ mesh: m, vx: T.fwd.x * 16, vy: T.fwd.y * 16, vz: T.fwd.z * 16, life: 4 });
+  }
+
+  let lastT = performance.now(), lastHud = 0;
+  const cur = { mx: 0, my: 0, jump: 0, act: 0 };
+  const GYRO_LABEL = { off: '未使用', waiting: '待機中', active: '有効', denied: '拒否（端末設定を確認）', error: 'エラー', unsupported: '非対応（画面ドラッグで代用）' };
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (role !== 'display' || !R) { lastT = now; return; }
+    const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+
+    // ---- 入力（受信が途絶えたら入力ゼロ） ----
+    const fresh = linked && lastMsgAt > 0 && (now - lastMsgAt) < 2500;
+    $('#wait').classList.toggle('hidden', linked);
+    let doJump = false, doFire = false;
+    if (linked && lastMsgAt > 0) {
+      if (needInit) { needInit = false; lastJump = inp.jump; lastAct = inp.act; lastVr = inp.vr; lastRc = inp.rc; setStereo(!!inp.vr); }
+      if (fresh) {
+        cur.mx = inp.mx; cur.my = inp.my; cur.jump = inp.jump; cur.act = inp.act;
+        if (inp.jump !== lastJump) { lastJump = inp.jump; doJump = true; }
+        if (inp.act !== lastAct) { lastAct = inp.act; doFire = true; }
+        if (inp.vr !== lastVr) { lastVr = inp.vr; setStereo(!!inp.vr); }
+        if (inp.rc !== lastRc) { lastRc = inp.rc; recenterPending = true; }
+      }
+    }
+    if (!fresh) { cur.mx = cur.my = 0; }
+
+    // ---- 視点（ジャイロ、なければ画面ドラッグ） ----
+    if (gyro.state === 'waiting' && now - gyro.startedAt > 2500) gyro.state = 'unsupported';
+    const gyroFresh = gyro.state === 'active' && (now - gyro.t) < 1500;
+    if (gyroFresh) {
+      deviceQuat(T.qd, gyro.a, gyro.b, gyro.g);
+      if (recenterPending) {
+        // いま向いている方向を「正面（北=赤い塔の方向）」にする
+        T.fwd.set(0, 0, -1).applyQuaternion(T.qd);
+        yawOffset = Math.atan2(-T.fwd.x, -T.fwd.z);
+        recenterPending = false;
+      }
+      T.qy.setFromAxisAngle(T.yAxis, -yawOffset);
+      T.camQ.copy(T.qy).multiply(T.qd);
+    } else {
+      if (recenterPending) { dragYaw = 0; dragPitch = 0; recenterPending = false; }
+      T.euler.set(dragPitch, dragYaw, 0, 'YXZ');
+      T.camQ.setFromEuler(T.euler);
+    }
+
+    // ---- 動作 ----
+    if (doJump && P.y <= 0.001) P.vy = 6.5;
+    if (doFire) fire();
+
+    // 見ている方向（水平成分）を前として移動
+    T.fwd.set(0, 0, -1).applyQuaternion(T.camQ);
+    let fl = Math.hypot(T.fwd.x, T.fwd.z);
+    if (fl > 0.2) { lastFx = T.fwd.x / fl; lastFz = T.fwd.z / fl; }
+    const fx = lastFx, fz = lastFz, rx = -fz, rz = fx;
+    P.x = clamp(P.x + (fx * cur.my + rx * cur.mx) * 4.5 * dt, -45, 45);
+    P.z = clamp(P.z + (fz * cur.my + rz * cur.mx) * 4.5 * dt, -45, 45);
+    P.vy -= 14 * dt; P.y += P.vy * dt;
+    if (P.y <= 0) { P.y = 0; P.vy = 0; }
+
+    for (let i = balls.length - 1; i >= 0; i--) {
+      const b = balls[i];
+      b.vy -= 9 * dt;
+      b.mesh.position.x += b.vx * dt; b.mesh.position.y += b.vy * dt; b.mesh.position.z += b.vz * dt;
+      b.life -= dt;
+      if (b.life <= 0 || b.mesh.position.y < 0.1) { R.scene.remove(b.mesh); balls.splice(i, 1); }
+    }
+
+    // ---- 描画 ----
+    const W = window.innerWidth, H = window.innerHeight;
+    if (W !== R.W || H !== R.H) { R.W = W; R.H = H; R.renderer.setSize(W, H, false); }
+    const cam = R.camera;
+    cam.quaternion.copy(T.camQ);
+    const ex = P.x, ey = P.y + 1.6, ez = P.z;
+    if (!stereo) {
+      R.renderer.setScissorTest(false);
+      R.renderer.setViewport(0, 0, W, H);
+      cam.fov = 70; cam.aspect = W / H; cam.updateProjectionMatrix();
+      cam.position.set(ex, ey, ez);
+      R.renderer.render(R.scene, cam);
+    } else {
+      const hw = W / 2;
+      T.right.set(1, 0, 0).applyQuaternion(T.camQ);
+      R.renderer.setScissorTest(true);
+      cam.fov = 90; cam.aspect = hw / H; cam.updateProjectionMatrix();
+      for (let i = 0; i < 2; i++) {
+        const off = (i === 0 ? -1 : 1) * 0.032;
+        cam.position.set(ex + T.right.x * off, ey + T.right.y * off, ez + T.right.z * off);
+        R.renderer.setViewport(i * hw, 0, hw, H);
+        R.renderer.setScissor(i * hw, 0, hw, H);
+        R.renderer.render(R.scene, cam);
+      }
+    }
+
+    // ---- HUD ----
+    if (now - lastHud > 120) {
+      lastHud = now;
+      const yawDeg = ((((Math.atan2(-lastFx, -lastFz)) * 180 / Math.PI) % 360) + 360) % 360;
+      $('#hud').textContent =
+        (fresh ? '操作側: 受信中' : (linked ? '操作側: 受信途絶' : '操作側: 待機中')) + '\n' +
+        'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
+        '移動 (' + cur.mx.toFixed(2) + ', ' + cur.my.toFixed(2) + ')\n' +
+        'ジャンプ ' + cur.jump + '回 / 発射 ' + cur.act + '回\n' +
+        '位置 (' + P.x.toFixed(1) + ', ' + P.z.toFixed(1) + ')  向き ' + yawDeg.toFixed(0) + '°';
+    }
+  }
+})();
+</script>
+</body>
+</html>

@@ -616,7 +616,8 @@ body.stereo .dispbar{opacity:.55}
   const TRIGGER_FRAMES = 5;          // フレーム: この数以上＋方向に進んだら発動
   const TRIGGER_FADE = 0.15;         // 秒: idleとのつなぎ
   let playerFrameDt = 1 / 30;        // 2actionの1フレームの秒数（読込時に算出）
-  let trigPending = null;            // {at(ms), base(秒)} 動き出しから0.2秒後に判定するための予約
+  const H_ACT2_START_FRAME = 5;      // action2は5フレーム目から再生する
+  let hAct2Start = 0;                // action2の開始位置(秒)。読込時に算出
   const trigHist = [];               // {now(ms), t(秒)} 直近TRIGGER_WINDOW秒ぶんの2action再生位置
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
@@ -650,7 +651,14 @@ body.stereo .dispbar{opacity:.55}
         a.clampWhenFinished = true;
         return a;
       };
-      if (a2) hAct2 = mkOnce(a2);
+      if (a2) {
+        hAct2 = mkOnce(a2);
+        const tk = a2.tracks && a2.tracks[0], tm = tk && tk.times;
+        if (tm && tm.length > H_ACT2_START_FRAME) hAct2Start = tm[H_ACT2_START_FRAME];
+        else if (tm && tm.length > 1) hAct2Start = (tm[1] - tm[0]) * H_ACT2_START_FRAME;
+        else hAct2Start = H_ACT2_START_FRAME / 30;
+        hAct2Start = Math.min(hAct2Start, Math.max(0, a2.duration - 0.001));
+      }
       if (a3) hAct3 = mkOnce(a3);
       hMixer.addEventListener('finished', function (e) {
         if (e.action !== hCurAct) return;      // 上書きされた側の終了は無視
@@ -928,29 +936,22 @@ body.stereo .dispbar{opacity:.55}
         const from = hCurAct || hIdleAct;
         hCurAct = act;
         act.reset().play();
+        if (act === hAct2) act.time = hAct2Start;      // action2は5フレーム目から
         if (from) act.crossFadeFrom(from, TRIGGER_FADE, false);
       };
-      if (!trigPending && !hCurAct) {
-        // 動き出しの検出: 直近0.2秒内で最小の位置(同値なら最新)から2.5フレーム以上＋に進んだら、その最小点を「動き出し」とする
-        let mi = trigHist.length - 1;
-        for (let i = trigHist.length - 1; i >= 0; i--) if (trigHist[i].t < trigHist[mi].t) mi = i;
-        if ((pt - trigHist[mi].t) / playerFrameDt >= TRIGGER_FRAMES2) {
-          trigPending = { at: trigHist[mi].now + TRIGGER_WINDOW * 1000, base: trigHist[mi].t };
-        }
-      }
-      // 動き出しからちょうど0.2秒の時点で判定: 5フレーム以上→action3 / 2.5フレーム以上→action2
-      if (trigPending && now >= trigPending.at) {
-        const mv = (pt - trigPending.base) / playerFrameDt;
-        trigPending = null;
-        trigHist.length = 0;
-        if (!hCurAct) {
-          if (mv >= TRIGGER_FRAMES && hAct3) playH(hAct3);
-          else if (mv >= TRIGGER_FRAMES2 && hAct2) playH(hAct2);
-        }
+      // 直近0.2秒の最小位置からの＋方向の進み量（フレーム）
+      let minT = pt;
+      for (let i = 0; i < trigHist.length; i++) if (trigHist[i].t < minT) minT = trigHist[i].t;
+      const movedFrames = (pt - minT) / playerFrameDt;
+      // 達した瞬間に再生: 5フレーム以上→action3（action2再生中でも切り替え）／2.5フレーム以上→action2
+      if (movedFrames >= TRIGGER_FRAMES && hAct3 && hCurAct !== hAct3) {
+        playH(hAct3);
+        trigHist.length = 0;    // 連続発動を防ぐ
+      } else if (movedFrames >= TRIGGER_FRAMES2 && movedFrames < TRIGGER_FRAMES && hAct2 && !hCurAct) {
+        playH(hAct2);
       }
     } else {
       trigHist.length = 0;      // 角度データが無い間は履歴を捨てる
-      trigPending = null;
     }
 
     // ---- 描画 ----

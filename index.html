@@ -1069,6 +1069,12 @@ body.stereo .dispbar{opacity:.55}
   const TILT_MAX = 20;                       // 角度の測定範囲：基準から ±20° まで
   let tiltRefQ = null;                       // 基準の向き（この向きを0°とする）
   let tiltZeroPending = true;                // 次に角度データが届いた時点を基準にする
+  // 操作側からの角度は約30Hz送信だが描画は60〜120Hzで動くため、そのまま使うと値が数フレーム
+  // 据え置かれてから飛ぶ「カクツキ」になる。テンポ（角度→再生位置の対応）は変えず、
+  // 受信値の間をなめらかに補間して滑らかに見せる。
+  let tiltSmooth = 0;                        // 補間後の角度（2action等の再生位置計算に使う）
+  let tiltSmoothReady = false;               // 次に有効な角度が届いたら、補間をその値から始める
+  const TILT_SMOOTH_TAU = 0.05;              // 秒: 補間の追従の速さ（小さいほど速く追従）
   $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; lastTiltKey = ''; });
   $('#tiltSel').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-axis]');
@@ -1134,7 +1140,7 @@ body.stereo .dispbar{opacity:.55}
 
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
     const tiltLive = fresh && inp.ce === 1;
-    if (!linked) tiltZeroPending = true;          // 切断中は次の接続で基準を取り直す
+    if (!linked) { tiltZeroPending = true; tiltSmoothReady = false; }          // 切断中は次の接続で基準・補間を取り直す
     if (tiltLive && tiltZeroPending) {            // 最初のデータ／リセット押下時の向きを0°にする
       tiltRefQ = inp.cq.slice();
       tiltZeroPending = false;
@@ -1143,10 +1149,17 @@ body.stereo .dispbar{opacity:.55}
     const tiltRv = (tiltLive && tiltRefQ) ? relRot(tiltRefQ, inp.cq) : [0, 0, 0];
     const tiltRaw = tiltAxis === 'a' ? tiltRv[2] : tiltAxis === 'b' ? tiltRv[0] : tiltRv[1];
     const tiltVal2 = clamp(tiltRaw, -TILT_MAX, TILT_MAX);
+    if (tiltLive) {
+      if (!tiltSmoothReady) { tiltSmooth = tiltRaw; tiltSmoothReady = true; }  // 復帰直後はいきなり現在値から始める
+      else tiltSmooth += (tiltRaw - tiltSmooth) * (1 - Math.exp(-dt / TILT_SMOOTH_TAU));
+    } else {
+      tiltSmoothReady = false;
+    }
     // 2action: 選んだ軸の角度で再生位置を決める。-20°=先頭フレーム／0°=5フレーム目／8°=最終フレーム（区分線形）
     if (playerAct && tiltLive) {
       const duration = playerAct.getClip().duration;
       let t;
+      const tiltRaw = tiltSmooth;              // カクツキを抑えるため、補間後の角度で再生位置を決める
       if (tiltRaw <= ANIM_ANGLE_MIN) {
         t = 0;
       } else if (tiltRaw >= ANIM_ANGLE_MAX) {
@@ -1225,7 +1238,7 @@ body.stereo .dispbar{opacity:.55}
 
     // ---- playerplus: 2actionと同じ角度で「2actionplus」を動かす ----
     if (plusAct && tiltLive) {
-      plusAct.time = clamp(angleToTime(tiltRaw, plusAct.getClip().duration, plusAnim0Time), 0, plusAct.getClip().duration);
+      plusAct.time = clamp(angleToTime(tiltSmooth, plusAct.getClip().duration, plusAnim0Time), 0, plusAct.getClip().duration);
       plusMixer.update(0);
     }
 

@@ -709,6 +709,7 @@ body.stereo .dispbar{opacity:.55}
           return n;
         };
         o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
+        applyGloss(o);
       });
       group.add(model);
       plusState = '表示中';
@@ -776,7 +777,7 @@ body.stereo .dispbar{opacity:.55}
         const c = box.getCenter(new THREE.Vector3());
         model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
       }
-      model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
+      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); } });
       group.add(model);
       armState = '表示中';
 
@@ -804,6 +805,19 @@ body.stereo .dispbar{opacity:.55}
       try { console.error(err); } catch (e) {}
     });
   }
+  // モデルの色合いを少し薄く・光沢を少し加える（PBR/Phong どちらのマテリアルでも効くように分岐）
+  function applyGloss(o) {
+    if (!o.isMesh || !o.material) return;
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    list.forEach(function (m) {
+      if (m.color) m.color.lerp(new THREE.Color(0xffffff), 0.15);   // 色を少し薄く
+      if ('roughness' in m) m.roughness = Math.min(m.roughness != null ? m.roughness : 0.8, 0.35);
+      if ('metalness' in m) m.metalness = Math.max(m.metalness != null ? m.metalness : 0, 0.08);
+      if ('shininess' in m) m.shininess = Math.max(m.shininess != null ? m.shininess : 30, 70);
+      if (m.specular && m.specular.isColor) m.specular.setScalar(0.3);
+      m.needsUpdate = true;
+    });
+  }
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
     hState = '読込中…';
@@ -815,7 +829,7 @@ body.stereo .dispbar{opacity:.55}
       box.setFromObject(model);
       const c = box.getCenter(new THREE.Vector3());
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
-      model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
+      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); } });
       group.add(model);
       hState = '表示中';
 
@@ -892,7 +906,7 @@ body.stereo .dispbar{opacity:.55}
       playerOffX = model.position.x; playerOffY = model.position.y; playerOffZ = model.position.z;
       if (onReady) onReady();
       // 視点がモデルの内側に入っても消えないよう、視錐台カリングを切る
-      model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
+      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); } });
       group.add(model);
       playerState = '表示中';
 
@@ -943,32 +957,32 @@ body.stereo .dispbar{opacity:.55}
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x9cc4ee);
       scene.fog = new THREE.Fog(0x9cc4ee, 25, 95);
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x556677, 0.95));
-      const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x6a7a8a, 1.0));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.65);
       sun.position.set(20, 40, 10); scene.add(sun);
 
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshLambertMaterial({ color: 0x6f9a5b }));
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshPhongMaterial({ color: 0x86ad76, shininess: 20, specular: 0x333333 }));
       floor.rotation.x = -Math.PI / 2; scene.add(floor);
       const grid = new THREE.GridHelper(90, 45, 0x2f4f2f, 0x4c7a4c);
       grid.position.y = 0.02; scene.add(grid);
 
       // 方角の目印（北=赤 / 東=緑 / 南=青 / 西=黄）
       const tower = (x, z, color) => {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(2, 14, 2), new THREE.MeshLambertMaterial({ color: color }));
+        const m = new THREE.Mesh(new THREE.BoxGeometry(2, 14, 2), new THREE.MeshPhongMaterial({ color: color, shininess: 45, specular: 0x555555 }));
         m.position.set(x, 7, z); scene.add(m);
       };
-      tower(0, -30, 0xe74c3c);
-      tower(30, 0, 0x2ecc71);
-      tower(0, 30, 0x3498db);
-      tower(-30, 0, 0xf1c40f);
+      tower(0, -30, 0xec7266);
+      tower(30, 0, 0x5cd48c);
+      tower(0, 30, 0x5faee0);
+      tower(-30, 0, 0xf4d15e);
 
       const rnd = mulberry32(20260919);
       for (let i = 0; i < 42; i++) {
         let x = (rnd() * 2 - 1) * 40, z = (rnd() * 2 - 1) * 40;
         if (Math.hypot(x, z) < 5) { x += 8; z += 8; }
         const w = 1 + rnd() * 2.5, h = 0.8 + rnd() * 5, d = 1 + rnd() * 2.5;
-        const c = new THREE.Color().setHSL(rnd(), 0.55, 0.55);
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: c }));
+        const c = new THREE.Color().setHSL(rnd(), 0.45, 0.65);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: c, shininess: 35, specular: 0x444444 }));
         m.position.set(x, h / 2, z); scene.add(m);
       }
 

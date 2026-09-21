@@ -256,7 +256,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921g-hglb-idle';
+  const BUILD = '0921h-hglb-samepos';
   const $ = (s) => document.querySelector(s);
   const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -742,7 +742,7 @@ body.stereo .dispbar{opacity:.55}
 
       // h.glb（idleをループ再生。player.glb の隣に据え置き）
       const hGroup = new THREE.Group();
-      hGroup.position.set(inp.px + 2, inp.py, inp.pz);
+      hGroup.position.set(inp.px, inp.py, inp.pz);
       hGroup.rotation.y = H_FACING;
       scene.add(hGroup);
       loadH(hGroup);
@@ -853,7 +853,7 @@ body.stereo .dispbar{opacity:.55}
 
     // ---- 人物モデルのアニメーションと位置 ----
     R.player.position.set(inp.px, inp.py, inp.pz);
-    if (R.h) R.h.position.set(inp.px + 2, inp.py, inp.pz);   // player.glb の隣に追従
+    if (R.h) R.h.position.set(inp.px, inp.py, inp.pz);       // playerと同じ位置に追従
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
 
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----

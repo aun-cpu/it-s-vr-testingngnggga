@@ -577,27 +577,21 @@ body.stereo .dispbar{opacity:.55}
       group.add(model);
       playerState = '表示中';
 
-      // アニメーション: glb内の2つのアクションを順番にループ再生（1→2→1→2…）
+      // アニメーション: 「2action」という名前の動きを 再生→逆再生 の往復でループ
       const clips = gltf.animations || [];
       if (clips.length === 0) { playerAnim = '  アニメなし'; return; }
+      const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
+      const clip = clips.find(function (c) { return nm(c) === '2action'; }) ||
+                   clips.find(function (c) { return nm(c).endsWith('2action'); });
+      if (!clip) {
+        playerAnim = '  「2action」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
+        return;
+      }
       mixer = new THREE.AnimationMixer(model);
-      const actions = clips.slice(0, 2).map(function (c) { return { clip: c, act: mixer.clipAction(c) }; });
-      let cur = null, idx = 0;
-      const startAction = function (i) {
-        const next = actions[i];
-        next.act.reset();
-        next.act.setLoop(THREE.LoopOnce, 1);
-        next.act.clampWhenFinished = true;
-        next.act.enabled = true;
-        next.act.play();
-        if (cur && cur !== next) next.act.crossFadeFrom(cur.act, 0.25, false);
-        cur = next; idx = i;
-        playerAnim = '  アクション ' + (i + 1) + '/' + actions.length + ' (' + (next.clip.name || '無名') + ')';
-      };
-      mixer.addEventListener('finished', function (e) {
-        if (cur && e.action === cur.act) startAction((idx + 1) % actions.length);
-      });
-      startAction(0);
+      const act = mixer.clipAction(clip);
+      act.setLoop(THREE.LoopPingPong, Infinity);   // 順再生 → 逆再生 → 順再生 …
+      act.play();
+      playerAnim = '  アクション: ' + clip.name + '（再生⇄逆再生ループ）';
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}

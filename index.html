@@ -629,6 +629,10 @@ body.stereo .dispbar{opacity:.55}
   let playerAnim = '';
   let mixer = null;
   let playerAct = null;              // 「2action」のアクション（角度で再生位置を決める）
+  // playerarm/playerplusはplayer.glbのメッシュを間引いただけでボーンは同じなので、
+  // player.glbで計算した縮尺・位置合わせをそのまま使って完全に重ねる
+  let playerScale = null;
+  let playerOffX = 0, playerOffY = 0, playerOffZ = 0;
   const ANIM_ANGLE_MAX = 8;          // 8°=最後のフレーム
   const ANIM_ANGLE_MIN = -20;        // -20°=最初のフレーム
   const ANIM_ZERO_FRAME = 7;         // 0°になる基準フレーム番号
@@ -683,12 +687,18 @@ body.stereo .dispbar{opacity:.55}
     plusState = '読込中…';
     new THREE.GLTFLoader().load(PLUS_URL, function (gltf) {
       const model = gltf.scene;
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      if (PLUS_HEIGHT && size.y > 0) model.scale.multiplyScalar(PLUS_HEIGHT / size.y);
-      box.setFromObject(model);
-      const c = box.getCenter(new THREE.Vector3());
-      model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      if (playerScale != null) {
+        // player.glbのメッシュを間引いただけでボーンは同じなので、playerと全く同じ縮尺・位置合わせを使う
+        model.scale.setScalar(playerScale);
+        model.position.set(playerOffX, playerOffY, playerOffZ);
+      } else {
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        if (PLUS_HEIGHT && size.y > 0) model.scale.multiplyScalar(PLUS_HEIGHT / size.y);
+        box.setFromObject(model);
+        const c = box.getCenter(new THREE.Vector3());
+        model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      }
       // 半透明にする（マテリアルは複製して、他のモデルに影響しないようにする）
       model.traverse(function (o) {
         if (!o.isMesh) return;
@@ -755,12 +765,18 @@ body.stereo .dispbar{opacity:.55}
     armState = '読込中…';
     new THREE.GLTFLoader().load(ARM_URL, function (gltf) {
       const model = gltf.scene;
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      if (ARM_HEIGHT && size.y > 0) model.scale.multiplyScalar(ARM_HEIGHT / size.y);
-      box.setFromObject(model);
-      const c = box.getCenter(new THREE.Vector3());
-      model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      if (playerScale != null) {
+        // player.glbのメッシュを間引いただけでボーンは同じなので、playerと全く同じ縮尺・位置合わせを使う
+        model.scale.setScalar(playerScale);
+        model.position.set(playerOffX, playerOffY, playerOffZ);
+      } else {
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        if (ARM_HEIGHT && size.y > 0) model.scale.multiplyScalar(ARM_HEIGHT / size.y);
+        box.setFromObject(model);
+        const c = box.getCenter(new THREE.Vector3());
+        model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      }
       model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
       group.add(model);
       armState = '表示中';
@@ -867,8 +883,8 @@ body.stereo .dispbar{opacity:.55}
       try { console.error(err); } catch (e) {}
     });
   }
-  function loadPlayer(group) {
-    if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; return; }
+  function loadPlayer(group, onReady) {
+    if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; if (onReady) onReady(); return; }
     playerState = '読込中…';
     new THREE.GLTFLoader().load(PLAYER_URL, function (gltf) {
       const model = gltf.scene;
@@ -879,6 +895,10 @@ body.stereo .dispbar{opacity:.55}
       const c = box.getCenter(new THREE.Vector3());
       // 足元が地面、水平の中心が原点になるようにそろえる
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      // playerarm/playerplus（同じボーンでメッシュだけ間引いたモデル）にも同じ値を使い回す
+      playerScale = model.scale.x;
+      playerOffX = model.position.x; playerOffY = model.position.y; playerOffZ = model.position.z;
+      if (onReady) onReady();
       // 視点がモデルの内側に入っても消えないよう、視錐台カリングを切る
       model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
       group.add(model);
@@ -916,6 +936,7 @@ body.stereo .dispbar{opacity:.55}
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
+      if (onReady) onReady();
     });
   }
 
@@ -966,7 +987,6 @@ body.stereo .dispbar{opacity:.55}
       playerGroup.position.set(inp.px, inp.py, inp.pz);
       playerGroup.rotation.y = PLAYER_FACING;
       scene.add(playerGroup);
-      loadPlayer(playerGroup);
 
       // h.glb（idleをループ再生。player.glb の隣に据え置き）
       const hGroup = new THREE.Group();
@@ -980,14 +1000,19 @@ body.stereo .dispbar{opacity:.55}
       armGroup.position.set(inp.px + inp.aox, inp.py + inp.aoy, inp.pz + inp.aoz);
       armGroup.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
       scene.add(armGroup);
-      loadArm(armGroup);
 
       // playerplus.glb（playerと同じ位置・向き。半透明）
       const plusGroup = new THREE.Group();
       plusGroup.position.set(inp.px + inp.pox, inp.py + inp.poy, inp.pz + inp.poz);
       plusGroup.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
       scene.add(plusGroup);
-      loadPlus(plusGroup);
+
+      // playerを先に読み込み、その縮尺・位置合わせが確定してからarm/plusを読み込む
+      // （playerarm/playerplusはplayerのメッシュを間引いただけでボーンは同じなので、同じ値で重ねられる）
+      loadPlayer(playerGroup, function () {
+        loadArm(armGroup);
+        loadPlus(plusGroup);
+      });
 
       R = {
         renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup,

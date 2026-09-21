@@ -811,12 +811,12 @@ body.stereo .dispbar{opacity:.55}
       }
       const raw = tiltAxis === 'a' ? relAng(inp.ca, tiltRef.a) : tiltAxis === 'b' ? relAng(inp.cb, tiltRef.b) : relAng(inp.cg, tiltRef.g);
       const val = clamp(raw, -TILT_MAX, TILT_MAX);
-      // 2action: 選んだ軸の角度が 0〜8° のときだけ再生位置に反映（範囲外は無視して直前の状態を保つ）
-      if (playerAct && live && raw >= 0 && raw <= ANIM_ANGLE_MAX) {
-        const dur = playerAct.getClip().duration;
-        playerAct.time = (raw / ANIM_ANGLE_MAX) * dur;
+      // 2action: 選んだ軸の角度で再生位置を決める。0°未満は最初のフレーム、8°超は最後のフレームで止める
+      if (playerAct && live) {
+        const ratio = clamp(raw / ANIM_ANGLE_MAX, 0, 1);
+        playerAct.time = ratio * playerAct.getClip().duration;
         mixer.update(0);
-        playerProg = '  再生位置 ' + Math.round(raw / ANIM_ANGLE_MAX * 100) + '%';
+        playerProg = '  再生位置 ' + Math.round(ratio * 100) + '%';
       }
       const key = live ? tiltAxis + '|' + val.toFixed(1) : (linked ? 'off1' : 'off0');
       if (key !== lastTiltKey) {

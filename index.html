@@ -630,7 +630,7 @@ body.stereo .dispbar{opacity:.55}
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
   const PLUS_FACING = PLAYER_FACING; // playerと同じ向き
   // playerとの見た目のズレを微調整するオフセット（モデル側の原点が player.glb と違う場合に使う）
-  const PLUS_OFFSET = { x: 0, y: 0, z: 0 };  // メートル単位。左右/上下/前後にずらす
+  const PLUS_OFFSET = { x: 0, y: 0, z: 0.4 };  // メートル単位。左右/上下/前後にずらす
   const PLUS_ROT_OFFSET = 0;                 // 度。PLUS_FACINGに加算して向きを微調整
   const PLUS_OPACITY = 0.4;          // 透明度（1=不透明 / 0=完全に透明）
   let plusState = '未読込';
@@ -701,7 +701,7 @@ body.stereo .dispbar{opacity:.55}
   const ARM_HEIGHT = PLAYER_HEIGHT;  // playerと同じ身長にそろえる。元のサイズのままなら null
   const ARM_FACING = PLAYER_FACING;  // playerと同じ向き
   // playerとの見た目のズレを微調整するオフセット（モデル側の原点が player.glb と違う場合に使う）
-  const ARM_OFFSET = { x: 0, y: 0, z: 0 };   // メートル単位。左右/上下/前後にずらす
+  const ARM_OFFSET = { x: 0, y: -0.3, z: 0.4};   // メートル単位。左右/上下/前後にずらす
   const ARM_ROT_OFFSET = 0;                  // 度。ARM_FACINGに加算して向きを微調整
   let armState = '未読込';
   let armAnim = '';

@@ -210,14 +210,35 @@ body.stereo .dispbar{opacity:.55}
   <div class="readout" id="ctrlReadout"></div>
 
   <div class="posbox">
-    <p class="postitle">人物モデルの位置（表示側の視点からの座標・m）</p>
-    <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="px" data-d="-1">−</button><input type="range" id="rng-px" data-k="px" min="-5" max="5" step="0.05"><button type="button" class="pstep" data-k="px" data-d="1">＋</button><span class="pv" id="val-px">0.00</span></div>
-    <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="py" data-d="-1">−</button><input type="range" id="rng-py" data-k="py" min="-3" max="3" step="0.05"><button type="button" class="pstep" data-k="py" data-d="1">＋</button><span class="pv" id="val-py">0.00</span></div>
-    <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="pz" data-d="-1">−</button><input type="range" id="rng-pz" data-k="pz" min="-10" max="2" step="0.05"><button type="button" class="pstep" data-k="pz" data-d="1">＋</button><span class="pv" id="val-pz">0.00</span></div>
+    <div class="tiltsel" id="posTabs">
+      <button type="button" class="on" data-tab="body">本体</button>
+      <button type="button" data-tab="arm">腕(playerarm)</button>
+      <button type="button" data-tab="plus">半透明(playerplus)</button>
+    </div>
+    <div id="posTab-body">
+      <p class="postitle">人物モデルの位置（表示側の視点からの座標・m）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="px" data-d="-1">−</button><input type="range" id="rng-px" data-k="px" min="-5" max="5" step="0.05"><button type="button" class="pstep" data-k="px" data-d="1">＋</button><span class="pv" id="val-px">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="py" data-d="-1">−</button><input type="range" id="rng-py" data-k="py" min="-3" max="3" step="0.05"><button type="button" class="pstep" data-k="py" data-d="1">＋</button><span class="pv" id="val-py">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="pz" data-d="-1">−</button><input type="range" id="rng-pz" data-k="pz" min="-10" max="2" step="0.05"><button type="button" class="pstep" data-k="pz" data-d="1">＋</button><span class="pv" id="val-pz">0.00</span></div>
+    </div>
+    <div id="posTab-arm" class="hidden">
+      <p class="postitle">playerarmのズレ調整（player本体との差・m/°）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="aox" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-aox" data-k="aox" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="aox" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-aox">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="aoy" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-aoy" data-k="aoy" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="aoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-aoy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="aoz" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-aoz" data-k="aoz" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="aoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-aoz">0.00</span></div>
+      <div class="prow"><span class="pl">回転</span><button type="button" class="pstep" data-k="aor" data-d="-1" data-step="1">−</button><input type="range" id="rng-aor" data-k="aor" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="aor" data-d="1" data-step="1">＋</button><span class="pv" id="val-aor">0.00</span></div>
+    </div>
+    <div id="posTab-plus" class="hidden">
+      <p class="postitle">playerplusのズレ調整（player本体との差・m/°）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="pox" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-pox" data-k="pox" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="pox" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-pox">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="poy" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-poy" data-k="poy" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="poy" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-poy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="poz" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-poz" data-k="poz" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="poz" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-poz">0.00</span></div>
+      <div class="prow"><span class="pl">回転</span><button type="button" class="pstep" data-k="por" data-d="-1" data-step="1">−</button><input type="range" id="rng-por" data-k="por" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="por" data-d="1" data-step="1">＋</button><span class="pv" id="val-por">0.00</span></div>
+    </div>
   </div>
 
   <div class="btnpad">
-    <button class="mini" id="btnPosReset">位置リセット</button>
+    <button class="mini" id="btnPosReset">この項目をリセット</button>
     <button class="mini" id="btnReset">視点リセット</button>
   </div>
 </div>
@@ -331,9 +352,14 @@ body.stereo .dispbar{opacity:.55}
   // ---- 表示側 ----
   // ce: 操作側の角度が有効か / cq: 操作側スマホの向き（四元数 [x,y,z,w]、画面基準）/ csa: 操作側の画面の向き(0/90/180/270)
   // 人物モデルの位置（表示側の視点を原点、-Zが前。初期は視点と同じ0,0,0）。操作側で調整して表示側へ送る
-  const POS_DEFAULT = { px: 0, py: 0, pz: 0 };
-  const inp = { vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0, px: POS_DEFAULT.px, py: POS_DEFAULT.py, pz: POS_DEFAULT.pz };
-  const posv = (v, d) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -20, 20) : d;
+  const POS_DEFAULT = {
+    px: 0, py: 0, pz: 0,                       // 人物モデル本体の位置
+    aox: 0, aoy: 0, aoz: 0, aor: 0,            // playerarm: player本体とのズレ（位置m・回転°）
+    pox: 0, poy: 0, poz: 0, por: 0             // playerplus: player本体とのズレ（位置m・回転°）
+  };
+  const POS_KEYS = Object.keys(POS_DEFAULT);
+  const inp = Object.assign({ vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0 }, POS_DEFAULT);
+  const posv = (v, d) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -200, 200) : d;
 
   function setWait(msg, showCode, sub) {
     $('#waitMsg').textContent = msg;
@@ -373,11 +399,11 @@ body.stereo .dispbar{opacity:.55}
     inp.ce = d.ce ? 1 : 0;
     if (Array.isArray(d.cq) && d.cq.length === 4 && d.cq.every((v) => typeof v === 'number' && isFinite(v))) inp.cq = d.cq;
     inp.csa = int(d.csa);
-    inp.px = posv(d.px, inp.px); inp.py = posv(d.py, inp.py); inp.pz = posv(d.pz, inp.pz);
+    for (const k of POS_KEYS) inp[k] = posv(d[k], inp[k]);
   }
 
   // ---- 操作側 ----
-  const st = { vr: 0, rc: 0, px: POS_DEFAULT.px, py: POS_DEFAULT.py, pz: POS_DEFAULT.pz };
+  const st = Object.assign({ vr: 0, rc: 0 }, POS_DEFAULT);
   const r2 = (v) => Math.round(v * 100) / 100;
   const r1 = (v) => Math.round(v * 10) / 10;
 
@@ -387,10 +413,12 @@ body.stereo .dispbar{opacity:.55}
   function sendState() {
     if (!conn || !conn.open) return;
     try {
-      conn.send({
-        vr: st.vr, rc: st.rc, px: r2(st.px), py: r2(st.py), pz: r2(st.pz),
+      const payload = {
+        vr: st.vr, rc: st.rc,
         ce: cgyro.state === 'active' ? 1 : 0, cq: cgyro.q.map((v) => Math.round(v * 10000) / 10000), csa: cgyro.sa
-      });
+      };
+      for (const k of POS_KEYS) payload[k] = r2(st[k]);
+      conn.send(payload);
     } catch (e) {}
   }
   function pushCtrl() {
@@ -506,7 +534,6 @@ body.stereo .dispbar{opacity:.55}
 
   /* ================= コントローラーUI ================= */
   // 人物モデルの位置調整（スライダー＋微調整ボタン）
-  const POS_KEYS = ['px', 'py', 'pz'];
   function syncPosUi() {
     for (const k of POS_KEYS) {
       $('#rng-' + k).value = st[k];
@@ -522,10 +549,19 @@ body.stereo .dispbar{opacity:.55}
     $('#rng-' + k).addEventListener('input', (e) => setPos(k, parseFloat(e.target.value)));
   }
   document.querySelectorAll('.pstep').forEach((b) => {
-    b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * 0.1));
+    b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
+  });
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], plus: ['pox', 'poy', 'poz', 'por'] };
+  let posTab = 'body';
+  document.querySelectorAll('#posTabs button').forEach((b) => {
+    b.addEventListener('click', () => {
+      posTab = b.dataset.tab;
+      document.querySelectorAll('#posTabs button').forEach((x) => x.classList.toggle('on', x === b));
+      for (const t of Object.keys(TAB_KEYS)) $('#posTab-' + t).classList.toggle('hidden', t !== posTab);
+    });
   });
   $('#btnPosReset').addEventListener('click', () => {
-    for (const k of POS_KEYS) st[k] = POS_DEFAULT[k];
+    for (const k of TAB_KEYS[posTab]) st[k] = POS_DEFAULT[k];
     syncPosUi(); buzz(15); pushCtrl();
   });
   syncPosUi();
@@ -629,9 +665,6 @@ body.stereo .dispbar{opacity:.55}
   const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
   const PLUS_FACING = PLAYER_FACING; // playerと同じ向き
-  // playerとの見た目のズレを微調整するオフセット（モデル側の原点が player.glb と違う場合に使う）
-  const PLUS_OFFSET = { x: 0, y: 0, z: 0.4 };  // メートル単位。左右/上下/前後にずらす
-  const PLUS_ROT_OFFSET = 0;                 // 度。PLUS_FACINGに加算して向きを微調整
   const PLUS_OPACITY = 0.4;          // 透明度（1=不透明 / 0=完全に透明）
   let plusState = '未読込';
   let plusAnim = '';
@@ -700,15 +733,23 @@ body.stereo .dispbar{opacity:.55}
   const ARM_URL = 'playerarm.glb';   // index.html と同じ場所に置く
   const ARM_HEIGHT = PLAYER_HEIGHT;  // playerと同じ身長にそろえる。元のサイズのままなら null
   const ARM_FACING = PLAYER_FACING;  // playerと同じ向き
-  // playerとの見た目のズレを微調整するオフセット（モデル側の原点が player.glb と違う場合に使う）
-  const ARM_OFFSET = { x: 0, y: -0.3, z: 0.4};   // メートル単位。左右/上下/前後にずらす
-  const ARM_ROT_OFFSET = 0;                  // 度。ARM_FACINGに加算して向きを微調整
   let armState = '未読込';
   let armAnim = '';
   let armMixer = null;
   let armAct2 = null, armAct3 = null, armAct4 = null;   // 2action2 / 2action3 / 2action4（1回再生）
   let armCurAct = null;              // いま再生中のarmのアクション（無ければnull＝元のポーズ）
   let armAct2Start = 0;              // 2action2の開始位置(秒)。hのaction2と同じく5フレーム目
+  // 何もトリガーされていない間、armAct2（2action2）を0フレーム目に止めて既定ポーズにする
+  function armIdleHold(fromAct) {
+    if (!armAct2) { armCurAct = null; return; }
+    armAct2.reset();
+    armAct2.setEffectiveWeight(1);
+    armAct2.time = 0;
+    armAct2.play();
+    if (fromAct && fromAct !== armAct2) armAct2.crossFadeFrom(fromAct, TRIGGER_FADE, false);   // 直前のポーズからなめらかに0フレーム目へ
+    armAct2.paused = true;   // 時間は進めず0フレーム目のまま止める（フェードの重みだけは進む）
+    armCurAct = armAct2;
+  }
   function loadArm(group) {
     if (!THREE.GLTFLoader) { armState = '読込失敗（GLTFLoaderなし）'; return; }
     armState = '読込中…';
@@ -748,6 +789,7 @@ body.stereo .dispbar{opacity:.55}
         else armAct2Start = H_ACT2_START_FRAME / 30;
         armAct2Start = Math.min(armAct2Start, Math.max(0, c2.duration - 0.001));
       }
+      armIdleHold();   // 何も再生していない間は「2action2」の0フレーム目で固定表示
       armAnim = '  ' + (c2 ? c2.name : '「2action2」なし') + ' / ' + (c3 ? c3.name : '「2action3」なし') + ' / ' + (c4 ? c4.name : '「2action4」なし');
     }, undefined, function (err) {
       armState = '読込失敗（playerarm.glb を index.html と同じ場所に置く）';
@@ -806,7 +848,7 @@ body.stereo .dispbar{opacity:.55}
       hMixer.addEventListener('finished', function (e) {
         if (e.action !== hCurAct) return;      // 上書きされた側の終了は無視
         const done = hCurAct; hCurAct = null;
-        if (armCurAct) { armCurAct.fadeOut(TRIGGER_FADE); armCurAct = null; }   // armもhと同時に元のポーズへ戻す
+        armIdleHold(armCurAct);                // armもhと同時に「2action2」の0フレーム目へ戻す
         if (hIdleAct) { hIdleAct.reset().play(); hIdleAct.crossFadeFrom(done, TRIGGER_FADE, false); }
       });
       const clip = clips.find(function (c) { return nm(c) === 'idle'; }) ||
@@ -935,15 +977,15 @@ body.stereo .dispbar{opacity:.55}
 
       // playerarm.glb（playerと同じ位置・向き）
       const armGroup = new THREE.Group();
-      armGroup.position.set(inp.px + ARM_OFFSET.x, inp.py + ARM_OFFSET.y, inp.pz + ARM_OFFSET.z);
-      armGroup.rotation.y = ARM_FACING + ARM_ROT_OFFSET * Math.PI / 180;
+      armGroup.position.set(inp.px + inp.aox, inp.py + inp.aoy, inp.pz + inp.aoz);
+      armGroup.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
       scene.add(armGroup);
       loadArm(armGroup);
 
       // playerplus.glb（playerと同じ位置・向き。半透明）
       const plusGroup = new THREE.Group();
-      plusGroup.position.set(inp.px + PLUS_OFFSET.x, inp.py + PLUS_OFFSET.y, inp.pz + PLUS_OFFSET.z);
-      plusGroup.rotation.y = PLUS_FACING + PLUS_ROT_OFFSET * Math.PI / 180;
+      plusGroup.position.set(inp.px + inp.pox, inp.py + inp.poy, inp.pz + inp.poz);
+      plusGroup.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
       scene.add(plusGroup);
       loadPlus(plusGroup);
 
@@ -1054,8 +1096,14 @@ body.stereo .dispbar{opacity:.55}
     // ---- 人物モデルのアニメーションと位置 ----
     R.player.position.set(inp.px, inp.py, inp.pz);
     if (R.h) R.h.position.set(inp.px, inp.py, inp.pz);       // playerと同じ位置に追従
-    if (R.plus) R.plus.position.set(inp.px + PLUS_OFFSET.x, inp.py + PLUS_OFFSET.y, inp.pz + PLUS_OFFSET.z);   // playerと同じ位置に追従（＋微調整オフセット）
-    if (R.arm) R.arm.position.set(inp.px + ARM_OFFSET.x, inp.py + ARM_OFFSET.y, inp.pz + ARM_OFFSET.z);   // playerと同じ位置に追従（＋微調整オフセット）
+    if (R.plus) {
+      R.plus.position.set(inp.px + inp.pox, inp.py + inp.poy, inp.pz + inp.poz);   // playerと同じ位置に追従（＋操作側からのズレ調整）
+      R.plus.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
+    }
+    if (R.arm) {
+      R.arm.position.set(inp.px + inp.aox, inp.py + inp.aoy, inp.pz + inp.aoz);   // playerと同じ位置に追従（＋操作側からのズレ調整）
+      R.arm.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
+    }
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
 
@@ -1113,7 +1161,6 @@ body.stereo .dispbar{opacity:.55}
           aa.play();
           if (act === hAct2) aa.time = armAct2Start;
           if (af && af !== aa) aa.crossFadeFrom(af, TRIGGER_FADE, false);
-          else if (!af) aa.fadeIn(TRIGGER_FADE);
         }
       };
       // 直近0.2秒の最小位置からの＋方向の進み量（フレーム）

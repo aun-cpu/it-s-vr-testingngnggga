@@ -647,16 +647,14 @@ body.stereo .dispbar{opacity:.55}
   let hAnim = '';
   let hMixer = null;
   let hIdleAct = null;               // hのidle（ループ）
-  let hAct2 = null;                  // hの「action2」（2.5フレーム以上で1回再生）
-  let hAct3 = null;                  // hの「action3」（5フレーム以上で1回再生）
+  let hAct3 = null;                  // hの「action3」（旧action2の発動条件も統合。2.5フレーム以上で1回再生）
   let hCurAct = null;                // いま再生中のワンショット（無ければnull）
   const H_BLINK_RE = /まばたき|瞬き|マバタキ|blink/i;   // hのまばたきモーフ名（この正規表現に合うモーフを対象にする）
   let hBlinkTargets = [];            // {mesh, idx}: hのまばたきモーフ
   let hBlinkHeld = false;            // action2/3/4の再生中にまばたきを1に固定している間true
-  const H_NAME2 = 'action2', H_NAME3 = 'action3';
-  const TRIGGER_FRAMES2 = 2.5;       // フレーム: この数以上＋方向に進んだらaction2
+  const H_NAME3 = 'action3';
   const TRIGGER_WINDOW = 0.2;        // 秒: この時間内の動きを見る
-  const TRIGGER_FRAMES = 5;          // フレーム: この数以上＋方向に進んだら発動
+  const TRIGGER_FRAMES = 2.5;        // フレーム: この数以上＋方向に進んだらaction3が発動（旧action2の閾値に統合）
   const TRIGGER_FADE = 0.15;         // 秒: idleとのつなぎ
   let playerFrameDt = 1 / 30;        // 2actionの1フレームの秒数（読込時に算出）
   let hAct4 = null;                  // hの「action4」（action2/3/4の再生中に、0.2秒以内で＋へ5°以上動いたら再生）
@@ -664,8 +662,6 @@ body.stereo .dispbar{opacity:.55}
   let hAct4Armed = true;             // 動きが止まる(1フレーム未満)まで、action4は発動しない
   const H_NAME4 = 'action4';
   const TRIGGER_DEG = 5;             // 度: action2/3/4の再生中に、TRIGGER_WINDOW秒以内でこの角度以上＋へ動いたらaction4
-  const H_ACT2_START_FRAME = 5;      // action2は5フレーム目から再生する
-  let hAct2Start = 0;                // action2の開始位置(秒)。読込時に算出
   const trigHist = [];               // {now(ms), t(秒)} 直近TRIGGER_WINDOW秒ぶんの2action再生位置
   const angHist = [];                // {now(ms), a(度)} 直近TRIGGER_WINDOW秒ぶんの操作側の角度
   // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
@@ -749,9 +745,8 @@ body.stereo .dispbar{opacity:.55}
   let armState = '未読込';
   let armAnim = '';
   let armMixer = null;
-  let armAct2 = null, armAct3 = null, armAct4 = null;   // 2action2 / 2action3 / 2action4（1回再生）
+  let armAct2 = null, armAct3 = null, armAct4 = null;   // 2action2（既定ポーズ用）/ 2action3 / 2action4（1回再生）
   let armCurAct = null;              // いま再生中のarmのアクション（無ければnull＝元のポーズ）
-  let armAct2Start = 0;              // 2action2の開始位置(秒)。hのaction2と同じく5フレーム目
   // 何もトリガーされていない間、armAct2（2action2）を0フレーム目に止めて既定ポーズにする
   function armIdleHold(fromAct) {
     if (!armAct2) { armCurAct = null; return; }
@@ -801,13 +796,6 @@ body.stereo .dispbar{opacity:.55}
       };
       const c2 = findClip('2action2'), c3 = findClip('2action3'), c4 = findClip('2action4');
       armAct2 = mk(c2); armAct3 = mk(c3); armAct4 = mk(c4);
-      if (c2) {
-        const tk = c2.tracks && c2.tracks[0], tm = tk && tk.times;
-        if (tm && tm.length > H_ACT2_START_FRAME) armAct2Start = tm[H_ACT2_START_FRAME];
-        else if (tm && tm.length > 1) armAct2Start = (tm[1] - tm[0]) * H_ACT2_START_FRAME;
-        else armAct2Start = H_ACT2_START_FRAME / 30;
-        armAct2Start = Math.min(armAct2Start, Math.max(0, c2.duration - 0.001));
-      }
       armIdleHold();   // 何も再生していない間は「2action2」の0フレーム目で固定表示
       armAnim = '  ' + (c2 ? c2.name : '「2action2」なし') + ' / ' + (c3 ? c3.name : '「2action3」なし') + ' / ' + (c4 ? c4.name : '「2action4」なし');
     }, undefined, function (err) {
@@ -856,7 +844,6 @@ body.stereo .dispbar{opacity:.55}
         return a;
       };
       if (a4) hAct4 = mkOnce4(a4);                       // 終了後のidle復帰は共通のfinished処理
-      const a2 = findClip(H_NAME2, '2action_h');
       const a3 = findClip(H_NAME3, '3action');
       const mkOnce = function (c) {
         const a = hMixer.clipAction(c);
@@ -864,14 +851,6 @@ body.stereo .dispbar{opacity:.55}
         a.clampWhenFinished = true;
         return a;
       };
-      if (a2) {
-        hAct2 = mkOnce(a2);
-        const tk = a2.tracks && a2.tracks[0], tm = tk && tk.times;
-        if (tm && tm.length > H_ACT2_START_FRAME) hAct2Start = tm[H_ACT2_START_FRAME];
-        else if (tm && tm.length > 1) hAct2Start = (tm[1] - tm[0]) * H_ACT2_START_FRAME;
-        else hAct2Start = H_ACT2_START_FRAME / 30;
-        hAct2Start = Math.min(hAct2Start, Math.max(0, a2.duration - 0.001));
-      }
       if (a3) hAct3 = mkOnce(a3);
       hMixer.addEventListener('finished', function (e) {
         if (e.action !== hCurAct) return;      // 上書きされた側の終了は無視
@@ -889,7 +868,7 @@ body.stereo .dispbar{opacity:.55}
       hIdleAct = act;
       act.setLoop(THREE.LoopRepeat, Infinity);
       act.play();
-      hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a2 ? ' / ' + a2.name : ' / 「' + H_NAME2 + '」なし') + (a4 ? ' / ' + a4.name : ' / 「' + H_NAME4 + '」なし') + (a3 ? ' / ' + a3.name : ' / 「' + H_NAME3 + '」なし');
+      hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a4 ? ' / ' + a4.name : ' / 「' + H_NAME4 + '」なし') + (a3 ? ' / ' + a3.name : ' / 「' + H_NAME3 + '」なし');
     }, undefined, function (err) {
       hState = '読込失敗（h.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -1151,7 +1130,7 @@ body.stereo .dispbar{opacity:.55}
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     // action2/3/4の再生中は、まばたきモーフを1にし続ける（mixerの更新後に上書きする）
     {
-      const hold = !!(hCurAct && (hCurAct === hAct2 || hCurAct === hAct3 || hCurAct === hAct4));
+      const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
       if (hold || hBlinkHeld) {
         for (let i = 0; i < hBlinkTargets.length; i++) {
           const bt = hBlinkTargets[i];
@@ -1210,17 +1189,15 @@ body.stereo .dispbar{opacity:.55}
         hAct4Ref = tiltRaw;                            // 再生開始時の角度を、action4判定の上限にする
         act.reset().play();
         act.setEffectiveWeight(1);
-        if (act === hAct2) act.time = hAct2Start;      // action2は5フレーム目から
         if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);   // action4の再生中に再発動したら、その場で頭から再生し直す
-        // playerarm: hと同じタイミングで、対応する 2action2/3/4 を再生
-        const aa = act === hAct2 ? armAct2 : act === hAct3 ? armAct3 : act === hAct4 ? armAct4 : null;
+        // playerarm: hと同じタイミングで、対応する 2action3/4 を再生
+        const aa = act === hAct3 ? armAct3 : act === hAct4 ? armAct4 : null;
         if (armMixer && aa) {
           const af = armCurAct;
           armCurAct = aa;
           aa.reset();
           aa.setEffectiveWeight(1);
           aa.play();
-          if (act === hAct2) aa.time = armAct2Start;
           if (af && af !== aa) aa.crossFadeFrom(af, TRIGGER_FADE, false);
         }
       };
@@ -1234,24 +1211,21 @@ body.stereo .dispbar{opacity:.55}
       let minA = tiltRaw;
       for (let i = 0; i < angHist.length; i++) if (angHist[i].a < minA) minA = angHist[i].a;
       const movedDeg = tiltRaw - minA;
-      const in234 = hCurAct === hAct2 || hCurAct === hAct3 || hCurAct === hAct4;
-      if (hAct4 && in234 && hAct4Armed && tiltRaw <= hAct4Ref && movedDeg >= TRIGGER_DEG) {
-        // action2/3/4の再生中、0.2秒以内で＋へ5°以上動き、かつその動きが開始時の角度以下の範囲に収まっていたら、残りを打ち切ってaction4を再生
+      const in34 = hCurAct === hAct3 || hCurAct === hAct4;
+      if (hAct4 && in34 && hAct4Armed && tiltRaw <= hAct4Ref && movedDeg >= TRIGGER_DEG) {
+        // action3/4の再生中、0.2秒以内で＋へ5°以上動き、かつその動きが開始時の角度以下の範囲に収まっていたら、残りを打ち切ってaction4を再生
         // 例: 5°で開始 → 0°→5°は有効／5°→10°・3°→8°・10°→15°は範囲(5°以下)を超えるので無効
         hAct4Armed = false;
         playH(hAct4);
         trigHist.length = 0;
         angHist.length = 0;
       } else if (hCurAct !== hAct4) {
-        // 通常: 5フレーム以上→action3（action2再生中でも切り替え）／2.5フレーム以上→action2
+        // 通常: 2.5フレーム以上＋方向に進んだらaction3（旧action2の閾値に統合）
         if (movedFrames >= TRIGGER_FRAMES && hAct3 && hCurAct !== hAct3) {
           playH(hAct3);
           hAct4Armed = false;
           trigHist.length = 0;    // 連続発動を防ぐ
           angHist.length = 0;
-        } else if (movedFrames >= TRIGGER_FRAMES2 && movedFrames < TRIGGER_FRAMES && hAct2 && !hCurAct) {
-          playH(hAct2);
-          hAct4Armed = false;
         }
       }
     } else {

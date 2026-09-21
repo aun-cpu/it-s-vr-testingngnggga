@@ -618,8 +618,11 @@ body.stereo .dispbar{opacity:.55}
   let playerFrameDt = 1 / 30;        // 2actionの1フレームの秒数（読込時に算出）
   let hAct1 = null;                  // hの「action1」（idle中、角度で再生位置を決める。idleと同時に再生）
   let hAct1W = 0;                    // action1の現在のウェイト（フェード用）
+  let hAct4 = null;                  // hの「action4」（action1/2の再生中に2.5か5フレームに達したら、action2/3の代わりに1回再生）
+  let hAct4Armed = true;             // 動きが止まる(1フレーム未満)まで、action4は発動しない
+  const H_NAME4 = 'action4';
   const H_NAME1 = 'action1';
-  const H_ACT1_MAX = 10;             // 20°=action1の最終フレーム（0°=0フレーム）
+  const H_ACT1_MAX = 20;             // 20°=action1の最終フレーム（0°=0フレーム）
   const H_ACT2_START_FRAME = 5;      // action2は5フレーム目から再生する
   let hAct2Start = 0;                // action2の開始位置(秒)。読込時に算出
   const trigHist = [];               // {now(ms), t(秒)} 直近TRIGGER_WINDOW秒ぶんの2action再生位置
@@ -654,6 +657,14 @@ body.stereo .dispbar{opacity:.55}
         hAct1.paused = true;                 // 時間では進めず、角度だけで位置を決める
         hAct1.setEffectiveWeight(0);         // idle中だけ有効にする
       }
+      const a4 = findClip(H_NAME4, '4action');
+      const mkOnce4 = function (c) {
+        const a = hMixer.clipAction(c);
+        a.setLoop(THREE.LoopOnce, 1);
+        a.clampWhenFinished = true;
+        return a;
+      };
+      if (a4) hAct4 = mkOnce4(a4);                       // 終了後のidle復帰は共通のfinished処理
       const a2 = findClip(H_NAME2, '2action_h');
       const a3 = findClip(H_NAME3, '3action');
       const mkOnce = function (c) {
@@ -686,7 +697,7 @@ body.stereo .dispbar{opacity:.55}
       hIdleAct = act;
       act.setLoop(THREE.LoopRepeat, Infinity);
       act.play();
-      hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a1 ? ' / ' + a1.name : ' / 「' + H_NAME1 + '」なし') + (a2 ? ' / ' + a2.name : ' / 「' + H_NAME2 + '」なし') + (a3 ? ' / ' + a3.name : ' / 「' + H_NAME3 + '」なし');
+      hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a1 ? ' / ' + a1.name : ' / 「' + H_NAME1 + '」なし') + (a2 ? ' / ' + a2.name : ' / 「' + H_NAME2 + '」なし') + (a4 ? ' / ' + a4.name : ' / 「' + H_NAME4 + '」なし') + (a3 ? ' / ' + a3.name : ' / 「' + H_NAME3 + '」なし');
     }, undefined, function (err) {
       hState = '読込失敗（h.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -954,12 +965,24 @@ body.stereo .dispbar{opacity:.55}
       let minT = pt;
       for (let i = 0; i < trigHist.length; i++) if (trigHist[i].t < minT) minT = trigHist[i].t;
       const movedFrames = (pt - minT) / playerFrameDt;
-      // 達した瞬間に再生: 5フレーム以上→action3（action2再生中でも切り替え）／2.5フレーム以上→action2
-      if (movedFrames >= TRIGGER_FRAMES && hAct3 && hCurAct !== hAct3) {
-        playH(hAct3);
-        trigHist.length = 0;    // 連続発動を防ぐ
-      } else if (movedFrames >= TRIGGER_FRAMES2 && movedFrames < TRIGGER_FRAMES && hAct2 && !hCurAct) {
-        playH(hAct2);
+      // 動きがほぼ止まる(1フレーム未満)と、次の動きを受け付ける
+      if (movedFrames < 1) hAct4Armed = true;
+      const in23 = hCurAct === hAct2 || hCurAct === hAct3;
+      if (hAct4 && in23 && hAct4Armed && movedFrames >= TRIGGER_FRAMES2) {
+        // action2かaction3の再生の途中で、もう一度2.5か5フレームの条件を満たしたら、残りを打ち切ってaction4を再生
+        hAct4Armed = false;
+        playH(hAct4);
+        trigHist.length = 0;
+      } else if (hCurAct !== hAct4) {
+        // 通常: 5フレーム以上→action3（action2再生中でも切り替え）／2.5フレーム以上→action2
+        if (movedFrames >= TRIGGER_FRAMES && hAct3 && hCurAct !== hAct3) {
+          playH(hAct3);
+          hAct4Armed = false;
+          trigHist.length = 0;    // 連続発動を防ぐ
+        } else if (movedFrames >= TRIGGER_FRAMES2 && movedFrames < TRIGGER_FRAMES && hAct2 && !hCurAct) {
+          playH(hAct2);
+          hAct4Armed = false;
+        }
       }
     } else {
       trigHist.length = 0;      // 角度データが無い間は履歴を捨てる
@@ -968,7 +991,7 @@ body.stereo .dispbar{opacity:.55}
     // ---- hのaction1: idle中だけ、角度で再生位置を決める（0°=0フレーム／20°=最終フレーム）。idleは同時に再生し続ける ----
     if (hAct1 && hMixer) {
       if (tiltLive) hAct1.time = clamp(tiltRaw / H_ACT1_MAX, 0, 1) * hAct1.getClip().duration;
-      const target = (tiltLive && !hCurAct) ? 1 : 0;      // action2/3の再生中は外す
+      const target = (tiltLive && !hCurAct) ? 1 : 0;      // action2/3/4の再生中は外す
       hAct1W += (target - hAct1W) * Math.min(1, dt / TRIGGER_FADE);
       if (Math.abs(target - hAct1W) < 0.01) hAct1W = target;
       hAct1.setEffectiveWeight(hAct1W);

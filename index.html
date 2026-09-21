@@ -310,8 +310,8 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 表示側 ----
   // ce: 操作側の角度が有効か / ca,cb,cg: 操作側スマホの alpha, beta, gamma（度）
-  // 人物モデルの位置（表示側の視点を原点、-Zが前）。操作側で調整して表示側へ送る
-  const POS_DEFAULT = { px: 0, py: 0, pz: -3 };
+  // 人物モデルの位置（表示側の視点を原点、-Zが前。初期は視点と同じ0,0,0）。操作側で調整して表示側へ送る
+  const POS_DEFAULT = { px: 0, py: 0, pz: 0 };
   const inp = { vr: 0, rc: 0, ce: 0, ca: 0, cb: 0, cg: 0, px: POS_DEFAULT.px, py: POS_DEFAULT.py, pz: POS_DEFAULT.pz };
   const posv = (v, d) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -20, 20) : d;
   const deg = (v) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -720, 720) : 0;
@@ -556,7 +556,10 @@ body.stereo .dispbar{opacity:.55}
   // ---- 人物モデルの読み込み ----
   const PLAYER_URL = 'player.glb';   // index.html と同じ場所に置く
   const PLAYER_HEIGHT = 1.7;         // 身長(m)にそろえて表示。元のサイズのままなら null
+  const PLAYER_FACING = Math.PI;     // モデルの向き。glb標準(+Z向き)と反対向き＝-Z（視点の初期方向）を向く
   let playerState = '未読込';
+  let playerAnim = '';
+  let mixer = null;
   function loadPlayer(group) {
     if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; return; }
     playerState = '読込中…';
@@ -569,8 +572,32 @@ body.stereo .dispbar{opacity:.55}
       const c = box.getCenter(new THREE.Vector3());
       // 足元が地面、水平の中心が原点になるようにそろえる
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      // 視点がモデルの内側に入っても消えないよう、視錐台カリングを切る
+      model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
       group.add(model);
       playerState = '表示中';
+
+      // アニメーション: glb内の2つのアクションを順番にループ再生（1→2→1→2…）
+      const clips = gltf.animations || [];
+      if (clips.length === 0) { playerAnim = '  アニメなし'; return; }
+      mixer = new THREE.AnimationMixer(model);
+      const actions = clips.slice(0, 2).map(function (c) { return { clip: c, act: mixer.clipAction(c) }; });
+      let cur = null, idx = 0;
+      const startAction = function (i) {
+        const next = actions[i];
+        next.act.reset();
+        next.act.setLoop(THREE.LoopOnce, 1);
+        next.act.clampWhenFinished = true;
+        next.act.enabled = true;
+        next.act.play();
+        if (cur && cur !== next) next.act.crossFadeFrom(cur.act, 0.25, false);
+        cur = next; idx = i;
+        playerAnim = '  アクション ' + (i + 1) + '/' + actions.length + ' (' + (next.clip.name || '無名') + ')';
+      };
+      mixer.addEventListener('finished', function (e) {
+        if (cur && e.action === cur.act) startAction((idx + 1) % actions.length);
+      });
+      startAction(0);
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -622,6 +649,7 @@ body.stereo .dispbar{opacity:.55}
       // 人物モデル（player.glb）。位置は操作側から届く値で動かす
       const playerGroup = new THREE.Group();
       playerGroup.position.set(inp.px, inp.py, inp.pz);
+      playerGroup.rotation.y = PLAYER_FACING;
       scene.add(playerGroup);
       loadPlayer(playerGroup);
 
@@ -724,7 +752,8 @@ body.stereo .dispbar{opacity:.55}
     const fl = Math.hypot(T.fwd.x, T.fwd.z);
     if (fl > 0.2) { lastFx = T.fwd.x / fl; lastFz = T.fwd.z / fl; }
 
-    // ---- 人物モデルの位置 ----
+    // ---- 人物モデルのアニメーションと位置 ----
+    if (mixer) mixer.update(dt);
     R.player.position.set(inp.px, inp.py, inp.pz);
 
     // ---- 描画 ----
@@ -778,7 +807,8 @@ body.stereo .dispbar{opacity:.55}
       $('#hud').textContent =
         (fresh ? '操作側: 受信中' : (linked ? '操作側: 受信途絶' : '操作側: 待機中')) + '\n' +
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
-        'モデル: ' + playerState + '  位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
+        'モデル: ' + playerState + playerAnim + '\n' +
+        '位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°';
     }
   }

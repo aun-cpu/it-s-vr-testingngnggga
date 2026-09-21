@@ -555,7 +555,8 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 人物モデルの読み込み ----
   const PLAYER_URL = 'player.glb';   // index.html と同じ場所に置く
-  const PLAYER_HEIGHT = 1.7;         // 身長(m)にそろえて表示。元のサイズのままなら null
+  const PLAYER_HEIGHT = null
+    ;         // 身長(m)にそろえて表示。元のサイズのままなら null
   const PLAYER_FACING = Math.PI;     // モデルの向き。glb標準(+Z向き)と反対向き＝-Z（視点の初期方向）を向く
   let playerState = '未読込';
   let playerAnim = '';

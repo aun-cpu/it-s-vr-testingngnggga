@@ -98,6 +98,24 @@ h1{font-size:20px; margin:0 0 8px}
 }
 .btnpad .mini{width:100%; text-align:center; padding:10px 14px}
 
+/* 人物モデルの位置調整パネル（操作側） */
+.posbox{
+  position:absolute; left:calc(env(safe-area-inset-left,0px) + 4vw);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 16px);
+  width:min(56vw,420px); padding:10px 12px; border-radius:14px;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.2);
+}
+.postitle{font-size:12px; color:#8590a6; margin:0 0 6px}
+.prow{display:flex; align-items:center; gap:6px; margin:0 0 6px}
+.pl{width:4.6em; font-size:12px; color:#c9d1e2; flex:none}
+.pv{width:3.6em; text-align:right; font:12px ui-monospace,Menlo,monospace; color:#e8ecf3; flex:none}
+.pstep{
+  flex:none; width:34px; height:34px; font:inherit; font-size:18px; line-height:1; color:#e8ecf3;
+  background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); border-radius:10px; cursor:pointer; touch-action:manipulation;
+}
+.pstep:active{background:rgba(255,255,255,.3)}
+.prow input[type=range]{flex:1; min-width:0; height:34px; margin:0; accent-color:#6b93f0}
+
 /* ---------- 表示（VR） ---------- */
 #cv{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
 #seam{position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:#000; display:none; pointer-events:none}
@@ -190,7 +208,15 @@ body.stereo .dispbar{opacity:.55}
   </div>
   <div class="readout" id="ctrlReadout"></div>
 
+  <div class="posbox">
+    <p class="postitle">人物モデルの位置（表示側の視点からの座標・m）</p>
+    <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="px" data-d="-1">−</button><input type="range" id="rng-px" data-k="px" min="-5" max="5" step="0.05"><button type="button" class="pstep" data-k="px" data-d="1">＋</button><span class="pv" id="val-px">0.00</span></div>
+    <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="py" data-d="-1">−</button><input type="range" id="rng-py" data-k="py" min="-3" max="3" step="0.05"><button type="button" class="pstep" data-k="py" data-d="1">＋</button><span class="pv" id="val-py">0.00</span></div>
+    <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="pz" data-d="-1">−</button><input type="range" id="rng-pz" data-k="pz" min="-10" max="2" step="0.05"><button type="button" class="pstep" data-k="pz" data-d="1">＋</button><span class="pv" id="val-pz">0.00</span></div>
+  </div>
+
   <div class="btnpad">
+    <button class="mini" id="btnPosReset">位置リセット</button>
     <button class="mini" id="btnReset">視点リセット</button>
   </div>
 </div>
@@ -224,6 +250,7 @@ body.stereo .dispbar{opacity:.55}
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 (function () {
   'use strict';
@@ -283,7 +310,10 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 表示側 ----
   // ce: 操作側の角度が有効か / ca,cb,cg: 操作側スマホの alpha, beta, gamma（度）
-  const inp = { vr: 0, rc: 0, ce: 0, ca: 0, cb: 0, cg: 0 };
+  // 人物モデルの位置（表示側の視点を原点、-Zが前）。操作側で調整して表示側へ送る
+  const POS_DEFAULT = { px: 0, py: 0, pz: -3 };
+  const inp = { vr: 0, rc: 0, ce: 0, ca: 0, cb: 0, cg: 0, px: POS_DEFAULT.px, py: POS_DEFAULT.py, pz: POS_DEFAULT.pz };
+  const posv = (v, d) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -20, 20) : d;
   const deg = (v) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -720, 720) : 0;
 
   function setWait(msg, showCode, sub) {
@@ -323,10 +353,12 @@ body.stereo .dispbar{opacity:.55}
     inp.vr = int(d.vr); inp.rc = int(d.rc);
     inp.ce = d.ce ? 1 : 0;
     inp.ca = deg(d.ca); inp.cb = deg(d.cb); inp.cg = deg(d.cg);
+    inp.px = posv(d.px, inp.px); inp.py = posv(d.py, inp.py); inp.pz = posv(d.pz, inp.pz);
   }
 
   // ---- 操作側 ----
-  const st = { vr: 0, rc: 0 };
+  const st = { vr: 0, rc: 0, px: POS_DEFAULT.px, py: POS_DEFAULT.py, pz: POS_DEFAULT.pz };
+  const r2 = (v) => Math.round(v * 100) / 100;
   const r1 = (v) => Math.round(v * 10) / 10;
 
   // 操作側スマホ自身の向き（表示側へ送って表示する）
@@ -336,7 +368,7 @@ body.stereo .dispbar{opacity:.55}
     if (!conn || !conn.open) return;
     try {
       conn.send({
-        vr: st.vr, rc: st.rc,
+        vr: st.vr, rc: st.rc, px: r2(st.px), py: r2(st.py), pz: r2(st.pz),
         ce: cgyro.state === 'active' ? 1 : 0, ca: r1(cgyro.a), cb: r1(cgyro.b), cg: r1(cgyro.g)
       });
     } catch (e) {}
@@ -443,6 +475,31 @@ body.stereo .dispbar{opacity:.55}
   $('#dispBack').addEventListener('click', backToSelect);
 
   /* ================= コントローラーUI ================= */
+  // 人物モデルの位置調整（スライダー＋微調整ボタン）
+  const POS_KEYS = ['px', 'py', 'pz'];
+  function syncPosUi() {
+    for (const k of POS_KEYS) {
+      $('#rng-' + k).value = st[k];
+      $('#val-' + k).textContent = st[k].toFixed(2);
+    }
+  }
+  function setPos(k, v) {
+    const rng = $('#rng-' + k);
+    st[k] = clamp(Math.round(v * 100) / 100, parseFloat(rng.min), parseFloat(rng.max));
+    syncPosUi(); pushCtrl();
+  }
+  for (const k of POS_KEYS) {
+    $('#rng-' + k).addEventListener('input', (e) => setPos(k, parseFloat(e.target.value)));
+  }
+  document.querySelectorAll('.pstep').forEach((b) => {
+    b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * 0.1));
+  });
+  $('#btnPosReset').addEventListener('click', () => {
+    for (const k of POS_KEYS) st[k] = POS_DEFAULT[k];
+    syncPosUi(); buzz(15); pushCtrl();
+  });
+  syncPosUi();
+
   $('#btnReset').addEventListener('click', () => { st.rc = (st.rc + 1) % 1000000; buzz(15); pushCtrl(); });
   $('#btnVr').addEventListener('click', () => {
     st.vr = st.vr ? 0 : 1;
@@ -496,6 +553,30 @@ body.stereo .dispbar{opacity:.55}
     };
   }
 
+  // ---- 人物モデルの読み込み ----
+  const PLAYER_URL = 'player.glb';   // index.html と同じ場所に置く
+  const PLAYER_HEIGHT = 1.7;         // 身長(m)にそろえて表示。元のサイズのままなら null
+  let playerState = '未読込';
+  function loadPlayer(group) {
+    if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; return; }
+    playerState = '読込中…';
+    new THREE.GLTFLoader().load(PLAYER_URL, function (gltf) {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      if (PLAYER_HEIGHT && size.y > 0) model.scale.multiplyScalar(PLAYER_HEIGHT / size.y);
+      box.setFromObject(model);
+      const c = box.getCenter(new THREE.Vector3());
+      // 足元が地面、水平の中心が原点になるようにそろえる
+      model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      group.add(model);
+      playerState = '表示中';
+    }, undefined, function (err) {
+      playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
+      try { console.error(err); } catch (e) {}
+    });
+  }
+
   function initScene() {
     if (R) return;
     const hud = $('#hud');
@@ -538,8 +619,14 @@ body.stereo .dispbar{opacity:.55}
 
       const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
 
+      // 人物モデル（player.glb）。位置は操作側から届く値で動かす
+      const playerGroup = new THREE.Group();
+      playerGroup.position.set(inp.px, inp.py, inp.pz);
+      scene.add(playerGroup);
+      loadPlayer(playerGroup);
+
       R = {
-        renderer: renderer, scene: scene, camera: camera,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup,
         W: 0, H: 0
       };
       T = {
@@ -637,6 +724,9 @@ body.stereo .dispbar{opacity:.55}
     const fl = Math.hypot(T.fwd.x, T.fwd.z);
     if (fl > 0.2) { lastFx = T.fwd.x / fl; lastFz = T.fwd.z / fl; }
 
+    // ---- 人物モデルの位置 ----
+    R.player.position.set(inp.px, inp.py, inp.pz);
+
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;
     if (W !== R.W || H !== R.H) { R.W = W; R.H = H; R.renderer.setSize(W, H, false); }
@@ -688,6 +778,7 @@ body.stereo .dispbar{opacity:.55}
       $('#hud').textContent =
         (fresh ? '操作側: 受信中' : (linked ? '操作側: 受信途絶' : '操作側: 待機中')) + '\n' +
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
+        'モデル: ' + playerState + '  位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°';
     }
   }

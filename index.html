@@ -227,7 +227,7 @@ body.stereo .dispbar{opacity:.55}
   <div id="seam"></div>
   <div class="hud" id="hud"></div>
   <div class="tilt off" id="tilt">
-    <div class="tiltcap">操作側の角度</div>
+    <div class="tiltcap">操作側の角度 <span id="buildTag"></span></div>
     <div class="tiltstage"><div class="tiltscene"><div class="tiltphone" id="tiltPhone"></div></div></div>
     <div class="tiltval" id="tiltVal">--</div>
     <div class="tiltsel" id="tiltSel">
@@ -255,6 +255,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
+  const BUILD = '0921b';
   const $ = (s) => document.querySelector(s);
   const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -363,14 +364,14 @@ body.stereo .dispbar{opacity:.55}
   const r1 = (v) => Math.round(v * 10) / 10;
 
   // 操作側スマホ自身の向き（表示側へ送って表示する）
-  const cgyro = { state: 'off', a: 0, b: 0, g: 0, lastSend: 0 };
+  const cgyro = { state: 'off', a: 0, b: 0, g: 0, p: 0, r: 0, lastSend: 0 };   // p=前後 / r=左右（画面の向き基準）
 
   function sendState() {
     if (!conn || !conn.open) return;
     try {
       conn.send({
         vr: st.vr, rc: st.rc, px: r2(st.px), py: r2(st.py), pz: r2(st.pz),
-        ce: cgyro.state === 'active' ? 1 : 0, ca: r1(cgyro.a), cb: r1(cgyro.b), cg: r1(cgyro.g)
+        ce: cgyro.state === 'active' ? 1 : 0, ca: r1(cgyro.a), cb: r1(cgyro.p), cg: r1(cgyro.r)
       });
     } catch (e) {}
   }
@@ -378,14 +379,25 @@ body.stereo .dispbar{opacity:.55}
     sendState();
     $('#ctrlReadout').textContent =
       cgyro.state === 'active'
-        ? '角度 α' + cgyro.a.toFixed(0) + ' β' + cgyro.b.toFixed(0) + ' γ' + cgyro.g.toFixed(0)
+        ? '角度 回転' + cgyro.a.toFixed(0) + ' 前後' + cgyro.p.toFixed(0) + ' 左右' + cgyro.r.toFixed(0)
         : (cgyro.state === 'denied' ? '角度: 許可なし' : '');
   }
 
+  function screenAngle() {
+    const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+    return ((a % 360) + 360) % 360;
+  }
   function onCtrlOrient(e) {
     if (e.beta === null || e.beta === undefined || e.gamma === null || e.gamma === undefined) return;
     cgyro.a = (typeof e.alpha === 'number') ? e.alpha : 0;
     cgyro.b = e.beta; cgyro.g = e.gamma;
+    // 端末の生の角度は「縦持ち基準」。横持ちだと前後と左右が入れ替わるため、画面の向きに合わせて変換する
+    //   前後(p): 画面の上辺が持ち上がる向きが＋ / 左右(r): 画面の右辺が下がる向きが＋
+    const sa = screenAngle();
+    if (sa === 90)       { cgyro.p = -cgyro.g; cgyro.r =  cgyro.b; }
+    else if (sa === 270) { cgyro.p =  cgyro.g; cgyro.r = -cgyro.b; }
+    else if (sa === 180) { cgyro.p = -cgyro.b; cgyro.r = -cgyro.g; }
+    else                 { cgyro.p =  cgyro.b; cgyro.r =  cgyro.g; }
     cgyro.state = 'active';
     const now = performance.now();
     if (now - cgyro.lastSend > 50) { cgyro.lastSend = now; pushCtrl(); }   // 約20回/秒に間引く
@@ -563,6 +575,9 @@ body.stereo .dispbar{opacity:.55}
   let playerState = '未読込';
   let playerAnim = '';
   let mixer = null;
+  let playerAct = null;              // 「2action」のアクション（角度で再生位置を決める）
+  const ANIM_ANGLE_MAX = 8;          // 0°=最初のフレーム、8°=最後のフレーム
+  let playerProg = '';
   function loadPlayer(group) {
     if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; return; }
     playerState = '読込中…';
@@ -580,7 +595,7 @@ body.stereo .dispbar{opacity:.55}
       group.add(model);
       playerState = '表示中';
 
-      // アニメーション: 「2action」という名前の動きを 再生→逆再生 の往復でループ
+      // アニメーション: 「2action」を操作側の角度で動かす（0°=最初のフレーム、8°=最後のフレーム）
       const clips = gltf.animations || [];
       if (clips.length === 0) { playerAnim = '  アニメなし'; return; }
       const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
@@ -591,10 +606,12 @@ body.stereo .dispbar{opacity:.55}
         return;
       }
       mixer = new THREE.AnimationMixer(model);
-      const act = mixer.clipAction(clip);
-      act.setLoop(THREE.LoopPingPong, Infinity);   // 順再生 → 逆再生 → 順再生 …
-      act.play();
-      playerAnim = '  アクション: ' + clip.name + '（再生⇄逆再生ループ）';
+      playerAct = mixer.clipAction(clip);
+      playerAct.play();
+      playerAct.paused = true;       // 時間では進めず、角度だけで位置を決める
+      playerAct.time = 0;
+      mixer.update(0);
+      playerAnim = '  アクション: ' + clip.name + '（角度連動 0°=先頭 / ' + ANIM_ANGLE_MAX + '°=最後）';
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -699,6 +716,7 @@ body.stereo .dispbar{opacity:.55}
   let lastT = performance.now(), lastHud = 0;
   let lastTiltKey = '';
   const tiltPhone = $('#tiltPhone'), tiltVal = $('#tiltVal');
+  $('#buildTag').textContent = '(' + BUILD + ')';
   // 表示する軸を1つだけ選ぶ（a=α 回転 / b=β 前後の傾き / g=γ 左右の傾き）
   let tiltAxis = 'b';
   const TILT_MAX = 20;                       // 角度の測定範囲：基準から ±20° まで
@@ -755,7 +773,6 @@ body.stereo .dispbar{opacity:.55}
     if (fl > 0.2) { lastFx = T.fwd.x / fl; lastFz = T.fwd.z / fl; }
 
     // ---- 人物モデルのアニメーションと位置 ----
-    if (mixer) mixer.update(dt);
     R.player.position.set(inp.px, inp.py, inp.pz);
 
     // ---- 描画 ----
@@ -794,6 +811,13 @@ body.stereo .dispbar{opacity:.55}
       }
       const raw = tiltAxis === 'a' ? relAng(inp.ca, tiltRef.a) : tiltAxis === 'b' ? relAng(inp.cb, tiltRef.b) : relAng(inp.cg, tiltRef.g);
       const val = clamp(raw, -TILT_MAX, TILT_MAX);
+      // 2action: 選んだ軸の角度が 0〜8° のときだけ再生位置に反映（範囲外は無視して直前の状態を保つ）
+      if (playerAct && live && raw >= 0 && raw <= ANIM_ANGLE_MAX) {
+        const dur = playerAct.getClip().duration;
+        playerAct.time = (raw / ANIM_ANGLE_MAX) * dur;
+        mixer.update(0);
+        playerProg = '  再生位置 ' + Math.round(raw / ANIM_ANGLE_MAX * 100) + '%';
+      }
       const key = live ? tiltAxis + '|' + val.toFixed(1) : (linked ? 'off1' : 'off0');
       if (key !== lastTiltKey) {
         lastTiltKey = key;
@@ -817,7 +841,7 @@ body.stereo .dispbar{opacity:.55}
       $('#hud').textContent =
         (fresh ? '操作側: 受信中' : (linked ? '操作側: 受信途絶' : '操作側: 待機中')) + '\n' +
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
-        'モデル: ' + playerState + playerAnim + '\n' +
+        'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         '位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°';
     }

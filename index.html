@@ -862,7 +862,7 @@ body.stereo .dispbar{opacity:.55}
   //   transform（position/rotation/scale）は元メッシュと完全に同じままでよく、
   //   bindModeはデフォルトの'attached'でOK。ボーン変形・モード設定の影響を受けない。
   let hOutlineMat = null;
-  const H_OUTLINE_RATIO = 0.002;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
+  const H_OUTLINE_RATIO = 0.0001;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
   const _outlineWorldScale = new THREE.Vector3();
   function pushGeometryAlongNormals(geo, amount) {
     const out = geo.clone();          // 属性ごとdeep copyされるので元ジオメトリは変更されない

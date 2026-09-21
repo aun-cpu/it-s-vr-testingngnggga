@@ -818,6 +818,41 @@ body.stereo .dispbar{opacity:.55}
       m.needsUpdate = true;
     });
   }
+  // hをトゥーン(セルシェード)調にする（濃淡3段階のグラデーションマップを使う）
+  let hToonGradient = null;
+  function makeToonGradient() {
+    const steps = 3;
+    const data = new Uint8Array(steps * 3);
+    for (let i = 0; i < steps; i++) {
+      const v = Math.round(255 * (i + 1) / steps);
+      data[i * 3] = v; data[i * 3 + 1] = v; data[i * 3 + 2] = v;
+    }
+    const tex = new THREE.DataTexture(data, steps, 1, THREE.RGBFormat);
+    tex.minFilter = THREE.NearestFilter;
+    tex.magFilter = THREE.NearestFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }
+  function applyToon(o) {
+    if (!o.isMesh || !o.material) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    if (!hToonGradient) hToonGradient = makeToonGradient();
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    const made = list.map(function (m) {
+      const t = new THREE.MeshToonMaterial({
+        color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
+        map: m.map || null,
+        gradientMap: hToonGradient,
+        transparent: !!m.transparent,
+        opacity: m.opacity != null ? m.opacity : 1
+      });
+      if (o.isSkinnedMesh) t.skinning = true;
+      if (o.morphTargetInfluences && o.morphTargetInfluences.length) t.morphTargets = true;
+      return t;
+    });
+    o.material = Array.isArray(o.material) ? made : made[0];
+  }
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
     hState = '読込中…';
@@ -829,7 +864,7 @@ body.stereo .dispbar{opacity:.55}
       box.setFromObject(model);
       const c = box.getCenter(new THREE.Vector3());
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
-      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); } });
+      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyToon(o); } });
       group.add(model);
       hState = '表示中';
 
@@ -954,15 +989,23 @@ body.stereo .dispbar{opacity:.55}
       const canvas = $('#cv');
       const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x9cc4ee);
       scene.fog = new THREE.Fog(0x9cc4ee, 25, 95);
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x6a7a8a, 1.0));
-      const sun = new THREE.DirectionalLight(0xffffff, 0.65);
-      sun.position.set(20, 40, 10); scene.add(sun);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x6a7a8a, 0.75));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+      sun.position.set(20, 40, 10); sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = -40; sun.shadow.camera.right = 40;
+      sun.shadow.camera.top = 40; sun.shadow.camera.bottom = -40;
+      sun.shadow.camera.near = 1; sun.shadow.camera.far = 100;
+      sun.shadow.bias = -0.0006;
+      scene.add(sun);
 
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshPhongMaterial({ color: 0x86ad76, shininess: 20, specular: 0x333333 }));
-      floor.rotation.x = -Math.PI / 2; scene.add(floor);
+      floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
       const grid = new THREE.GridHelper(90, 45, 0x2f4f2f, 0x4c7a4c);
       grid.position.y = 0.02; scene.add(grid);
 

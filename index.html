@@ -235,6 +235,7 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" data-axis="b" class="on">β 前後</button>
       <button type="button" data-axis="g">γ 左右</button>
     </div>
+    <div class="tiltsel"><button type="button" id="tiltReset">角度リセット</button></div>
   </div>
   <div class="wait" id="wait">
     <div id="waitMsg">接続を準備中…</div>
@@ -700,6 +701,11 @@ body.stereo .dispbar{opacity:.55}
   const tiltPhone = $('#tiltPhone'), tiltVal = $('#tiltVal');
   // 表示する軸を1つだけ選ぶ（a=α 回転 / b=β 前後の傾き / g=γ 左右の傾き）
   let tiltAxis = 'b';
+  const TILT_MAX = 20;                       // 角度の測定範囲：基準から ±20° まで
+  const tiltRef = { a: 0, b: 0, g: 0 };      // 基準角度（この向きを0°とする）
+  let tiltZeroPending = true;                // 次に角度データが届いた時点を基準にする
+  const relAng = (v, r) => ((((v - r) % 360) + 540) % 360) - 180;   // 差を -180〜180 に正規化
+  $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; lastTiltKey = ''; });
   $('#tiltSel').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-axis]');
     if (!btn) return;
@@ -778,11 +784,17 @@ body.stereo .dispbar{opacity:.55}
       }
     }
 
-    // ---- 操作側スマホの角度インジケータ（選んだ1軸だけ表示） ----
+    // ---- 操作側スマホの角度インジケータ（選んだ1軸だけ・基準から±20°まで） ----
     {
       const live = fresh && inp.ce === 1;
-      const val = tiltAxis === 'a' ? inp.ca : tiltAxis === 'b' ? inp.cb : inp.cg;
-      const key = live ? tiltAxis + '|' + val : (linked ? 'off1' : 'off0');
+      if (!linked) tiltZeroPending = true;          // 切断中は次の接続で基準を取り直す
+      if (live && tiltZeroPending) {                // 最初のデータ／リセット押下時の向きを0°にする
+        tiltRef.a = inp.ca; tiltRef.b = inp.cb; tiltRef.g = inp.cg;
+        tiltZeroPending = false;
+      }
+      const raw = tiltAxis === 'a' ? relAng(inp.ca, tiltRef.a) : tiltAxis === 'b' ? relAng(inp.cb, tiltRef.b) : relAng(inp.cg, tiltRef.g);
+      const val = clamp(raw, -TILT_MAX, TILT_MAX);
+      const key = live ? tiltAxis + '|' + val.toFixed(1) : (linked ? 'off1' : 'off0');
       if (key !== lastTiltKey) {
         lastTiltKey = key;
         $('#tilt').classList.toggle('off', !live);
@@ -792,7 +804,9 @@ body.stereo .dispbar{opacity:.55}
         else if (tiltAxis === 'b') { tf = 'rotateX(' + (-val) + 'deg)'; label = 'β '; }
         else { tf = 'rotateY(' + val + 'deg)'; label = 'γ '; }
         tiltPhone.style.transform = live ? tf : 'none';
-        tiltVal.textContent = live ? label + val.toFixed(0) + '°' : (linked ? '角度データなし' : '--');
+        tiltVal.textContent = live
+          ? label + val.toFixed(0) + '°' + (Math.abs(raw) >= TILT_MAX ? ' MAX' : '') + '\n範囲 ±' + TILT_MAX + '°'
+          : (linked ? '角度データなし' : '--');
       }
     }
 

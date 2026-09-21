@@ -135,7 +135,7 @@ body.stereo #seam{display:block}
 body.stereo .hud{display:none}
 /* 操作側スマホの角度インジケータ */
 .tilt{
-  position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
+  z-index:5; position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
   width:132px; padding:8px 8px 8px; border-radius:10px; background:rgba(0,0,0,.45); color:#fff;
   font:11px/1.5 ui-monospace,Menlo,monospace; text-align:center; pointer-events:none;
 }
@@ -156,7 +156,13 @@ body.stereo .tilt{display:none}
 .tiltphone::after{ /* 画面 */
   content:""; position:absolute; left:4px; right:4px; top:14px; bottom:6px; border-radius:3px; background:rgba(255,255,255,.18);
 }
-.tiltval{white-space:pre}
+.tiltval{white-space:pre; font-size:13px}
+.tiltsel{display:flex; gap:4px; margin-top:6px; pointer-events:auto}
+.tiltsel button{
+  flex:1; font:inherit; font-size:12px; color:#e8ecf3; background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.25); border-radius:8px; padding:5px 0; cursor:pointer; touch-action:manipulation;
+}
+.tiltsel button.on{background:var(--accent); color:var(--accent-fg); border-color:transparent; font-weight:700}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
@@ -230,6 +236,11 @@ body.stereo .dispbar{opacity:.55}
     <div class="tiltcap">操作側の角度</div>
     <div class="tiltstage"><div class="tiltscene"><div class="tiltphone" id="tiltPhone"></div></div></div>
     <div class="tiltval" id="tiltVal">--</div>
+    <div class="tiltsel" id="tiltSel">
+      <button type="button" data-axis="a">α 回転</button>
+      <button type="button" data-axis="b" class="on">β 前後</button>
+      <button type="button" data-axis="g">γ 左右</button>
+    </div>
   </div>
   <div class="wait" id="wait">
     <div id="waitMsg">接続を準備中…</div>
@@ -665,6 +676,15 @@ body.stereo .dispbar{opacity:.55}
   let lastT = performance.now(), lastHud = 0;
   let lastTiltKey = '';
   const tiltPhone = $('#tiltPhone'), tiltVal = $('#tiltVal');
+  // 表示する軸を1つだけ選ぶ（a=α 回転 / b=β 前後の傾き / g=γ 左右の傾き）
+  let tiltAxis = 'b';
+  $('#tiltSel').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-axis]');
+    if (!btn) return;
+    tiltAxis = btn.dataset.axis;
+    for (const b of $('#tiltSel').querySelectorAll('button')) b.classList.toggle('on', b === btn);
+    lastTiltKey = '';      // 次のフレームで表示を更新
+  });
   const cur = { mx: 0, my: 0, jump: 0, act: 0 };
   const GYRO_LABEL = { off: '未使用', waiting: '待機中', active: '有効', denied: '拒否（端末設定を確認）', error: 'エラー', unsupported: '非対応（画面ドラッグで代用）' };
 
@@ -756,20 +776,21 @@ body.stereo .dispbar{opacity:.55}
       }
     }
 
-    // ---- 操作側スマホの角度インジケータ ----
+    // ---- 操作側スマホの角度インジケータ（選んだ1軸だけ表示） ----
     {
       const live = fresh && inp.ce === 1;
-      const key = live ? inp.ca + '|' + inp.cb + '|' + inp.cg : (linked ? 'off1' : 'off0');
+      const val = tiltAxis === 'a' ? inp.ca : tiltAxis === 'b' ? inp.cb : inp.cg;
+      const key = live ? tiltAxis + '|' + val : (linked ? 'off1' : 'off0');
       if (key !== lastTiltKey) {
         lastTiltKey = key;
         $('#tilt').classList.toggle('off', !live);
-        // 端末座標系 Rz(α)·Rx(β)·Ry(γ) を、y軸が下向きのCSS座標へ変換（Z,Xは符号反転）
-        tiltPhone.style.transform = live
-          ? 'rotateZ(' + (-inp.ca) + 'deg) rotateX(' + (-inp.cb) + 'deg) rotateY(' + inp.cg + 'deg)'
-          : 'none';
-        tiltVal.textContent = live
-          ? 'α ' + inp.ca.toFixed(0) + '°\nβ ' + inp.cb.toFixed(0) + '°  γ ' + inp.cg.toFixed(0) + '°'
-          : (linked ? '角度データなし' : '--');
+        // 端末座標系の回転を、y軸が下向きのCSS座標へ変換（Z,Xは符号反転）
+        let tf = 'none', label = '';
+        if (tiltAxis === 'a') { tf = 'rotateZ(' + (-val) + 'deg)'; label = 'α '; }
+        else if (tiltAxis === 'b') { tf = 'rotateX(' + (-val) + 'deg)'; label = 'β '; }
+        else { tf = 'rotateY(' + val + 'deg)'; label = 'γ '; }
+        tiltPhone.style.transform = live ? tf : 'none';
+        tiltVal.textContent = live ? label + val.toFixed(0) + '°' : (linked ? '角度データなし' : '--');
       }
     }
 

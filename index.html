@@ -607,13 +607,16 @@ body.stereo .dispbar{opacity:.55}
   let hAnim = '';
   let hMixer = null;
   let hIdleAct = null;               // hのidle（ループ）
-  let hActionAct = null;             // hの「action3」（1回だけ再生）
-  let hActionPlaying = false;
-  const H_TRIGGER_NAME = 'action3';  // 発動時に再生するhのアクション名
+  let hAct2 = null;                  // hの「action2」（2.5フレーム以上で1回再生）
+  let hAct3 = null;                  // hの「action3」（5フレーム以上で1回再生）
+  let hCurAct = null;                // いま再生中のワンショット（無ければnull）
+  const H_NAME2 = 'action2', H_NAME3 = 'action3';
+  const TRIGGER_FRAMES2 = 2.5;       // フレーム: この数以上＋方向に進んだらaction2
   const TRIGGER_WINDOW = 0.2;        // 秒: この時間内の動きを見る
   const TRIGGER_FRAMES = 5;          // フレーム: この数以上＋方向に進んだら発動
   const TRIGGER_FADE = 0.15;         // 秒: idleとのつなぎ
   let playerFrameDt = 1 / 30;        // 2actionの1フレームの秒数（読込時に算出）
+  let trigPending = null;            // {at(ms), base(秒)} 動き出しから0.2秒後に判定するための予約
   const trigHist = [];               // {now(ms), t(秒)} 直近TRIGGER_WINDOW秒ぶんの2action再生位置
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
@@ -634,19 +637,26 @@ body.stereo .dispbar{opacity:.55}
       if (clips.length === 0) { hAnim = '  アニメなし'; return; }
       const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
       hMixer = new THREE.AnimationMixer(model);
-      const a3 = clips.find(function (c) { return nm(c) === H_TRIGGER_NAME; }) ||
-                 clips.find(function (c) { return nm(c).endsWith(H_TRIGGER_NAME); }) ||
-                 clips.find(function (c) { return nm(c) === '3action'; });
-      if (a3) {
-        hActionAct = hMixer.clipAction(a3);
-        hActionAct.setLoop(THREE.LoopOnce, 1);
-        hActionAct.clampWhenFinished = true;
-        hMixer.addEventListener('finished', function (e) {
-          if (e.action !== hActionAct) return;
-          hActionPlaying = false;
-          if (hIdleAct) { hIdleAct.reset().play(); hIdleAct.crossFadeFrom(hActionAct, TRIGGER_FADE, false); }
-        });
-      }
+      const findClip = function (name, alt) {
+        return clips.find(function (c) { return nm(c) === name; }) ||
+               clips.find(function (c) { return nm(c).endsWith(name); }) ||
+               clips.find(function (c) { return nm(c) === alt; });
+      };
+      const a2 = findClip(H_NAME2, '2action_h');
+      const a3 = findClip(H_NAME3, '3action');
+      const mkOnce = function (c) {
+        const a = hMixer.clipAction(c);
+        a.setLoop(THREE.LoopOnce, 1);
+        a.clampWhenFinished = true;
+        return a;
+      };
+      if (a2) hAct2 = mkOnce(a2);
+      if (a3) hAct3 = mkOnce(a3);
+      hMixer.addEventListener('finished', function (e) {
+        if (e.action !== hCurAct) return;      // 上書きされた側の終了は無視
+        const done = hCurAct; hCurAct = null;
+        if (hIdleAct) { hIdleAct.reset().play(); hIdleAct.crossFadeFrom(done, TRIGGER_FADE, false); }
+      });
       const clip = clips.find(function (c) { return nm(c) === 'idle'; }) ||
                    clips.find(function (c) { return nm(c).endsWith('idle'); });
       if (!clip) {
@@ -657,7 +667,7 @@ body.stereo .dispbar{opacity:.55}
       hIdleAct = act;
       act.setLoop(THREE.LoopRepeat, Infinity);
       act.play();
-      hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a3 ? ' / ' + a3.name + ' あり' : ' / 「' + H_TRIGGER_NAME + '」なし');
+      hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a2 ? ' / ' + a2.name : ' / 「' + H_NAME2 + '」なし') + (a3 ? ' / ' + a3.name : ' / 「' + H_NAME3 + '」なし');
     }, undefined, function (err) {
       hState = '読込失敗（h.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -914,17 +924,33 @@ body.stereo .dispbar{opacity:.55}
       const pt = clamp(t, 0, duration);
       trigHist.push({ now: now, t: pt });
       while (trigHist.length > 1 && now - trigHist[0].now > TRIGGER_WINDOW * 1000) trigHist.shift();
-      let minT = pt;
-      for (let i = 0; i < trigHist.length; i++) if (trigHist[i].t < minT) minT = trigHist[i].t;
-      const movedFrames = (pt - minT) / playerFrameDt;
-      if (movedFrames >= TRIGGER_FRAMES && hActionAct && !hActionPlaying) {
-        hActionPlaying = true;
-        hActionAct.reset().play();
-        if (hIdleAct) hActionAct.crossFadeFrom(hIdleAct, TRIGGER_FADE, false);
-        trigHist.length = 0;    // 連続発動を防ぐ
+      const playH = function (act) {
+        const from = hCurAct || hIdleAct;
+        hCurAct = act;
+        act.reset().play();
+        if (from) act.crossFadeFrom(from, TRIGGER_FADE, false);
+      };
+      if (!trigPending && !hCurAct) {
+        // 動き出しの検出: 直近0.2秒内で最小の位置(同値なら最新)から2.5フレーム以上＋に進んだら、その最小点を「動き出し」とする
+        let mi = trigHist.length - 1;
+        for (let i = trigHist.length - 1; i >= 0; i--) if (trigHist[i].t < trigHist[mi].t) mi = i;
+        if ((pt - trigHist[mi].t) / playerFrameDt >= TRIGGER_FRAMES2) {
+          trigPending = { at: trigHist[mi].now + TRIGGER_WINDOW * 1000, base: trigHist[mi].t };
+        }
+      }
+      // 動き出しからちょうど0.2秒の時点で判定: 5フレーム以上→action3 / 2.5フレーム以上→action2
+      if (trigPending && now >= trigPending.at) {
+        const mv = (pt - trigPending.base) / playerFrameDt;
+        trigPending = null;
+        trigHist.length = 0;
+        if (!hCurAct) {
+          if (mv >= TRIGGER_FRAMES && hAct3) playH(hAct3);
+          else if (mv >= TRIGGER_FRAMES2 && hAct2) playH(hAct2);
+        }
       }
     } else {
       trigHist.length = 0;      // 角度データが無い間は履歴を捨てる
+      trigPending = null;
     }
 
     // ---- 描画 ----

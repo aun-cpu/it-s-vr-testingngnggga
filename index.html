@@ -616,16 +616,15 @@ body.stereo .dispbar{opacity:.55}
   const TRIGGER_FRAMES = 5;          // フレーム: この数以上＋方向に進んだら発動
   const TRIGGER_FADE = 0.15;         // 秒: idleとのつなぎ
   let playerFrameDt = 1 / 30;        // 2actionの1フレームの秒数（読込時に算出）
-  let hAct1 = null;                  // hの「action1」（idle中、角度で再生位置を決める。idleと同時に再生）
-  let hAct1W = 0;                    // action1の現在のウェイト（フェード用）
-  let hAct4 = null;                  // hの「action4」（action1/2の再生中に2.5か5フレームに達したら、action2/3の代わりに1回再生）
+  let hAct4 = null;                  // hの「action4」（action2/3/4の再生中に、0.2秒以内で＋へ5°以上動いたら再生）
+  let hAct4Ref = 0;                  // 度: action2/3/4の再生を始めた時点の角度。action4の判定は、この値以下の範囲（現在角度<=この値）での+5°だけ有効
   let hAct4Armed = true;             // 動きが止まる(1フレーム未満)まで、action4は発動しない
   const H_NAME4 = 'action4';
-  const H_NAME1 = 'action1';
-  const H_ACT1_MAX = 20;             // 20°=action1の最終フレーム（0°=0フレーム）
+  const TRIGGER_DEG = 5;             // 度: action2/3/4の再生中に、TRIGGER_WINDOW秒以内でこの角度以上＋へ動いたらaction4
   const H_ACT2_START_FRAME = 5;      // action2は5フレーム目から再生する
   let hAct2Start = 0;                // action2の開始位置(秒)。読込時に算出
   const trigHist = [];               // {now(ms), t(秒)} 直近TRIGGER_WINDOW秒ぶんの2action再生位置
+  const angHist = [];                // {now(ms), a(度)} 直近TRIGGER_WINDOW秒ぶんの操作側の角度
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
     hState = '読込中…';
@@ -650,13 +649,6 @@ body.stereo .dispbar{opacity:.55}
                clips.find(function (c) { return nm(c).endsWith(name); }) ||
                clips.find(function (c) { return nm(c) === alt; });
       };
-      const a1 = findClip(H_NAME1, '1action');
-      if (a1) {
-        hAct1 = hMixer.clipAction(a1);
-        hAct1.play();
-        hAct1.paused = true;                 // 時間では進めず、角度だけで位置を決める
-        hAct1.setEffectiveWeight(0);         // idle中だけ有効にする
-      }
       const a4 = findClip(H_NAME4, '4action');
       const mkOnce4 = function (c) {
         const a = hMixer.clipAction(c);
@@ -697,7 +689,7 @@ body.stereo .dispbar{opacity:.55}
       hIdleAct = act;
       act.setLoop(THREE.LoopRepeat, Infinity);
       act.play();
-      hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a1 ? ' / ' + a1.name : ' / 「' + H_NAME1 + '」なし') + (a2 ? ' / ' + a2.name : ' / 「' + H_NAME2 + '」なし') + (a4 ? ' / ' + a4.name : ' / 「' + H_NAME4 + '」なし') + (a3 ? ' / ' + a3.name : ' / 「' + H_NAME3 + '」なし');
+      hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a2 ? ' / ' + a2.name : ' / 「' + H_NAME2 + '」なし') + (a4 ? ' / ' + a4.name : ' / 「' + H_NAME4 + '」なし') + (a3 ? ' / ' + a3.name : ' / 「' + H_NAME3 + '」なし');
     }, undefined, function (err) {
       hState = '読込失敗（h.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -954,12 +946,16 @@ body.stereo .dispbar{opacity:.55}
       const pt = clamp(t, 0, duration);
       trigHist.push({ now: now, t: pt });
       while (trigHist.length > 1 && now - trigHist[0].now > TRIGGER_WINDOW * 1000) trigHist.shift();
+      angHist.push({ now: now, a: tiltRaw });
+      while (angHist.length > 1 && now - angHist[0].now > TRIGGER_WINDOW * 1000) angHist.shift();
       const playH = function (act) {
         const from = hCurAct || hIdleAct;
         hCurAct = act;
+        hAct4Ref = tiltRaw;                            // 再生開始時の角度を、action4判定の上限にする
         act.reset().play();
+        act.setEffectiveWeight(1);
         if (act === hAct2) act.time = hAct2Start;      // action2は5フレーム目から
-        if (from) act.crossFadeFrom(from, TRIGGER_FADE, false);
+        if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);   // action4の再生中に再発動したら、その場で頭から再生し直す
       };
       // 直近0.2秒の最小位置からの＋方向の進み量（フレーム）
       let minT = pt;
@@ -967,18 +963,25 @@ body.stereo .dispbar{opacity:.55}
       const movedFrames = (pt - minT) / playerFrameDt;
       // 動きがほぼ止まる(1フレーム未満)と、次の動きを受け付ける
       if (movedFrames < 1) hAct4Armed = true;
-      const in23 = hCurAct === hAct2 || hCurAct === hAct3;
-      if (hAct4 && in23 && hAct4Armed && movedFrames >= TRIGGER_FRAMES2) {
-        // action2かaction3の再生の途中で、もう一度2.5か5フレームの条件を満たしたら、残りを打ち切ってaction4を再生
+      // 直近0.2秒の最小角度（＝いまの角度以下の範囲）からの＋方向の進み量（度）
+      let minA = tiltRaw;
+      for (let i = 0; i < angHist.length; i++) if (angHist[i].a < minA) minA = angHist[i].a;
+      const movedDeg = tiltRaw - minA;
+      const in234 = hCurAct === hAct2 || hCurAct === hAct3 || hCurAct === hAct4;
+      if (hAct4 && in234 && hAct4Armed && tiltRaw <= hAct4Ref && movedDeg >= TRIGGER_DEG) {
+        // action2/3/4の再生中、0.2秒以内で＋へ5°以上動き、かつその動きが開始時の角度以下の範囲に収まっていたら、残りを打ち切ってaction4を再生
+        // 例: 5°で開始 → 0°→5°は有効／5°→10°・3°→8°・10°→15°は範囲(5°以下)を超えるので無効
         hAct4Armed = false;
         playH(hAct4);
         trigHist.length = 0;
+        angHist.length = 0;
       } else if (hCurAct !== hAct4) {
         // 通常: 5フレーム以上→action3（action2再生中でも切り替え）／2.5フレーム以上→action2
         if (movedFrames >= TRIGGER_FRAMES && hAct3 && hCurAct !== hAct3) {
           playH(hAct3);
           hAct4Armed = false;
           trigHist.length = 0;    // 連続発動を防ぐ
+          angHist.length = 0;
         } else if (movedFrames >= TRIGGER_FRAMES2 && movedFrames < TRIGGER_FRAMES && hAct2 && !hCurAct) {
           playH(hAct2);
           hAct4Armed = false;
@@ -986,16 +989,7 @@ body.stereo .dispbar{opacity:.55}
       }
     } else {
       trigHist.length = 0;      // 角度データが無い間は履歴を捨てる
-    }
-
-    // ---- hのaction1: idle中だけ、角度で再生位置を決める（0°=0フレーム／20°=最終フレーム）。idleは同時に再生し続ける ----
-    if (hAct1 && hMixer) {
-      if (tiltLive) hAct1.time = clamp(tiltRaw / H_ACT1_MAX, 0, 1) * hAct1.getClip().duration;
-      const target = (tiltLive && !hCurAct) ? 1 : 0;      // action2/3/4の再生中は外す
-      hAct1W += (target - hAct1W) * Math.min(1, dt / TRIGGER_FADE);
-      if (Math.abs(target - hAct1W) < 0.01) hAct1W = target;
-      hAct1.setEffectiveWeight(hAct1W);
-      hMixer.update(0);                                   // 角度を今フレームに反映
+      angHist.length = 0;
     }
 
     // ---- 描画 ----

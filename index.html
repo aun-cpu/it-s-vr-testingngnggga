@@ -863,7 +863,9 @@ body.stereo .dispbar{opacity:.55}
     if (o.isSkinnedMesh) {
       outline = new THREE.SkinnedMesh(o.geometry, hOutlineMat);
       outline.bind(o.skeleton, o.bindMatrix);
-      outline.skeleton = o.skeleton;
+      // 'attached'のままだと、拡大した自分自身のmatrixWorldでbindMatrixInverseが毎フレーム再計算され、
+      // スケールとボーン変形がズレて形が崩れる。'detached'にして元のbindMatrixを固定で使う。
+      outline.bindMode = 'detached';
     } else {
       outline = new THREE.Mesh(o.geometry, hOutlineMat);
     }

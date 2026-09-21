@@ -625,6 +625,61 @@ body.stereo .dispbar{opacity:.55}
   let hAct2Start = 0;                // action2の開始位置(秒)。読込時に算出
   const trigHist = [];               // {now(ms), t(秒)} 直近TRIGGER_WINDOW秒ぶんの2action再生位置
   const angHist = [];                // {now(ms), a(度)} 直近TRIGGER_WINDOW秒ぶんの操作側の角度
+  // ---- playerarm.glb（playerと同じ読み込み。hのaction2/3/4と同じタイミングで 2action2/3/4 を再生） ----
+  const ARM_URL = 'playerarm.glb';   // index.html と同じ場所に置く
+  const ARM_HEIGHT = PLAYER_HEIGHT;  // playerと同じ身長にそろえる。元のサイズのままなら null
+  const ARM_FACING = PLAYER_FACING;  // playerと同じ向き
+  let armState = '未読込';
+  let armAnim = '';
+  let armMixer = null;
+  let armAct2 = null, armAct3 = null, armAct4 = null;   // 2action2 / 2action3 / 2action4（1回再生）
+  let armCurAct = null;              // いま再生中のarmのアクション（無ければnull＝元のポーズ）
+  let armAct2Start = 0;              // 2action2の開始位置(秒)。hのaction2と同じく5フレーム目
+  function loadArm(group) {
+    if (!THREE.GLTFLoader) { armState = '読込失敗（GLTFLoaderなし）'; return; }
+    armState = '読込中…';
+    new THREE.GLTFLoader().load(ARM_URL, function (gltf) {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      if (ARM_HEIGHT && size.y > 0) model.scale.multiplyScalar(ARM_HEIGHT / size.y);
+      box.setFromObject(model);
+      const c = box.getCenter(new THREE.Vector3());
+      model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
+      group.add(model);
+      armState = '表示中';
+
+      const clips = gltf.animations || [];
+      if (clips.length === 0) { armAnim = '  アニメなし'; return; }
+      const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
+      const findClip = function (name) {
+        return clips.find(function (c) { return nm(c) === name; }) ||
+               clips.find(function (c) { return nm(c).endsWith(name); });
+      };
+      armMixer = new THREE.AnimationMixer(model);
+      const mk = function (c) {
+        if (!c) return null;
+        const a = armMixer.clipAction(c);
+        a.setLoop(THREE.LoopOnce, 1);
+        a.clampWhenFinished = true;
+        return a;
+      };
+      const c2 = findClip('2action2'), c3 = findClip('2action3'), c4 = findClip('2action4');
+      armAct2 = mk(c2); armAct3 = mk(c3); armAct4 = mk(c4);
+      if (c2) {
+        const tk = c2.tracks && c2.tracks[0], tm = tk && tk.times;
+        if (tm && tm.length > H_ACT2_START_FRAME) armAct2Start = tm[H_ACT2_START_FRAME];
+        else if (tm && tm.length > 1) armAct2Start = (tm[1] - tm[0]) * H_ACT2_START_FRAME;
+        else armAct2Start = H_ACT2_START_FRAME / 30;
+        armAct2Start = Math.min(armAct2Start, Math.max(0, c2.duration - 0.001));
+      }
+      armAnim = '  ' + (c2 ? c2.name : '「2action2」なし') + ' / ' + (c3 ? c3.name : '「2action3」なし') + ' / ' + (c4 ? c4.name : '「2action4」なし');
+    }, undefined, function (err) {
+      armState = '読込失敗（playerarm.glb を index.html と同じ場所に置く）';
+      try { console.error(err); } catch (e) {}
+    });
+  }
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
     hState = '読込中…';
@@ -677,6 +732,7 @@ body.stereo .dispbar{opacity:.55}
       hMixer.addEventListener('finished', function (e) {
         if (e.action !== hCurAct) return;      // 上書きされた側の終了は無視
         const done = hCurAct; hCurAct = null;
+        if (armCurAct) { armCurAct.fadeOut(TRIGGER_FADE); armCurAct = null; }   // armもhと同時に元のポーズへ戻す
         if (hIdleAct) { hIdleAct.reset().play(); hIdleAct.crossFadeFrom(done, TRIGGER_FADE, false); }
       });
       const clip = clips.find(function (c) { return nm(c) === 'idle'; }) ||
@@ -803,8 +859,15 @@ body.stereo .dispbar{opacity:.55}
       scene.add(hGroup);
       loadH(hGroup);
 
+      // playerarm.glb（playerと同じ位置・向き）
+      const armGroup = new THREE.Group();
+      armGroup.position.set(inp.px, inp.py, inp.pz);
+      armGroup.rotation.y = ARM_FACING;
+      scene.add(armGroup);
+      loadArm(armGroup);
+
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup,
         W: 0, H: 0
       };
       T = {
@@ -910,6 +973,8 @@ body.stereo .dispbar{opacity:.55}
     // ---- 人物モデルのアニメーションと位置 ----
     R.player.position.set(inp.px, inp.py, inp.pz);
     if (R.h) R.h.position.set(inp.px, inp.py, inp.pz);       // playerと同じ位置に追従
+    if (R.arm) R.arm.position.set(inp.px, inp.py, inp.pz);   // playerと同じ位置に追従
+    if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
 
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
@@ -956,6 +1021,18 @@ body.stereo .dispbar{opacity:.55}
         act.setEffectiveWeight(1);
         if (act === hAct2) act.time = hAct2Start;      // action2は5フレーム目から
         if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);   // action4の再生中に再発動したら、その場で頭から再生し直す
+        // playerarm: hと同じタイミングで、対応する 2action2/3/4 を再生
+        const aa = act === hAct2 ? armAct2 : act === hAct3 ? armAct3 : act === hAct4 ? armAct4 : null;
+        if (armMixer && aa) {
+          const af = armCurAct;
+          armCurAct = aa;
+          aa.reset();
+          aa.setEffectiveWeight(1);
+          aa.play();
+          if (act === hAct2) aa.time = armAct2Start;
+          if (af && af !== aa) aa.crossFadeFrom(af, TRIGGER_FADE, false);
+          else if (!af) aa.fadeIn(TRIGGER_FADE);
+        }
       };
       // 直近0.2秒の最小位置からの＋方向の進み量（フレーム）
       let minT = pt;
@@ -1048,6 +1125,7 @@ body.stereo .dispbar{opacity:.55}
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         'h.glb: ' + hState + hAnim + '\n' +
+        'playerarm.glb: ' + armState + armAnim + '\n' +
         '位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°';
     }

@@ -853,6 +853,27 @@ body.stereo .dispbar{opacity:.55}
     });
     o.material = Array.isArray(o.material) ? made : made[0];
   }
+  // hの輪郭線（裏面を少し拡大して黒く塗る"インバーテッドハル"方式）
+  let hOutlineMat = null;
+  const H_OUTLINE_SCALE = 1.03;      // 大きいほど輪郭線が太くなる
+  function addOutline(o) {
+    if (!o.isMesh) return;
+    if (!hOutlineMat) hOutlineMat = new THREE.MeshBasicMaterial({ color: 0x0c0c0c, side: THREE.BackSide });
+    let outline;
+    if (o.isSkinnedMesh) {
+      outline = new THREE.SkinnedMesh(o.geometry, hOutlineMat);
+      outline.bind(o.skeleton, o.bindMatrix);
+      outline.skeleton = o.skeleton;
+    } else {
+      outline = new THREE.Mesh(o.geometry, hOutlineMat);
+    }
+    outline.scale.multiplyScalar(H_OUTLINE_SCALE);
+    outline.frustumCulled = false;
+    outline.castShadow = false;
+    outline.receiveShadow = false;
+    outline.userData.__outline = true;   // model.traverse中の再帰追加を防ぐ目印
+    o.add(outline);
+  }
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
     hState = '読込中…';
@@ -864,14 +885,14 @@ body.stereo .dispbar{opacity:.55}
       box.setFromObject(model);
       const c = box.getCenter(new THREE.Vector3());
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
-      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyToon(o); } });
+      model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o); } });
       group.add(model);
       hState = '表示中';
 
       // まばたきモーフ（シェイプキー）を探す
       hBlinkTargets = [];
       model.traverse(function (o) {
-        if (!o.isMesh || !o.morphTargetDictionary || !o.morphTargetInfluences) return;
+        if (!o.isMesh || o.userData.__outline || !o.morphTargetDictionary || !o.morphTargetInfluences) return;
         Object.keys(o.morphTargetDictionary).forEach(function (k) {
           if (H_BLINK_RE.test(k)) hBlinkTargets.push({ mesh: o, idx: o.morphTargetDictionary[k] });
         });

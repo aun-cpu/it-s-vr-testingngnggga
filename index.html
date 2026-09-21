@@ -863,6 +863,7 @@ body.stereo .dispbar{opacity:.55}
   //   bindModeはデフォルトの'attached'でOK。ボーン変形・モード設定の影響を受けない。
   let hOutlineMat = null;
   const H_OUTLINE_RATIO = 0.006;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
+  const _outlineWorldScale = new THREE.Vector3();
   function pushGeometryAlongNormals(geo, amount) {
     const out = geo.clone();          // 属性ごとdeep copyされるので元ジオメトリは変更されない
     let normal = out.attributes.normal;
@@ -881,9 +882,16 @@ body.stereo .dispbar{opacity:.55}
     out.computeBoundingSphere();
     return out;
   }
-  function addOutline(o, amount) {
+  function addOutline(o, worldThickness) {
     if (!o.isMesh) return;
     if (!hOutlineMat) hOutlineMat = new THREE.MeshBasicMaterial({ color: 0x0c0c0c, side: THREE.BackSide });
+    // メッシュごとにローカル座標→ワールドの拡大率が違う（目・眉・髪・アクセサリ等は
+    // 胴体と別のノードscaleを持つことが多い）。狙いの太さ(worldThickness)を毎回そのまま
+    // ジオメトリに適用すると、小さいノードほど相対的に押し出し量が過大になり、
+    // 大きな黒い塊になってしまう。そのメッシュのワールドスケールで割り戻してから押し出す。
+    o.getWorldScale(_outlineWorldScale);
+    const s = (_outlineWorldScale.x + _outlineWorldScale.y + _outlineWorldScale.z) / 3 || 1;
+    const amount = worldThickness / s;
     const outGeo = pushGeometryAlongNormals(o.geometry, amount);
     let outline;
     if (o.isSkinnedMesh) {
@@ -905,15 +913,15 @@ body.stereo .dispbar{opacity:.55}
       const model = gltf.scene;
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
-      // 押し出し量はスケール適用前（ジオメトリ本来の単位）のモデル高さを基準に決める。
-      // model.scaleは後から一律に掛かるので、ここで比率にしておけば見た目の太さは
-      // H_HEIGHTを変えても一定になる。
-      const outlineAmount = size.y > 0 ? size.y * H_OUTLINE_RATIO : H_OUTLINE_RATIO;
       if (H_HEIGHT && size.y > 0) model.scale.multiplyScalar(H_HEIGHT / size.y);
       box.setFromObject(model);
+      const finalSize = box.getSize(new THREE.Vector3());
       const c = box.getCenter(new THREE.Vector3());
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
-      model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o, outlineAmount); } });
+      // 輪郭線の狙いの太さ（スケール適用後のワールド単位で共通の値にする）。
+      // メッシュごとのノードscaleの違いはaddOutline側でgetWorldScale()を使って吸収する。
+      const outlineWorldThickness = finalSize.y > 0 ? finalSize.y * H_OUTLINE_RATIO : H_OUTLINE_RATIO;
+      model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o, outlineWorldThickness); } });
       group.add(model);
       hState = '表示中';
 

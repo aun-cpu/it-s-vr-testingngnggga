@@ -83,7 +83,6 @@ h1{font-size:20px; margin:0 0 8px}
 .pill.ng{color:#ff9a8b; border-color:#9a4a3f}
 
 /* ---------- コントローラー ---------- */
-#ctrl{--s:min(40vw, 66vh, 250px)}
 .topbar{
   position:absolute; left:0; right:0; top:calc(env(safe-area-inset-top,0px) + 8px);
   padding:0 max(10px, env(safe-area-inset-left,0px)); display:flex; justify-content:space-between; align-items:center; gap:8px; z-index:5;
@@ -92,35 +91,11 @@ h1{font-size:20px; margin:0 0 8px}
   position:absolute; left:0; right:0; top:calc(env(safe-area-inset-top,0px) + 52px);
   text-align:center; font:12px ui-monospace,Menlo,monospace; color:#9aa6bd; pointer-events:none;
 }
-.stickwrap{
-  position:absolute; left:calc(env(safe-area-inset-left,0px) + 5vw);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 16px);
-  display:flex; flex-direction:column; align-items:center; gap:6px;
-}
-.cap{font-size:12px; color:#8590a6}
-.stick{
-  position:relative; width:var(--s); height:var(--s); border-radius:50%;
-  background:rgba(255,255,255,.06); border:2px solid rgba(255,255,255,.25); touch-action:none;
-}
-.stick::before,.stick::after{content:""; position:absolute; background:rgba(255,255,255,.1)}
-.stick::before{left:50%; top:10%; bottom:10%; width:1px}
-.stick::after{top:50%; left:10%; right:10%; height:1px}
-.knob{
-  position:absolute; left:50%; top:50%; width:40%; height:40%; margin:-20% 0 0 -20%;
-  border-radius:50%; background:rgba(255,255,255,.6); box-shadow:0 2px 10px rgba(0,0,0,.45); pointer-events:none;
-}
 .btnpad{
   position:absolute; right:calc(env(safe-area-inset-right,0px) + 5vw);
   bottom:calc(env(safe-area-inset-bottom,0px) + 16px);
   width:min(32vw,200px); display:flex; flex-direction:column; gap:12px;
 }
-.bigbtn{
-  width:100%; height:min(17vh,64px); min-height:52px;
-  font:inherit; font-size:16px; font-weight:600; color:#fff; border:none; border-radius:16px;
-  background:#3b6fe0; touch-action:none; cursor:pointer;
-}
-.bigbtn.act{background:#e0623b}
-.bigbtn.pressed{filter:brightness(1.5); transform:scale(.96)}
 .btnpad .mini{width:100%; text-align:center; padding:10px 14px}
 
 /* ---------- 表示（VR） ---------- */
@@ -187,7 +162,7 @@ body.stereo .dispbar{opacity:.55}
     <button class="role" id="pickCtrl"><b>操作する</b><span>コントローラーとして使う（コードを入力）</span></button>
     <ul class="tips">
       <li>「表示する」を押すと、モーションセンサーの許可を求められることがあります。許可してください。</li>
-      <li>視点は表示側スマホの向きで変わります。右スティックはありません。</li>
+      <li>視点は表示側スマホの向きで変わります。</li>
       <li>操作側スマホの傾き（角度）は、表示側の右上に表示されます。操作側でもモーションセンサーの許可が必要な場合があります。</li>
       <li>表示側は「VR分割」でゴーグル用の左右2画面になります（操作側からも切替可）。</li>
     </ul>
@@ -215,14 +190,7 @@ body.stereo .dispbar{opacity:.55}
   </div>
   <div class="readout" id="ctrlReadout"></div>
 
-  <div class="stickwrap">
-    <div class="stick" id="stickL"><div class="knob"></div></div>
-    <div class="cap">移動（見ている方向が前）</div>
-  </div>
-
   <div class="btnpad">
-    <button class="bigbtn act" id="btnAct">発射</button>
-    <button class="bigbtn" id="btnJump">ジャンプ</button>
     <button class="mini" id="btnReset">視点リセット</button>
   </div>
 </div>
@@ -262,7 +230,6 @@ body.stereo .dispbar{opacity:.55}
   const $ = (s) => document.querySelector(s);
   const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const num = (v) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -1, 1) : 0;
   const int = (v) => (typeof v === 'number' && isFinite(v)) ? Math.floor(v) : 0;
 
   let role = null;
@@ -316,7 +283,7 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 表示側 ----
   // ce: 操作側の角度が有効か / ca,cb,cg: 操作側スマホの alpha, beta, gamma（度）
-  const inp = { mx: 0, my: 0, jump: 0, act: 0, vr: 0, rc: 0, ce: 0, ca: 0, cb: 0, cg: 0 };
+  const inp = { vr: 0, rc: 0, ce: 0, ca: 0, cb: 0, cg: 0 };
   const deg = (v) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -720, 720) : 0;
 
   function setWait(msg, showCode, sub) {
@@ -353,15 +320,13 @@ body.stereo .dispbar{opacity:.55}
   function onData(d) {
     if (!d || typeof d !== 'object') return;
     lastMsgAt = performance.now();
-    inp.mx = num(d.mx); inp.my = num(d.my);
-    inp.jump = int(d.jump); inp.act = int(d.act); inp.vr = int(d.vr); inp.rc = int(d.rc);
+    inp.vr = int(d.vr); inp.rc = int(d.rc);
     inp.ce = d.ce ? 1 : 0;
     inp.ca = deg(d.ca); inp.cb = deg(d.cb); inp.cg = deg(d.cg);
   }
 
   // ---- 操作側 ----
-  const st = { mx: 0, my: 0, jump: 0, act: 0, vr: 0, rc: 0 };
-  const r2 = (v) => Math.round(v * 100) / 100;
+  const st = { vr: 0, rc: 0 };
   const r1 = (v) => Math.round(v * 10) / 10;
 
   // 操作側スマホ自身の向き（表示側へ送って表示する）
@@ -371,7 +336,7 @@ body.stereo .dispbar{opacity:.55}
     if (!conn || !conn.open) return;
     try {
       conn.send({
-        mx: r2(st.mx), my: r2(st.my), jump: st.jump, act: st.act, vr: st.vr, rc: st.rc,
+        vr: st.vr, rc: st.rc,
         ce: cgyro.state === 'active' ? 1 : 0, ca: r1(cgyro.a), cb: r1(cgyro.b), cg: r1(cgyro.g)
       });
     } catch (e) {}
@@ -379,10 +344,9 @@ body.stereo .dispbar{opacity:.55}
   function pushCtrl() {
     sendState();
     $('#ctrlReadout').textContent =
-      '移動(' + st.mx.toFixed(2) + ', ' + st.my.toFixed(2) + ')  J:' + st.jump + ' A:' + st.act +
-      (cgyro.state === 'active'
-        ? '  角度 α' + cgyro.a.toFixed(0) + ' β' + cgyro.b.toFixed(0) + ' γ' + cgyro.g.toFixed(0)
-        : (cgyro.state === 'denied' ? '  角度: 許可なし' : ''));
+      cgyro.state === 'active'
+        ? '角度 α' + cgyro.a.toFixed(0) + ' β' + cgyro.b.toFixed(0) + ' γ' + cgyro.g.toFixed(0)
+        : (cgyro.state === 'denied' ? '角度: 許可なし' : '');
   }
 
   function onCtrlOrient(e) {
@@ -479,48 +443,6 @@ body.stereo .dispbar{opacity:.55}
   $('#dispBack').addEventListener('click', backToSelect);
 
   /* ================= コントローラーUI ================= */
-  function makeStick(el, onChange) {
-    const knob = el.querySelector('.knob');
-    let pid = null;
-    function update(e) {
-      const r = el.getBoundingClientRect();
-      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      let dx = e.clientX - cx, dy = e.clientY - cy;
-      const max = r.width / 2 * 0.6;
-      const len = Math.hypot(dx, dy);
-      if (len > max) { dx = dx / len * max; dy = dy / len * max; }
-      knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-      let x = dx / max, y = -dy / max;
-      if (Math.hypot(x, y) < 0.1) { x = 0; y = 0; }
-      onChange(x, y);
-    }
-    el.addEventListener('pointerdown', (e) => {
-      if (pid !== null) return;
-      pid = e.pointerId;
-      try { el.setPointerCapture(pid); } catch (err) {}
-      update(e); e.preventDefault();
-    });
-    el.addEventListener('pointermove', (e) => { if (e.pointerId === pid) update(e); });
-    const end = (e) => {
-      if (e.pointerId !== pid) return;
-      pid = null; knob.style.transform = 'translate(0,0)'; onChange(0, 0);
-    };
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
-  }
-  makeStick($('#stickL'), (x, y) => { st.mx = x; st.my = y; pushCtrl(); });
-
-  function bindButton(el, fn) {
-    el.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); el.classList.add('pressed'); fn(); buzz(15); pushCtrl();
-    });
-    const off = () => el.classList.remove('pressed');
-    el.addEventListener('pointerup', off);
-    el.addEventListener('pointercancel', off);
-    el.addEventListener('pointerleave', off);
-  }
-  bindButton($('#btnJump'), () => { st.jump = (st.jump + 1) % 1000000; });
-  bindButton($('#btnAct'), () => { st.act = (st.act + 1) % 1000000; });
   $('#btnReset').addEventListener('click', () => { st.rc = (st.rc + 1) % 1000000; buzz(15); pushCtrl(); });
   $('#btnVr').addEventListener('click', () => {
     st.vr = st.vr ? 0 : 1;
@@ -559,8 +481,7 @@ body.stereo .dispbar{opacity:.55}
   $('#dispVr').addEventListener('click', () => setStereo(!stereo));
   $('#dispReset').addEventListener('click', () => { recenterPending = true; });
 
-  const P = { x: 0, y: 0, z: 0, vy: 0 };
-  const balls = [];
+  const P = { x: 0, y: 0, z: 0 };   // 視点位置は固定
   let R = null, T = null;
   let yawOffset = 0;
   let dragYaw = 0, dragPitch = 0;   // ジャイロが使えない時の代用（画面ドラッグ）
@@ -619,8 +540,6 @@ body.stereo .dispbar{opacity:.55}
 
       R = {
         renderer: renderer, scene: scene, camera: camera,
-        ballGeo: new THREE.SphereGeometry(0.16, 12, 12),
-        ballMat: new THREE.MeshBasicMaterial({ color: 0xff5533 }),
         W: 0, H: 0
       };
       T = {
@@ -663,15 +582,7 @@ body.stereo .dispbar{opacity:.55}
     out.multiply(T.q0.setFromAxisAngle(T.zee, -ang * d));
   }
 
-  let lastJump = 0, lastAct = 0, lastVr = 0, lastRc = 0;
-
-  function fire() {
-    T.fwd.set(0, 0, -1).applyQuaternion(T.camQ);
-    const m = new THREE.Mesh(R.ballGeo, R.ballMat);
-    m.position.set(P.x + T.fwd.x * 0.6, P.y + 1.45 + T.fwd.y * 0.6, P.z + T.fwd.z * 0.6);
-    R.scene.add(m);
-    balls.push({ mesh: m, vx: T.fwd.x * 16, vy: T.fwd.y * 16, vz: T.fwd.z * 16, life: 4 });
-  }
+  let lastVr = 0, lastRc = 0;
 
   let lastT = performance.now(), lastHud = 0;
   let lastTiltKey = '';
@@ -685,7 +596,6 @@ body.stereo .dispbar{opacity:.55}
     for (const b of $('#tiltSel').querySelectorAll('button')) b.classList.toggle('on', b === btn);
     lastTiltKey = '';      // 次のフレームで表示を更新
   });
-  const cur = { mx: 0, my: 0, jump: 0, act: 0 };
   const GYRO_LABEL = { off: '未使用', waiting: '待機中', active: '有効', denied: '拒否（端末設定を確認）', error: 'エラー', unsupported: '非対応（画面ドラッグで代用）' };
 
   function frame(now) {
@@ -696,19 +606,13 @@ body.stereo .dispbar{opacity:.55}
     // ---- 入力（受信が途絶えたら入力ゼロ） ----
     const fresh = linked && lastMsgAt > 0 && (now - lastMsgAt) < 2500;
     $('#wait').classList.toggle('hidden', linked);
-    let doJump = false, doFire = false;
     if (linked && lastMsgAt > 0) {
-      if (needInit) { needInit = false; lastJump = inp.jump; lastAct = inp.act; lastVr = inp.vr; lastRc = inp.rc; setStereo(!!inp.vr); }
+      if (needInit) { needInit = false; lastVr = inp.vr; lastRc = inp.rc; setStereo(!!inp.vr); }
       if (fresh) {
-        cur.mx = inp.mx; cur.my = inp.my; cur.jump = inp.jump; cur.act = inp.act;
-        if (inp.jump !== lastJump) { lastJump = inp.jump; doJump = true; }
-        if (inp.act !== lastAct) { lastAct = inp.act; doFire = true; }
         if (inp.vr !== lastVr) { lastVr = inp.vr; setStereo(!!inp.vr); }
         if (inp.rc !== lastRc) { lastRc = inp.rc; recenterPending = true; }
       }
     }
-    if (!fresh) { cur.mx = cur.my = 0; }
-
     // ---- 視点（ジャイロ、なければ画面ドラッグ） ----
     if (gyro.state === 'waiting' && now - gyro.startedAt > 2500) gyro.state = 'unsupported';
     const gyroFresh = gyro.state === 'active' && (now - gyro.t) < 1500;
@@ -728,27 +632,10 @@ body.stereo .dispbar{opacity:.55}
       T.camQ.setFromEuler(T.euler);
     }
 
-    // ---- 動作 ----
-    if (doJump && P.y <= 0.001) P.vy = 6.5;
-    if (doFire) fire();
-
-    // 見ている方向（水平成分）を前として移動
+    // ---- 向き（HUD表示用） ----
     T.fwd.set(0, 0, -1).applyQuaternion(T.camQ);
-    let fl = Math.hypot(T.fwd.x, T.fwd.z);
+    const fl = Math.hypot(T.fwd.x, T.fwd.z);
     if (fl > 0.2) { lastFx = T.fwd.x / fl; lastFz = T.fwd.z / fl; }
-    const fx = lastFx, fz = lastFz, rx = -fz, rz = fx;
-    P.x = clamp(P.x + (fx * cur.my + rx * cur.mx) * 4.5 * dt, -45, 45);
-    P.z = clamp(P.z + (fz * cur.my + rz * cur.mx) * 4.5 * dt, -45, 45);
-    P.vy -= 14 * dt; P.y += P.vy * dt;
-    if (P.y <= 0) { P.y = 0; P.vy = 0; }
-
-    for (let i = balls.length - 1; i >= 0; i--) {
-      const b = balls[i];
-      b.vy -= 9 * dt;
-      b.mesh.position.x += b.vx * dt; b.mesh.position.y += b.vy * dt; b.mesh.position.z += b.vz * dt;
-      b.life -= dt;
-      if (b.life <= 0 || b.mesh.position.y < 0.1) { R.scene.remove(b.mesh); balls.splice(i, 1); }
-    }
 
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;
@@ -801,9 +688,7 @@ body.stereo .dispbar{opacity:.55}
       $('#hud').textContent =
         (fresh ? '操作側: 受信中' : (linked ? '操作側: 受信途絶' : '操作側: 待機中')) + '\n' +
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
-        '移動 (' + cur.mx.toFixed(2) + ', ' + cur.my.toFixed(2) + ')\n' +
-        'ジャンプ ' + cur.jump + '回 / 発射 ' + cur.act + '回\n' +
-        '位置 (' + P.x.toFixed(1) + ', ' + P.z.toFixed(1) + ')  向き ' + yawDeg.toFixed(0) + '°';
+        '向き ' + yawDeg.toFixed(0) + '°';
     }
   }
 })();

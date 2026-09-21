@@ -629,6 +629,9 @@ body.stereo .dispbar{opacity:.55}
   const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
   const PLUS_FACING = PLAYER_FACING; // playerと同じ向き
+  // playerとの見た目のズレを微調整するオフセット（モデル側の原点が player.glb と違う場合に使う）
+  const PLUS_OFFSET = { x: 0, y: 0, z: 0 };  // メートル単位。左右/上下/前後にずらす
+  const PLUS_ROT_OFFSET = 0;                 // 度。PLUS_FACINGに加算して向きを微調整
   const PLUS_OPACITY = 0.4;          // 透明度（1=不透明 / 0=完全に透明）
   let plusState = '未読込';
   let plusAnim = '';
@@ -697,6 +700,9 @@ body.stereo .dispbar{opacity:.55}
   const ARM_URL = 'playerarm.glb';   // index.html と同じ場所に置く
   const ARM_HEIGHT = PLAYER_HEIGHT;  // playerと同じ身長にそろえる。元のサイズのままなら null
   const ARM_FACING = PLAYER_FACING;  // playerと同じ向き
+  // playerとの見た目のズレを微調整するオフセット（モデル側の原点が player.glb と違う場合に使う）
+  const ARM_OFFSET = { x: 0, y: 0, z: 0 };   // メートル単位。左右/上下/前後にずらす
+  const ARM_ROT_OFFSET = 0;                  // 度。ARM_FACINGに加算して向きを微調整
   let armState = '未読込';
   let armAnim = '';
   let armMixer = null;
@@ -929,15 +935,15 @@ body.stereo .dispbar{opacity:.55}
 
       // playerarm.glb（playerと同じ位置・向き）
       const armGroup = new THREE.Group();
-      armGroup.position.set(inp.px, inp.py, inp.pz);
-      armGroup.rotation.y = ARM_FACING;
+      armGroup.position.set(inp.px + ARM_OFFSET.x, inp.py + ARM_OFFSET.y, inp.pz + ARM_OFFSET.z);
+      armGroup.rotation.y = ARM_FACING + ARM_ROT_OFFSET * Math.PI / 180;
       scene.add(armGroup);
       loadArm(armGroup);
 
       // playerplus.glb（playerと同じ位置・向き。半透明）
       const plusGroup = new THREE.Group();
-      plusGroup.position.set(inp.px, inp.py, inp.pz);
-      plusGroup.rotation.y = PLUS_FACING;
+      plusGroup.position.set(inp.px + PLUS_OFFSET.x, inp.py + PLUS_OFFSET.y, inp.pz + PLUS_OFFSET.z);
+      plusGroup.rotation.y = PLUS_FACING + PLUS_ROT_OFFSET * Math.PI / 180;
       scene.add(plusGroup);
       loadPlus(plusGroup);
 
@@ -1048,8 +1054,8 @@ body.stereo .dispbar{opacity:.55}
     // ---- 人物モデルのアニメーションと位置 ----
     R.player.position.set(inp.px, inp.py, inp.pz);
     if (R.h) R.h.position.set(inp.px, inp.py, inp.pz);       // playerと同じ位置に追従
-    if (R.plus) R.plus.position.set(inp.px, inp.py, inp.pz);   // playerと同じ位置に追従
-    if (R.arm) R.arm.position.set(inp.px, inp.py, inp.pz);   // playerと同じ位置に追従
+    if (R.plus) R.plus.position.set(inp.px + PLUS_OFFSET.x, inp.py + PLUS_OFFSET.y, inp.pz + PLUS_OFFSET.z);   // playerと同じ位置に追従（＋微調整オフセット）
+    if (R.arm) R.arm.position.set(inp.px + ARM_OFFSET.x, inp.py + ARM_OFFSET.y, inp.pz + ARM_OFFSET.z);   // playerと同じ位置に追従（＋微調整オフセット）
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
 

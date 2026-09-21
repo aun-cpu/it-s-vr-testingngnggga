@@ -625,6 +625,74 @@ body.stereo .dispbar{opacity:.55}
   let hAct2Start = 0;                // action2の開始位置(秒)。読込時に算出
   const trigHist = [];               // {now(ms), t(秒)} 直近TRIGGER_WINDOW秒ぶんの2action再生位置
   const angHist = [];                // {now(ms), a(度)} 直近TRIGGER_WINDOW秒ぶんの操作側の角度
+  // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
+  const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
+  const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
+  const PLUS_FACING = PLAYER_FACING; // playerと同じ向き
+  const PLUS_OPACITY = 0.4;          // 透明度（1=不透明 / 0=完全に透明）
+  let plusState = '未読込';
+  let plusAnim = '';
+  let plusMixer = null;
+  let plusAct = null;                // 「2actionplus」（角度で再生位置を決める）
+  let plusAnim0Time = 0;             // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)
+  // 角度→再生位置（2actionと同じ対応: -20°=先頭 / 0°=ANIM_ZERO_FRAME / 8°=最後）
+  function angleToTime(raw, duration, zeroTime) {
+    if (raw <= ANIM_ANGLE_MIN) return 0;
+    if (raw >= ANIM_ANGLE_MAX) return duration;
+    if (raw <= 0) return zeroTime * (raw - ANIM_ANGLE_MIN) / (0 - ANIM_ANGLE_MIN);
+    return zeroTime + (duration - zeroTime) * (raw / ANIM_ANGLE_MAX);
+  }
+  function loadPlus(group) {
+    if (!THREE.GLTFLoader) { plusState = '読込失敗（GLTFLoaderなし）'; return; }
+    plusState = '読込中…';
+    new THREE.GLTFLoader().load(PLUS_URL, function (gltf) {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      if (PLUS_HEIGHT && size.y > 0) model.scale.multiplyScalar(PLUS_HEIGHT / size.y);
+      box.setFromObject(model);
+      const c = box.getCenter(new THREE.Vector3());
+      model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      // 半透明にする（マテリアルは複製して、他のモデルに影響しないようにする）
+      model.traverse(function (o) {
+        if (!o.isMesh) return;
+        o.frustumCulled = false;
+        const one = function (m) {
+          const n = m.clone();
+          n.transparent = true; n.opacity = PLUS_OPACITY; n.depthWrite = false;
+          return n;
+        };
+        o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
+      });
+      group.add(model);
+      plusState = '表示中';
+
+      const clips = gltf.animations || [];
+      if (clips.length === 0) { plusAnim = '  アニメなし'; return; }
+      const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
+      const clip = clips.find(function (c) { return nm(c) === '2actionplus'; }) ||
+                   clips.find(function (c) { return nm(c).endsWith('2actionplus'); });
+      if (!clip) {
+        plusAnim = '  「2actionplus」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
+        return;
+      }
+      plusMixer = new THREE.AnimationMixer(model);
+      plusAct = plusMixer.clipAction(clip);
+      plusAct.play();
+      plusAct.paused = true;         // 時間では進めず、角度だけで位置を決める
+      const tm = clip.tracks && clip.tracks[0] && clip.tracks[0].times;
+      if (tm && tm.length > ANIM_ZERO_FRAME) plusAnim0Time = tm[ANIM_ZERO_FRAME];
+      else if (tm && tm.length > 1) plusAnim0Time = (tm[1] - tm[0]) * ANIM_ZERO_FRAME;
+      else plusAnim0Time = 0;
+      plusAnim0Time = clamp(plusAnim0Time, 0, clip.duration);
+      plusAct.time = plusAnim0Time;
+      plusMixer.update(0);
+      plusAnim = '  アクション: ' + clip.name + '（角度連動・透明度' + PLUS_OPACITY + '）';
+    }, undefined, function (err) {
+      plusState = '読込失敗（playerplus.glb を index.html と同じ場所に置く）';
+      try { console.error(err); } catch (e) {}
+    });
+  }
   // ---- playerarm.glb（playerと同じ読み込み。hのaction2/3/4と同じタイミングで 2action2/3/4 を再生） ----
   const ARM_URL = 'playerarm.glb';   // index.html と同じ場所に置く
   const ARM_HEIGHT = PLAYER_HEIGHT;  // playerと同じ身長にそろえる。元のサイズのままなら null
@@ -866,8 +934,15 @@ body.stereo .dispbar{opacity:.55}
       scene.add(armGroup);
       loadArm(armGroup);
 
+      // playerplus.glb（playerと同じ位置・向き。半透明）
+      const plusGroup = new THREE.Group();
+      plusGroup.position.set(inp.px, inp.py, inp.pz);
+      plusGroup.rotation.y = PLUS_FACING;
+      scene.add(plusGroup);
+      loadPlus(plusGroup);
+
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup,
         W: 0, H: 0
       };
       T = {
@@ -973,6 +1048,7 @@ body.stereo .dispbar{opacity:.55}
     // ---- 人物モデルのアニメーションと位置 ----
     R.player.position.set(inp.px, inp.py, inp.pz);
     if (R.h) R.h.position.set(inp.px, inp.py, inp.pz);       // playerと同じ位置に追従
+    if (R.plus) R.plus.position.set(inp.px, inp.py, inp.pz);   // playerと同じ位置に追従
     if (R.arm) R.arm.position.set(inp.px, inp.py, inp.pz);   // playerと同じ位置に追従
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
@@ -1069,6 +1145,12 @@ body.stereo .dispbar{opacity:.55}
       angHist.length = 0;
     }
 
+    // ---- playerplus: 2actionと同じ角度で「2actionplus」を動かす ----
+    if (plusAct && tiltLive) {
+      plusAct.time = clamp(angleToTime(tiltRaw, plusAct.getClip().duration, plusAnim0Time), 0, plusAct.getClip().duration);
+      plusMixer.update(0);
+    }
+
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;
     if (W !== R.W || H !== R.H) { R.W = W; R.H = H; R.renderer.setSize(W, H, false); }
@@ -1126,6 +1208,7 @@ body.stereo .dispbar{opacity:.55}
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         'h.glb: ' + hState + hAnim + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
+        'playerplus.glb: ' + plusState + plusAnim + '\n' +
         '位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°';
     }

@@ -256,7 +256,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921e-frame5pivot';
+  const BUILD = '0921f-frame7pivot';
   const $ = (s) => document.querySelector(s);
   const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -595,7 +595,7 @@ body.stereo .dispbar{opacity:.55}
   let playerAct = null;              // 「2action」のアクション（角度で再生位置を決める）
   const ANIM_ANGLE_MAX = 8;          // 8°=最後のフレーム
   const ANIM_ANGLE_MIN = -20;        // -20°=最初のフレーム
-  const ANIM_ZERO_FRAME = 5;         // 0°になる基準フレーム番号
+  const ANIM_ZERO_FRAME = 7;         // 0°になる基準フレーム番号
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
   function loadPlayer(group) {

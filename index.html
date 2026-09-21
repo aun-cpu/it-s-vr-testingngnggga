@@ -651,7 +651,8 @@ body.stereo .dispbar{opacity:.55}
   let hCurAct = null;                // いま再生中のワンショット（無ければnull）
   const H_BLINK_RE = /まばたき|瞬き|マバタキ|blink/i;   // hのまばたきモーフ名（この正規表現に合うモーフを対象にする）
   let hBlinkTargets = [];            // {mesh, idx}: hのまばたきモーフ
-  let hBlinkHeld = false;            // action2/3/4の再生中にまばたきを1に固定している間true
+  let hBlinkHeld = false;            // action3/4の終了後、まばたきを0へ戻す減衰中はtrue
+  const BLINK_RELEASE_TAU = 0.35;    // 秒: action3/4終了後、まばたきモーフが1→0へ戻る速さ（大きいほどゆっくり）
   const H_NAME3 = 'action3';
   const TRIGGER_WINDOW = 0.2;        // 秒: この時間内の動きを見る
   const TRIGGER_FRAMES = 2.5;        // フレーム: この数以上＋方向に進んだらaction3が発動（旧action2の閾値に統合）
@@ -1128,15 +1129,23 @@ body.stereo .dispbar{opacity:.55}
     }
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
-    // action2/3/4の再生中は、まばたきモーフを1にし続ける（mixerの更新後に上書きする）
+    // action3/4の再生中は、まばたきモーフを1にし続ける。終了後はゆっくり0へ戻す（mixerの更新後に上書きする）
     {
       const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
-      if (hold || hBlinkHeld) {
+      if (hold) {
+        for (let i = 0; i < hBlinkTargets.length; i++) hBlinkTargets[i].mesh.morphTargetInfluences[hBlinkTargets[i].idx] = 1;
+        hBlinkHeld = true;
+      } else if (hBlinkHeld) {
+        // 1秒かけて指数的に0へ減衰させる。ほぼ0になったら固定処理を終了する
+        const decay = Math.exp(-dt / BLINK_RELEASE_TAU);
+        let stillFading = false;
         for (let i = 0; i < hBlinkTargets.length; i++) {
           const bt = hBlinkTargets[i];
-          bt.mesh.morphTargetInfluences[bt.idx] = hold ? 1 : 0;   // 終了したら0に戻す（idle側にまばたきトラックがあればそちらが優先される）
+          const v = bt.mesh.morphTargetInfluences[bt.idx] * decay;
+          if (v > 0.01) stillFading = true;
+          bt.mesh.morphTargetInfluences[bt.idx] = stillFading ? v : 0;
         }
-        hBlinkHeld = hold;
+        hBlinkHeld = stillFading;   // idle側にまばたきトラックがあれば、完全に0へ戻った後はそちらが優先される
       }
     }
 

@@ -149,6 +149,7 @@ body.stereo .tilt{display:none}
 .tiltphone::after{ /* 画面 */
   content:""; position:absolute; left:4px; right:4px; top:14px; bottom:6px; border-radius:3px; background:rgba(255,255,255,.18);
 }
+.tilt.land .tiltscene,.tilt.land .tiltphone{width:84px; height:44px}
 .tiltval{white-space:pre; font-size:13px}
 .tiltsel{display:flex; gap:4px; margin-top:6px; pointer-events:auto}
 .tiltsel button{
@@ -255,10 +256,27 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921b';
+  const BUILD = '0921c';
   const $ = (s) => document.querySelector(s);
   const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  // 四元数 [x,y,z,w] の計算（角度の特異点で数字が飛ばないよう、角度ではなく回転で扱う）
+  const qMul = (a, b) => [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]
+  ];
+  const qAxis = (x, y, z, ang) => { const h = ang / 2, sn = Math.sin(h); return [x * sn, y * sn, z * sn, Math.cos(h)]; };
+  // 基準 qr から q までの回転を、基準の画面座標軸まわりの回転ベクトル(度)で返す [x=前後, y=左右, z=回転]
+  function relRot(qr, q) {
+    let r = qMul([-qr[0], -qr[1], -qr[2], qr[3]], q);
+    if (r[3] < 0) r = [-r[0], -r[1], -r[2], -r[3]];          // 最短の回転を選ぶ
+    const sn = Math.hypot(r[0], r[1], r[2]);
+    if (sn < 1e-9) return [0, 0, 0];
+    const k = 2 * Math.atan2(sn, r[3]) / sn * 180 / Math.PI;
+    return [r[0] * k, r[1] * k, r[2] * k];
+  }
   const int = (v) => (typeof v === 'number' && isFinite(v)) ? Math.floor(v) : 0;
 
   let role = null;
@@ -311,12 +329,11 @@ body.stereo .dispbar{opacity:.55}
   }
 
   // ---- 表示側 ----
-  // ce: 操作側の角度が有効か / ca,cb,cg: 操作側スマホの alpha, beta, gamma（度）
+  // ce: 操作側の角度が有効か / cq: 操作側スマホの向き（四元数 [x,y,z,w]、画面基準）/ csa: 操作側の画面の向き(0/90/180/270)
   // 人物モデルの位置（表示側の視点を原点、-Zが前。初期は視点と同じ0,0,0）。操作側で調整して表示側へ送る
   const POS_DEFAULT = { px: 0, py: 0, pz: 0 };
-  const inp = { vr: 0, rc: 0, ce: 0, ca: 0, cb: 0, cg: 0, px: POS_DEFAULT.px, py: POS_DEFAULT.py, pz: POS_DEFAULT.pz };
+  const inp = { vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0, px: POS_DEFAULT.px, py: POS_DEFAULT.py, pz: POS_DEFAULT.pz };
   const posv = (v, d) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -20, 20) : d;
-  const deg = (v) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -720, 720) : 0;
 
   function setWait(msg, showCode, sub) {
     $('#waitMsg').textContent = msg;
@@ -354,7 +371,8 @@ body.stereo .dispbar{opacity:.55}
     lastMsgAt = performance.now();
     inp.vr = int(d.vr); inp.rc = int(d.rc);
     inp.ce = d.ce ? 1 : 0;
-    inp.ca = deg(d.ca); inp.cb = deg(d.cb); inp.cg = deg(d.cg);
+    if (Array.isArray(d.cq) && d.cq.length === 4 && d.cq.every((v) => typeof v === 'number' && isFinite(v))) inp.cq = d.cq;
+    inp.csa = int(d.csa);
     inp.px = posv(d.px, inp.px); inp.py = posv(d.py, inp.py); inp.pz = posv(d.pz, inp.pz);
   }
 
@@ -364,14 +382,14 @@ body.stereo .dispbar{opacity:.55}
   const r1 = (v) => Math.round(v * 10) / 10;
 
   // 操作側スマホ自身の向き（表示側へ送って表示する）
-  const cgyro = { state: 'off', a: 0, b: 0, g: 0, p: 0, r: 0, lastSend: 0 };   // p=前後 / r=左右（画面の向き基準）
+  const cgyro = { state: 'off', q: [0, 0, 0, 1], sa: 0, lastSend: 0 };   // q=端末の向き（画面基準の四元数）
 
   function sendState() {
     if (!conn || !conn.open) return;
     try {
       conn.send({
         vr: st.vr, rc: st.rc, px: r2(st.px), py: r2(st.py), pz: r2(st.pz),
-        ce: cgyro.state === 'active' ? 1 : 0, ca: r1(cgyro.a), cb: r1(cgyro.p), cg: r1(cgyro.r)
+        ce: cgyro.state === 'active' ? 1 : 0, cq: cgyro.q.map((v) => Math.round(v * 10000) / 10000), csa: cgyro.sa
       });
     } catch (e) {}
   }
@@ -379,7 +397,7 @@ body.stereo .dispbar{opacity:.55}
     sendState();
     $('#ctrlReadout').textContent =
       cgyro.state === 'active'
-        ? '角度 回転' + cgyro.a.toFixed(0) + ' 前後' + cgyro.p.toFixed(0) + ' 左右' + cgyro.r.toFixed(0)
+        ? '角度センサー: 送信中'
         : (cgyro.state === 'denied' ? '角度: 許可なし' : '');
   }
 
@@ -389,18 +407,17 @@ body.stereo .dispbar{opacity:.55}
   }
   function onCtrlOrient(e) {
     if (e.beta === null || e.beta === undefined || e.gamma === null || e.gamma === undefined) return;
-    cgyro.a = (typeof e.alpha === 'number') ? e.alpha : 0;
-    cgyro.b = e.beta; cgyro.g = e.gamma;
-    // 端末の生の角度は「縦持ち基準」。横持ちだと前後と左右が入れ替わるため、画面の向きに合わせて変換する
-    //   前後(p): 画面の上辺が持ち上がる向きが＋ / 左右(r): 画面の右辺が下がる向きが＋
+    const d = Math.PI / 180;
+    const alpha = (typeof e.alpha === 'number') ? e.alpha : 0;
     const sa = screenAngle();
-    if (sa === 90)       { cgyro.p = -cgyro.g; cgyro.r =  cgyro.b; }
-    else if (sa === 270) { cgyro.p =  cgyro.g; cgyro.r = -cgyro.b; }
-    else if (sa === 180) { cgyro.p = -cgyro.b; cgyro.r = -cgyro.g; }
-    else                 { cgyro.p =  cgyro.b; cgyro.r =  cgyro.g; }
+    // three.js標準の変換（端末の向き→画面基準の向き）。角度(α,β,γ)は特異点で急に飛ぶが、回転(四元数)なら連続
+    let q = qMul(qMul(qAxis(0, 1, 0, alpha * d), qAxis(1, 0, 0, e.beta * d)), qAxis(0, 0, 1, -e.gamma * d));
+    q = qMul(q, qAxis(1, 0, 0, -Math.PI / 2));
+    q = qMul(q, qAxis(0, 0, 1, -sa * d));
+    cgyro.q = q; cgyro.sa = sa;
     cgyro.state = 'active';
     const now = performance.now();
-    if (now - cgyro.lastSend > 50) { cgyro.lastSend = now; pushCtrl(); }   // 約20回/秒に間引く
+    if (now - cgyro.lastSend > 33) { cgyro.lastSend = now; pushCtrl(); }   // 約30回/秒に間引く
   }
   async function enableCtrlGyro() {
     if (cgyro.state === 'active' || cgyro.state === 'waiting') return;
@@ -720,9 +737,8 @@ body.stereo .dispbar{opacity:.55}
   // 表示する軸を1つだけ選ぶ（a=α 回転 / b=β 前後の傾き / g=γ 左右の傾き）
   let tiltAxis = 'b';
   const TILT_MAX = 20;                       // 角度の測定範囲：基準から ±20° まで
-  const tiltRef = { a: 0, b: 0, g: 0 };      // 基準角度（この向きを0°とする）
+  let tiltRefQ = null;                       // 基準の向き（この向きを0°とする）
   let tiltZeroPending = true;                // 次に角度データが届いた時点を基準にする
-  const relAng = (v, r) => ((((v - r) % 360) + 540) % 360) - 180;   // 差を -180〜180 に正規化
   $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; lastTiltKey = ''; });
   $('#tiltSel').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-axis]');
@@ -806,10 +822,12 @@ body.stereo .dispbar{opacity:.55}
       const live = fresh && inp.ce === 1;
       if (!linked) tiltZeroPending = true;          // 切断中は次の接続で基準を取り直す
       if (live && tiltZeroPending) {                // 最初のデータ／リセット押下時の向きを0°にする
-        tiltRef.a = inp.ca; tiltRef.b = inp.cb; tiltRef.g = inp.cg;
+        tiltRefQ = inp.cq.slice();
         tiltZeroPending = false;
       }
-      const raw = tiltAxis === 'a' ? relAng(inp.ca, tiltRef.a) : tiltAxis === 'b' ? relAng(inp.cb, tiltRef.b) : relAng(inp.cg, tiltRef.g);
+      // 基準からの回転（画面の軸まわり）: x=前後 / y=左右 / z=回転
+      const rv = (live && tiltRefQ) ? relRot(tiltRefQ, inp.cq) : [0, 0, 0];
+      const raw = tiltAxis === 'a' ? rv[2] : tiltAxis === 'b' ? rv[0] : rv[1];
       const val = clamp(raw, -TILT_MAX, TILT_MAX);
       // 2action: 選んだ軸の角度で再生位置を決める。0°未満は最初のフレーム、8°超は最後のフレームで止める
       if (playerAct && live) {
@@ -818,10 +836,12 @@ body.stereo .dispbar{opacity:.55}
         mixer.update(0);
         playerProg = '  再生位置 ' + Math.round(ratio * 100) + '%';
       }
-      const key = live ? tiltAxis + '|' + val.toFixed(1) : (linked ? 'off1' : 'off0');
+      const land = inp.csa === 90 || inp.csa === 270;
+      const key = (live ? tiltAxis + '|' + val.toFixed(1) : (linked ? 'off1' : 'off0')) + (land ? 'L' : 'P');
       if (key !== lastTiltKey) {
         lastTiltKey = key;
         $('#tilt').classList.toggle('off', !live);
+        $('#tilt').classList.toggle('land', land);   // 操作側が横持ちなら図形も横向きに
         // 端末座標系の回転を、y軸が下向きのCSS座標へ変換（Z,Xは符号反転）
         let tf = 'none', label = '';
         if (tiltAxis === 'a') { tf = 'rotateZ(' + (-val) + 'deg)'; label = 'α '; }

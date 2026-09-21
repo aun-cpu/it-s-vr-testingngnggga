@@ -256,7 +256,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921f-frame7pivot';
+  const BUILD = '0921g-hglb-idle';
   const $ = (s) => document.querySelector(s);
   const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -598,6 +598,48 @@ body.stereo .dispbar{opacity:.55}
   const ANIM_ZERO_FRAME = 7;         // 0°になる基準フレーム番号
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
+
+  // ---- h.glb（idleをループ再生するだけの追加モデル） ----
+  const H_URL = 'h.glb';             // index.html と同じ場所に置く
+  const H_HEIGHT = 1.7;              // 身長(m)にそろえて表示。元のサイズのままなら null
+  const H_FACING = Math.PI;          // player.glb と同じ向きにそろえる
+  let hState = '未読込';
+  let hAnim = '';
+  let hMixer = null;
+  function loadH(group) {
+    if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
+    hState = '読込中…';
+    new THREE.GLTFLoader().load(H_URL, function (gltf) {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      if (H_HEIGHT && size.y > 0) model.scale.multiplyScalar(H_HEIGHT / size.y);
+      box.setFromObject(model);
+      const c = box.getCenter(new THREE.Vector3());
+      model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
+      group.add(model);
+      hState = '表示中';
+
+      const clips = gltf.animations || [];
+      if (clips.length === 0) { hAnim = '  アニメなし'; return; }
+      const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
+      const clip = clips.find(function (c) { return nm(c) === 'idle'; }) ||
+                   clips.find(function (c) { return nm(c).endsWith('idle'); });
+      if (!clip) {
+        hAnim = '  「idle」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
+        return;
+      }
+      hMixer = new THREE.AnimationMixer(model);
+      const act = hMixer.clipAction(clip);
+      act.setLoop(THREE.LoopRepeat, Infinity);
+      act.play();
+      hAnim = '  アクション: ' + clip.name + '（ループ再生）';
+    }, undefined, function (err) {
+      hState = '読込失敗（h.glb を index.html と同じ場所に置く）';
+      try { console.error(err); } catch (e) {}
+    });
+  }
   function loadPlayer(group) {
     if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; return; }
     playerState = '読込中…';
@@ -698,8 +740,15 @@ body.stereo .dispbar{opacity:.55}
       scene.add(playerGroup);
       loadPlayer(playerGroup);
 
+      // h.glb（idleをループ再生。player.glb の隣に据え置き）
+      const hGroup = new THREE.Group();
+      hGroup.position.set(inp.px + 2, inp.py, inp.pz);
+      hGroup.rotation.y = H_FACING;
+      scene.add(hGroup);
+      loadH(hGroup);
+
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup,
         W: 0, H: 0
       };
       T = {
@@ -804,6 +853,8 @@ body.stereo .dispbar{opacity:.55}
 
     // ---- 人物モデルのアニメーションと位置 ----
     R.player.position.set(inp.px, inp.py, inp.pz);
+    if (R.h) R.h.position.set(inp.px + 2, inp.py, inp.pz);   // player.glb の隣に追従
+    if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
 
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
     const tiltLive = fresh && inp.ce === 1;
@@ -891,6 +942,7 @@ body.stereo .dispbar{opacity:.55}
         (fresh ? '操作側: 受信中' : (linked ? '操作側: 受信途絶' : '操作側: 待機中')) + '\n' +
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
+        'h.glb: ' + hState + hAnim + '\n' +
         '位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°';
     }

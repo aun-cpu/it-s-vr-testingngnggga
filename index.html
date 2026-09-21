@@ -133,6 +133,30 @@ body.stereo #seam{display:block}
   padding:8px 10px; border-radius:10px; pointer-events:none; white-space:pre;
 }
 body.stereo .hud{display:none}
+/* 操作側スマホの角度インジケータ */
+.tilt{
+  position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
+  width:132px; padding:8px 8px 8px; border-radius:10px; background:rgba(0,0,0,.45); color:#fff;
+  font:11px/1.5 ui-monospace,Menlo,monospace; text-align:center; pointer-events:none;
+}
+body.stereo .tilt{display:none}
+.tilt.off .tiltstage{opacity:.25}
+.tiltcap{color:#9aa6bd; margin-bottom:2px}
+.tiltstage{width:100%; height:92px; perspective:320px; display:flex; align-items:center; justify-content:center}
+.tiltscene{width:44px; height:84px; transform-style:preserve-3d; transform:rotateX(55deg)}
+.tiltphone{
+  position:relative; width:44px; height:84px; border-radius:8px; transform-style:preserve-3d;
+  background:linear-gradient(160deg,#4d7be8,#2b4fa8); border:2px solid #dfe6f5; backface-visibility:visible;
+  box-shadow:0 0 0 1px rgba(0,0,0,.4);
+}
+.tiltphone::before{ /* 画面の上端（スピーカー側）の目印 */
+  content:""; position:absolute; left:50%; top:5px; width:14px; height:3px; margin-left:-7px;
+  border-radius:2px; background:#ffd76a;
+}
+.tiltphone::after{ /* 画面 */
+  content:""; position:absolute; left:4px; right:4px; top:14px; bottom:6px; border-radius:3px; background:rgba(255,255,255,.18);
+}
+.tiltval{white-space:pre}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
@@ -158,6 +182,7 @@ body.stereo .dispbar{opacity:.55}
     <ul class="tips">
       <li>「表示する」を押すと、モーションセンサーの許可を求められることがあります。許可してください。</li>
       <li>視点は表示側スマホの向きで変わります。右スティックはありません。</li>
+      <li>操作側スマホの傾き（角度）は、表示側の右上に表示されます。操作側でもモーションセンサーの許可が必要な場合があります。</li>
       <li>表示側は「VR分割」でゴーグル用の左右2画面になります（操作側からも切替可）。</li>
     </ul>
   </div>
@@ -201,6 +226,11 @@ body.stereo .dispbar{opacity:.55}
   <canvas id="cv"></canvas>
   <div id="seam"></div>
   <div class="hud" id="hud"></div>
+  <div class="tilt off" id="tilt">
+    <div class="tiltcap">操作側の角度</div>
+    <div class="tiltstage"><div class="tiltscene"><div class="tiltphone" id="tiltPhone"></div></div></div>
+    <div class="tiltval" id="tiltVal">--</div>
+  </div>
   <div class="wait" id="wait">
     <div id="waitMsg">接続を準備中…</div>
     <div class="code" id="codeText">------</div>
@@ -274,7 +304,9 @@ body.stereo .dispbar{opacity:.55}
   }
 
   // ---- 表示側 ----
-  const inp = { mx: 0, my: 0, jump: 0, act: 0, vr: 0, rc: 0 };
+  // ce: 操作側の角度が有効か / ca,cb,cg: 操作側スマホの alpha, beta, gamma（度）
+  const inp = { mx: 0, my: 0, jump: 0, act: 0, vr: 0, rc: 0, ce: 0, ca: 0, cb: 0, cg: 0 };
+  const deg = (v) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -720, 720) : 0;
 
   function setWait(msg, showCode, sub) {
     $('#waitMsg').textContent = msg;
@@ -312,22 +344,58 @@ body.stereo .dispbar{opacity:.55}
     lastMsgAt = performance.now();
     inp.mx = num(d.mx); inp.my = num(d.my);
     inp.jump = int(d.jump); inp.act = int(d.act); inp.vr = int(d.vr); inp.rc = int(d.rc);
+    inp.ce = d.ce ? 1 : 0;
+    inp.ca = deg(d.ca); inp.cb = deg(d.cb); inp.cg = deg(d.cg);
   }
 
   // ---- 操作側 ----
   const st = { mx: 0, my: 0, jump: 0, act: 0, vr: 0, rc: 0 };
   const r2 = (v) => Math.round(v * 100) / 100;
+  const r1 = (v) => Math.round(v * 10) / 10;
+
+  // 操作側スマホ自身の向き（表示側へ送って表示する）
+  const cgyro = { state: 'off', a: 0, b: 0, g: 0, lastSend: 0 };
 
   function sendState() {
     if (!conn || !conn.open) return;
     try {
-      conn.send({ mx: r2(st.mx), my: r2(st.my), jump: st.jump, act: st.act, vr: st.vr, rc: st.rc });
+      conn.send({
+        mx: r2(st.mx), my: r2(st.my), jump: st.jump, act: st.act, vr: st.vr, rc: st.rc,
+        ce: cgyro.state === 'active' ? 1 : 0, ca: r1(cgyro.a), cb: r1(cgyro.b), cg: r1(cgyro.g)
+      });
     } catch (e) {}
   }
   function pushCtrl() {
     sendState();
     $('#ctrlReadout').textContent =
-      '移動(' + st.mx.toFixed(2) + ', ' + st.my.toFixed(2) + ')  J:' + st.jump + ' A:' + st.act;
+      '移動(' + st.mx.toFixed(2) + ', ' + st.my.toFixed(2) + ')  J:' + st.jump + ' A:' + st.act +
+      (cgyro.state === 'active'
+        ? '  角度 α' + cgyro.a.toFixed(0) + ' β' + cgyro.b.toFixed(0) + ' γ' + cgyro.g.toFixed(0)
+        : (cgyro.state === 'denied' ? '  角度: 許可なし' : ''));
+  }
+
+  function onCtrlOrient(e) {
+    if (e.beta === null || e.beta === undefined || e.gamma === null || e.gamma === undefined) return;
+    cgyro.a = (typeof e.alpha === 'number') ? e.alpha : 0;
+    cgyro.b = e.beta; cgyro.g = e.gamma;
+    cgyro.state = 'active';
+    const now = performance.now();
+    if (now - cgyro.lastSend > 50) { cgyro.lastSend = now; pushCtrl(); }   // 約20回/秒に間引く
+  }
+  async function enableCtrlGyro() {
+    if (cgyro.state === 'active' || cgyro.state === 'waiting') return;
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') { cgyro.state = 'denied'; return; }
+      }
+      window.addEventListener('deviceorientation', onCtrlOrient, true);
+      cgyro.state = 'waiting';
+    } catch (e) { cgyro.state = 'error'; }
+  }
+  function stopCtrlGyro() {
+    window.removeEventListener('deviceorientation', onCtrlOrient, true);
+    cgyro.state = 'off';
   }
   function setCtrlPill(ok) {
     const pill = $('#ctrlStatus');
@@ -391,10 +459,11 @@ body.stereo .dispbar{opacity:.55}
   $('#pairGo').addEventListener('click', () => {
     const v = $('#codeIn').value.replace(/\D/g, '');
     if (v.length !== 6) { pairStatus('6桁の数字を入力してください', true); return; }
+    enableCtrlGyro();      // ユーザー操作の中で呼ぶ（iOSの許可ダイアログのため）
     startControllerPeer(v);
   });
   $('#codeIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#pairGo').click(); });
-  function backToSelect() { role = null; teardown(); setStereo(false); show('select'); }
+  function backToSelect() { role = null; teardown(); stopCtrlGyro(); setStereo(false); show('select'); }
   $('#ctrlBack').addEventListener('click', backToSelect);
   $('#dispBack').addEventListener('click', backToSelect);
 
@@ -594,6 +663,8 @@ body.stereo .dispbar{opacity:.55}
   }
 
   let lastT = performance.now(), lastHud = 0;
+  let lastTiltKey = '';
+  const tiltPhone = $('#tiltPhone'), tiltVal = $('#tiltVal');
   const cur = { mx: 0, my: 0, jump: 0, act: 0 };
   const GYRO_LABEL = { off: '未使用', waiting: '待機中', active: '有効', denied: '拒否（端末設定を確認）', error: 'エラー', unsupported: '非対応（画面ドラッグで代用）' };
 
@@ -682,6 +753,23 @@ body.stereo .dispbar{opacity:.55}
         R.renderer.setViewport(i * hw, 0, hw, H);
         R.renderer.setScissor(i * hw, 0, hw, H);
         R.renderer.render(R.scene, cam);
+      }
+    }
+
+    // ---- 操作側スマホの角度インジケータ ----
+    {
+      const live = fresh && inp.ce === 1;
+      const key = live ? inp.ca + '|' + inp.cb + '|' + inp.cg : (linked ? 'off1' : 'off0');
+      if (key !== lastTiltKey) {
+        lastTiltKey = key;
+        $('#tilt').classList.toggle('off', !live);
+        // 端末座標系 Rz(α)·Rx(β)·Ry(γ) を、y軸が下向きのCSS座標へ変換（Z,Xは符号反転）
+        tiltPhone.style.transform = live
+          ? 'rotateZ(' + (-inp.ca) + 'deg) rotateX(' + (-inp.cb) + 'deg) rotateY(' + inp.cg + 'deg)'
+          : 'none';
+        tiltVal.textContent = live
+          ? 'α ' + inp.ca.toFixed(0) + '°\nβ ' + inp.cb.toFixed(0) + '°  γ ' + inp.cg.toFixed(0) + '°'
+          : (linked ? '角度データなし' : '--');
       }
     }
 

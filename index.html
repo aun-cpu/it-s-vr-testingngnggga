@@ -853,23 +853,45 @@ body.stereo .dispbar{opacity:.55}
     });
     o.material = Array.isArray(o.material) ? made : made[0];
   }
-  // hの輪郭線（裏面を少し拡大して黒く塗る"インバーテッドハル"方式）
+  // hの輪郭線（頂点を法線方向にわずかに押し出して裏面を黒く塗る"インバーテッドハル"方式）
+  // オブジェクト全体をscaleで拡大する方式だと、スキニングされたメッシュでは
+  // bindMode:'attached'のままだと拡大後のmatrixWorldでbindMatrixInverseが毎フレーム
+  // 再計算されてボーン変形とズレて崩れる。'detached'にしても、今度はスケールが毎フレーム
+  // 打ち消されて太さが不安定になってしまう。
+  // → ジオメトリの頂点そのものを法線方向へ押し出しておけば、オブジェクトの
+  //   transform（position/rotation/scale）は元メッシュと完全に同じままでよく、
+  //   bindModeはデフォルトの'attached'でOK。ボーン変形・モード設定の影響を受けない。
   let hOutlineMat = null;
-  const H_OUTLINE_SCALE = 1.03;      // 大きいほど輪郭線が太くなる
-  function addOutline(o) {
+  const H_OUTLINE_RATIO = 0.006;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
+  function pushGeometryAlongNormals(geo, amount) {
+    const out = geo.clone();          // 属性ごとdeep copyされるので元ジオメトリは変更されない
+    let normal = out.attributes.normal;
+    if (!normal) { out.computeVertexNormals(); normal = out.attributes.normal; }
+    const position = out.attributes.position;
+    for (let i = 0; i < position.count; i++) {
+      position.setXYZ(
+        i,
+        position.getX(i) + normal.getX(i) * amount,
+        position.getY(i) + normal.getY(i) * amount,
+        position.getZ(i) + normal.getZ(i) * amount
+      );
+    }
+    position.needsUpdate = true;
+    out.computeBoundingBox();
+    out.computeBoundingSphere();
+    return out;
+  }
+  function addOutline(o, amount) {
     if (!o.isMesh) return;
     if (!hOutlineMat) hOutlineMat = new THREE.MeshBasicMaterial({ color: 0x0c0c0c, side: THREE.BackSide });
+    const outGeo = pushGeometryAlongNormals(o.geometry, amount);
     let outline;
     if (o.isSkinnedMesh) {
-      outline = new THREE.SkinnedMesh(o.geometry, hOutlineMat);
-      outline.bind(o.skeleton, o.bindMatrix);
-      // 'attached'のままだと、拡大した自分自身のmatrixWorldでbindMatrixInverseが毎フレーム再計算され、
-      // スケールとボーン変形がズレて形が崩れる。'detached'にして元のbindMatrixを固定で使う。
-      outline.bindMode = 'detached';
+      outline = new THREE.SkinnedMesh(outGeo, hOutlineMat);
+      outline.bind(o.skeleton, o.bindMatrix);   // 'attached'のままでよい（transformを元メッシュと変えないため）
     } else {
-      outline = new THREE.Mesh(o.geometry, hOutlineMat);
+      outline = new THREE.Mesh(outGeo, hOutlineMat);
     }
-    outline.scale.multiplyScalar(H_OUTLINE_SCALE);
     outline.frustumCulled = false;
     outline.castShadow = false;
     outline.receiveShadow = false;
@@ -883,11 +905,15 @@ body.stereo .dispbar{opacity:.55}
       const model = gltf.scene;
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
+      // 押し出し量はスケール適用前（ジオメトリ本来の単位）のモデル高さを基準に決める。
+      // model.scaleは後から一律に掛かるので、ここで比率にしておけば見た目の太さは
+      // H_HEIGHTを変えても一定になる。
+      const outlineAmount = size.y > 0 ? size.y * H_OUTLINE_RATIO : H_OUTLINE_RATIO;
       if (H_HEIGHT && size.y > 0) model.scale.multiplyScalar(H_HEIGHT / size.y);
       box.setFromObject(model);
       const c = box.getCenter(new THREE.Vector3());
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
-      model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o); } });
+      model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o, outlineAmount); } });
       group.add(model);
       hState = '表示中';
 

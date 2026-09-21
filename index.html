@@ -256,7 +256,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921d-anglefix';
+  const BUILD = '0921e-frame5pivot';
   const $ = (s) => document.querySelector(s);
   const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -593,7 +593,10 @@ body.stereo .dispbar{opacity:.55}
   let playerAnim = '';
   let mixer = null;
   let playerAct = null;              // 「2action」のアクション（角度で再生位置を決める）
-  const ANIM_ANGLE_MAX = 8;          // 0°=最初のフレーム、8°=最後のフレーム
+  const ANIM_ANGLE_MAX = 8;          // 8°=最後のフレーム
+  const ANIM_ANGLE_MIN = -20;        // -20°=最初のフレーム
+  const ANIM_ZERO_FRAME = 5;         // 0°になる基準フレーム番号
+  let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
   function loadPlayer(group) {
     if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; return; }
@@ -626,9 +629,20 @@ body.stereo .dispbar{opacity:.55}
       playerAct = mixer.clipAction(clip);
       playerAct.play();
       playerAct.paused = true;       // 時間では進めず、角度だけで位置を決める
-      playerAct.time = 0;
+      // 「5フレーム目」の実際の秒数を、トラックのキーフレーム間隔から算出する
+      const track0 = clip.tracks && clip.tracks[0];
+      const times = track0 && track0.times;
+      if (times && times.length > ANIM_ZERO_FRAME) {
+        anim0Time = times[ANIM_ZERO_FRAME];               // サンプル済みキーフレームがあればそのまま使う
+      } else if (times && times.length > 1) {
+        anim0Time = (times[1] - times[0]) * ANIM_ZERO_FRAME; // 間隔から換算
+      } else {
+        anim0Time = 0;
+      }
+      anim0Time = clamp(anim0Time, 0, clip.duration);
+      playerAct.time = anim0Time;
       mixer.update(0);
-      playerAnim = '  アクション: ' + clip.name + '（角度連動 0°=先頭 / ' + ANIM_ANGLE_MAX + '°=最後）';
+      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=先頭 / ' + ANIM_ZERO_FRAME + 'F目=0° / ' + ANIM_ANGLE_MAX + '°=最後）';
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -802,12 +816,24 @@ body.stereo .dispbar{opacity:.55}
     const tiltRv = (tiltLive && tiltRefQ) ? relRot(tiltRefQ, inp.cq) : [0, 0, 0];
     const tiltRaw = tiltAxis === 'a' ? tiltRv[2] : tiltAxis === 'b' ? tiltRv[0] : tiltRv[1];
     const tiltVal2 = clamp(tiltRaw, -TILT_MAX, TILT_MAX);
-    // 2action: 選んだ軸の角度（傾けた向きに関係なく、基準からのズレの大きさ）で再生位置を決める。0°=最初のフレーム、8°以上=最後のフレーム
+    // 2action: 選んだ軸の角度で再生位置を決める。-20°=先頭フレーム／0°=5フレーム目／8°=最終フレーム（区分線形）
     if (playerAct && tiltLive) {
-      const ratio = clamp(Math.abs(tiltRaw) / ANIM_ANGLE_MAX, 0, 1);
-      playerAct.time = ratio * playerAct.getClip().duration;
+      const duration = playerAct.getClip().duration;
+      let t;
+      if (tiltRaw <= ANIM_ANGLE_MIN) {
+        t = 0;
+      } else if (tiltRaw >= ANIM_ANGLE_MAX) {
+        t = duration;
+      } else if (tiltRaw <= 0) {
+        // ANIM_ANGLE_MIN°→0° を 0秒→anim0Time に対応
+        t = anim0Time * (tiltRaw - ANIM_ANGLE_MIN) / (0 - ANIM_ANGLE_MIN);
+      } else {
+        // 0°→ANIM_ANGLE_MAX° を anim0Time→duration に対応
+        t = anim0Time + (duration - anim0Time) * (tiltRaw / ANIM_ANGLE_MAX);
+      }
+      playerAct.time = clamp(t, 0, duration);
       mixer.update(0);
-      playerProg = '  再生位置 ' + Math.round(ratio * 100) + '%';
+      playerProg = '  再生位置 ' + t.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
     }
 
     // ---- 描画 ----

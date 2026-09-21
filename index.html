@@ -650,6 +650,9 @@ body.stereo .dispbar{opacity:.55}
   let hAct2 = null;                  // hの「action2」（2.5フレーム以上で1回再生）
   let hAct3 = null;                  // hの「action3」（5フレーム以上で1回再生）
   let hCurAct = null;                // いま再生中のワンショット（無ければnull）
+  const H_BLINK_RE = /まばたき|瞬き|マバタキ|blink/i;   // hのまばたきモーフ名（この正規表現に合うモーフを対象にする）
+  let hBlinkTargets = [];            // {mesh, idx}: hのまばたきモーフ
+  let hBlinkHeld = false;            // action2/3/4の再生中にまばたきを1に固定している間true
   const H_NAME2 = 'action2', H_NAME3 = 'action3';
   const TRIGGER_FRAMES2 = 2.5;       // フレーム: この数以上＋方向に進んだらaction2
   const TRIGGER_WINDOW = 0.2;        // 秒: この時間内の動きを見る
@@ -826,6 +829,15 @@ body.stereo .dispbar{opacity:.55}
       model.traverse(function (o) { if (o.isMesh) o.frustumCulled = false; });
       group.add(model);
       hState = '表示中';
+
+      // まばたきモーフ（シェイプキー）を探す
+      hBlinkTargets = [];
+      model.traverse(function (o) {
+        if (!o.isMesh || !o.morphTargetDictionary || !o.morphTargetInfluences) return;
+        Object.keys(o.morphTargetDictionary).forEach(function (k) {
+          if (H_BLINK_RE.test(k)) hBlinkTargets.push({ mesh: o, idx: o.morphTargetDictionary[k] });
+        });
+      });
 
       const clips = gltf.animations || [];
       if (clips.length === 0) { hAnim = '  アニメなし'; return; }
@@ -1137,6 +1149,17 @@ body.stereo .dispbar{opacity:.55}
     }
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
+    // action2/3/4の再生中は、まばたきモーフを1にし続ける（mixerの更新後に上書きする）
+    {
+      const hold = !!(hCurAct && (hCurAct === hAct2 || hCurAct === hAct3 || hCurAct === hAct4));
+      if (hold || hBlinkHeld) {
+        for (let i = 0; i < hBlinkTargets.length; i++) {
+          const bt = hBlinkTargets[i];
+          bt.mesh.morphTargetInfluences[bt.idx] = hold ? 1 : 0;   // 終了したら0に戻す（idle側にまばたきトラックがあればそちらが優先される）
+        }
+        hBlinkHeld = hold;
+      }
+    }
 
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
     const tiltLive = fresh && inp.ce === 1;

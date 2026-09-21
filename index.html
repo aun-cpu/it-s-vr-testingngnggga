@@ -354,7 +354,7 @@ body.stereo .dispbar{opacity:.55}
   // 人物モデルの位置（表示側の視点を原点、-Zが前。初期は視点と同じ0,0,0）。操作側で調整して表示側へ送る
   const POS_DEFAULT = {
     px: 0, py: 0, pz: 0,                       // 人物モデル本体の位置
-    aox: 0, aoy: 0, aoz: 0, aor: 0,            // playerarm: player本体とのズレ（位置m・回転°）
+    aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
     pox: 0, poy: 0, poz: 0, por: 0             // playerplus: player本体とのズレ（位置m・回転°）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
@@ -641,7 +641,7 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----
   const H_URL = 'h.glb';             // index.html と同じ場所に置く
-  const H_HEIGHT = null;              // 身長(m)にそろえて表示。元のサイズのままなら null
+  const H_HEIGHT = 1.7;              // 身長(m)にそろえて表示。元のサイズのままなら null
   const H_FACING = Math.PI;          // player.glb と同じ向きにそろえる
   let hState = '未読込';
   let hAnim = '';

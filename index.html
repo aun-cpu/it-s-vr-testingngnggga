@@ -619,7 +619,7 @@ body.stereo .dispbar{opacity:.55}
   let hAct1 = null;                  // hの「action1」（idle中、角度で再生位置を決める。idleと同時に再生）
   let hAct1W = 0;                    // action1の現在のウェイト（フェード用）
   const H_NAME1 = 'action1';
-  const H_ACT1_MAX = 20;             // 20°=action1の最終フレーム（0°=0フレーム）
+  const H_ACT1_MAX = 10;             // 20°=action1の最終フレーム（0°=0フレーム）
   const H_ACT2_START_FRAME = 5;      // action2は5フレーム目から再生する
   let hAct2Start = 0;                // action2の開始位置(秒)。読込時に算出
   const trigHist = [];               // {now(ms), t(秒)} 直近TRIGGER_WINDOW秒ぶんの2action再生位置

@@ -256,7 +256,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921c';
+  const BUILD = '0921d-anglefix';
   const $ = (s) => document.querySelector(s);
   const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -791,6 +791,25 @@ body.stereo .dispbar{opacity:.55}
     // ---- 人物モデルのアニメーションと位置 ----
     R.player.position.set(inp.px, inp.py, inp.pz);
 
+    // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
+    const tiltLive = fresh && inp.ce === 1;
+    if (!linked) tiltZeroPending = true;          // 切断中は次の接続で基準を取り直す
+    if (tiltLive && tiltZeroPending) {            // 最初のデータ／リセット押下時の向きを0°にする
+      tiltRefQ = inp.cq.slice();
+      tiltZeroPending = false;
+    }
+    // 基準からの回転（画面の軸まわり）: x=前後 / y=左右 / z=回転
+    const tiltRv = (tiltLive && tiltRefQ) ? relRot(tiltRefQ, inp.cq) : [0, 0, 0];
+    const tiltRaw = tiltAxis === 'a' ? tiltRv[2] : tiltAxis === 'b' ? tiltRv[0] : tiltRv[1];
+    const tiltVal2 = clamp(tiltRaw, -TILT_MAX, TILT_MAX);
+    // 2action: 選んだ軸の角度（傾けた向きに関係なく、基準からのズレの大きさ）で再生位置を決める。0°=最初のフレーム、8°以上=最後のフレーム
+    if (playerAct && tiltLive) {
+      const ratio = clamp(Math.abs(tiltRaw) / ANIM_ANGLE_MAX, 0, 1);
+      playerAct.time = ratio * playerAct.getClip().duration;
+      mixer.update(0);
+      playerProg = '  再生位置 ' + Math.round(ratio * 100) + '%';
+    }
+
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;
     if (W !== R.W || H !== R.H) { R.W = W; R.H = H; R.renderer.setSize(W, H, false); }
@@ -819,23 +838,7 @@ body.stereo .dispbar{opacity:.55}
 
     // ---- 操作側スマホの角度インジケータ（選んだ1軸だけ・基準から±20°まで） ----
     {
-      const live = fresh && inp.ce === 1;
-      if (!linked) tiltZeroPending = true;          // 切断中は次の接続で基準を取り直す
-      if (live && tiltZeroPending) {                // 最初のデータ／リセット押下時の向きを0°にする
-        tiltRefQ = inp.cq.slice();
-        tiltZeroPending = false;
-      }
-      // 基準からの回転（画面の軸まわり）: x=前後 / y=左右 / z=回転
-      const rv = (live && tiltRefQ) ? relRot(tiltRefQ, inp.cq) : [0, 0, 0];
-      const raw = tiltAxis === 'a' ? rv[2] : tiltAxis === 'b' ? rv[0] : rv[1];
-      const val = clamp(raw, -TILT_MAX, TILT_MAX);
-      // 2action: 選んだ軸の角度で再生位置を決める。0°未満は最初のフレーム、8°超は最後のフレームで止める
-      if (playerAct && live) {
-        const ratio = clamp(raw / ANIM_ANGLE_MAX, 0, 1);
-        playerAct.time = ratio * playerAct.getClip().duration;
-        mixer.update(0);
-        playerProg = '  再生位置 ' + Math.round(ratio * 100) + '%';
-      }
+      const live = tiltLive, raw = tiltRaw, val = tiltVal2;   // 上で計算済みの値を使う
       const land = inp.csa === 90 || inp.csa === 270;
       const key = (live ? tiltAxis + '|' + val.toFixed(1) : (linked ? 'off1' : 'off0')) + (land ? 'L' : 'P');
       if (key !== lastTiltKey) {

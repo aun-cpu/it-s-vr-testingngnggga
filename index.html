@@ -275,7 +275,7 @@ body.stereo .dispbar{opacity:.55}
     </div>
     <div class="tiltsel"><button type="button" id="tiltManualBtn">手動角度</button><button type="button" id="tiltReset">角度リセット</button></div>
     <div class="tiltmanual hidden" id="tiltManualWrap">
-      <input type="range" id="tiltManualRng" min="-20" max="20" step="0.5" value="0">
+      <input type="range" id="tiltManualRng" min="-10" max="10" step="0.5" value="0">
       <div class="tiltmanualval" id="tiltManualValTxt">0°</div>
     </div>
   </div>
@@ -715,8 +715,8 @@ body.stereo .dispbar{opacity:.55}
   // player.glbで計算した縮尺・位置合わせをそのまま使って完全に重ねる
   let playerScale = null;
   let playerOffX = 0, playerOffY = 0, playerOffZ = 0;
-  const ANIM_ANGLE_MAX = 8;          // 8°=最後のフレーム
-  const ANIM_ANGLE_MIN = -20;        // -20°=最初のフレーム
+  const ANIM_ANGLE_MAX = 4;          // 4°=最後のフレーム
+  const ANIM_ANGLE_MIN = -10;        // -10°=最初のフレーム
   const ANIM_ZERO_FRAME = 7;         // 0°になる基準フレーム番号
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
@@ -740,7 +740,7 @@ body.stereo .dispbar{opacity:.55}
   const TRIGGER_FADE = 0.15;         // 秒: idleとのつなぎ
   let hAct4 = null;                  // hの「action4」（クリップは読み込むが、現在は再生に使わない）
   const H_NAME4 = 'action4';
-  const TRIGGER_DEG = 3;             // 度: TRIGGER_WINDOW秒以内にこの角度以上-方向へ動いたら判定開始（これ未満の小さな動きは無視。例: 0→-1→0は対象外）
+  const TRIGGER_DEG = 10;            // 度: TRIGGER_WINDOW秒以内にこの角度以上-方向へ動いたら判定開始（これ未満の小さな動きは無視。例: 0→-1→0は対象外）
   let judgeActive = false;           // 判定中（-方向への動きを検知し、判定開始地点への戻り＝一往復の完了を待っている）かどうか
   let judgeStartAngle = 0;           // 度: 判定開始地点（動き出す直前）の角度。ここまで戻ってきたら一往復とみなしaction3を再生
   const angHist = [];                // {now(ms), a(度)} 直近TRIGGER_WINDOW秒ぶんの操作側の角度
@@ -1338,7 +1338,7 @@ body.stereo .dispbar{opacity:.55}
   $('#buildTag').textContent = '(' + BUILD + ')';
   // 表示する軸を1つだけ選ぶ（a=α 回転 / b=β 前後の傾き / g=γ 左右の傾き）
   let tiltAxis = 'b';
-  const TILT_MAX = 20;                       // 角度の測定範囲：基準から ±20° まで
+  const TILT_MAX = 10;                       // 角度の測定範囲：基準から ±10° まで
   let tiltRefQ = null;                       // 基準の向き（この向きを0°とする）
   let tiltZeroPending = true;                // 次に角度データが届いた時点を基準にする
   // 操作側からの角度は約30Hz送信だが描画は60〜120Hzで動くため、そのまま使うと値が数フレーム

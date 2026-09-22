@@ -635,6 +635,65 @@ body.stereo .dispbar{opacity:.55}
   let dragYaw = 0, dragPitch = 0;   // ジャイロが使えない時の代用（画面ドラッグ）
   let lastFx = 0, lastFz = -1;
 
+  // ---- hのaction3/4が出た瞬間に飛び散る水滴エフェクト（初期カメラの正面・固定位置） ----
+  const SPLASH_DIST = 0.55;          // 初期カメラの正面、これだけ離れた位置に置く(m)
+  const SPLASH_POS = new THREE.Vector3(
+    P.x + CAM_OFFSET.x,
+    P.y + 1.6 + CAM_OFFSET.y,
+    P.z + CAM_OFFSET.z - SPLASH_DIST   // 初期状態のカメラの正面方向(0,0,-1)へSPLASH_DIST進めた位置
+  );
+  const SPLASH_COUNT = 12;           // 水滴の数（軽めに）
+  const SPLASH_SIZE = 0.022;         // 水滴の大きさ(m)
+  const SPLASH_SPREAD = 0.9;         // 飛び散る速さの目安(m/s)
+  const SPLASH_GRAVITY = 2.4;        // 落下の速さ(m/s^2)
+  const SPLASH_LIFE = 0.4;           // 秒: 飛び散ってから消えるまで
+  const splashDrops = [];            // {mesh, vel, age, life}
+  let splashGroup = null;
+  function initSplash(scene) {
+    splashGroup = new THREE.Group();
+    const geo = new THREE.SphereGeometry(SPLASH_SIZE, 6, 5);
+    for (let i = 0; i < SPLASH_COUNT; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xcdeeff, transparent: true, opacity: 0, depthWrite: false });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.visible = false;
+      mesh.frustumCulled = false;
+      splashGroup.add(mesh);
+      splashDrops.push({ mesh: mesh, vel: new THREE.Vector3(), age: 0, life: SPLASH_LIFE });
+    }
+    scene.add(splashGroup);
+  }
+  function triggerSplash() {
+    if (!splashGroup) return;
+    for (let i = 0; i < splashDrops.length; i++) {
+      const d = splashDrops[i];
+      d.mesh.position.copy(SPLASH_POS);
+      const ang = Math.random() * Math.PI * 2;
+      const spread = (0.5 + Math.random() * 0.6) * SPLASH_SPREAD;
+      d.vel.set(
+        Math.cos(ang) * spread,
+        (0.5 + Math.random() * 0.7) * SPLASH_SPREAD,
+        Math.sin(ang) * spread * 0.6
+      );
+      d.age = 0;
+      d.life = SPLASH_LIFE * (0.75 + Math.random() * 0.5);
+      d.mesh.visible = true;
+      d.mesh.scale.setScalar(0.6 + Math.random() * 0.6);
+      d.mesh.material.opacity = 0.8;
+    }
+  }
+  function updateSplash(dt) {
+    if (!splashGroup) return;
+    for (let i = 0; i < splashDrops.length; i++) {
+      const d = splashDrops[i];
+      if (!d.mesh.visible) continue;
+      d.age += dt;
+      if (d.age >= d.life) { d.mesh.visible = false; continue; }
+      d.vel.y -= SPLASH_GRAVITY * dt;
+      d.mesh.position.addScaledVector(d.vel, dt);
+      d.mesh.material.opacity = 0.8 * (1 - d.age / d.life);
+    }
+  }
+
   function mulberry32(a) {
     return function () {
       a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -1229,6 +1288,8 @@ body.stereo .dispbar{opacity:.55}
         loadPlus(plusGroup);
       });
 
+      initSplash(scene);   // hのaction3/4トリガー時の水滴エフェクト（初期カメラ正面の固定位置）
+
       R = {
         renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup,
         W: 0, H: 0
@@ -1384,6 +1445,7 @@ body.stereo .dispbar{opacity:.55}
     }
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
+    updateSplash(dt);                                         // 水滴エフェクトの飛散・落下・フェードを更新
     // action3/4の再生中は、まばたきモーフを1にし続ける。終了後はゆっくり0へ戻す（mixerの更新後に上書きする）
     {
       const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
@@ -1463,6 +1525,7 @@ body.stereo .dispbar{opacity:.55}
         act.reset().play();
         act.setEffectiveWeight(1);
         if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);   // action4の再生中に再発動したら、その場で頭から再生し直す
+        triggerSplash();   // action3/4が出た瞬間、初期カメラ正面で水滴が軽く飛び散る
         // playerarm: hと同じタイミングで、対応する 2action3/4 を再生
         const aa = act === hAct3 ? armAct3 : act === hAct4 ? armAct4 : null;
         if (armMixer && aa) {

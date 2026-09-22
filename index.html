@@ -817,7 +817,7 @@ body.stereo .dispbar{opacity:.55}
     if (!o.isMesh || !o.material) return;
     const list = Array.isArray(o.material) ? o.material : [o.material];
     list.forEach(function (m) {
-      if (m.color) m.color.lerp(new THREE.Color(0xffffff), 0);   // 色を少し薄く
+      if (m.color) m.color.lerp(new THREE.Color(0xffffff), 0.15);   // 色を少し薄く
       if ('roughness' in m) m.roughness = Math.min(m.roughness != null ? m.roughness : 0.8, 0.35);
       if ('metalness' in m) m.metalness = Math.max(m.metalness != null ? m.metalness : 0, 0.08);
       if ('shininess' in m) m.shininess = Math.max(m.shininess != null ? m.shininess : 30, 70);
@@ -826,7 +826,7 @@ body.stereo .dispbar{opacity:.55}
     });
   }
   // hをトゥーン(セルシェード)調にする（濃淡3段階のグラデーションマップを使う）
-  const H_COLOR_LIGHTEN = 0;      // hの色を白に近づける割合（0=元の色 / 1=白）。色を薄くする
+  const H_COLOR_LIGHTEN = 0.25;      // hの色を白に近づける割合（0=元の色 / 1=白）。色を薄くする
   let hToonGradient = null;
   function makeToonGradient() {
     const steps = 3;
@@ -855,7 +855,9 @@ body.stereo .dispbar{opacity:.55}
         transparent: false,        // 元の材質が半透明でも、hは常に不透明に戻す
         opacity: 1
       });
-      t.color.lerp(new THREE.Color(0xffffff), H_COLOR_LIGHTEN);   // 色を薄く（白に近づける）
+      // 瞳・眉・口の輪郭など、もともと暗い色の材質まで白へ寄せると、そこだけ色が浮いて見えるため対象外にする
+      const lum = t.color ? (0.299 * t.color.r + 0.587 * t.color.g + 0.114 * t.color.b) : 1;
+      if (lum > 0.35) t.color.lerp(new THREE.Color(0xffffff), H_COLOR_LIGHTEN);   // 色を薄く（白に近づける）
       if (o.isSkinnedMesh) t.skinning = true;
       if (o.morphTargetInfluences && o.morphTargetInfluences.length) t.morphTargets = true;
       return t;

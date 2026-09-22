@@ -183,6 +183,14 @@ body.stereo .dispbar{opacity:.55}
   width:min(86vw,420px);
 }
 .wait .code{font:700 44px/1.2 ui-monospace,Menlo,monospace; letter-spacing:.18em; margin:6px 0}
+/* 注視で選択した直後、20秒間の強制ループ中に画面中央へ出すピンクのカウントダウン */
+.countdown{
+  z-index:6; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  font:800 72px/1 ui-monospace,Menlo,monospace; color:#ff5fa8;
+  text-shadow:0 0 16px rgba(255,95,168,.85), 0 2px 8px rgba(0,0,0,.55);
+  pointer-events:none; display:none;
+}
+.countdown.show{display:block}
 </style>
 </head>
 <body>
@@ -266,6 +274,7 @@ body.stereo .dispbar{opacity:.55}
   <div class="gauge" id="gauge">
     <div class="gaugebar"><div class="gaugefill" id="gaugeFill"></div></div>
   </div>
+  <div class="countdown" id="countdown">20</div>
   <div class="tilt off" id="tilt">
     <div class="tiltcap">操作側の角度 <span id="buildTag"></span></div>
     <div class="tiltstage"><div class="tiltscene"><div class="tiltphone" id="tiltPhone"></div></div></div>
@@ -854,6 +863,55 @@ body.stereo .dispbar{opacity:.55}
     triggerHearts();
     action3Count = 0;
     updateAction3Gauge();
+    startForcedLoop();   // playerの2action(5〜10フレーム目)とhのaction4を、入力に関係なく20秒間ループさせる
+  }
+
+  // ---- 注視で選択された直後の演出：入力を無視して20秒間、playerの2action(5〜10フレーム目)とhのaction4をループ ----
+  const FORCED_LOOP_SEC = 20;          // 秒: 強制ループを続ける時間
+  let player2ActFrame5Time = 0;        // 「2action」の5フレーム目の秒数（読込時に算出）
+  let player2ActFrame10Time = 0;       // 「2action」の10フレーム目の秒数（読込時に算出）
+  let forcedLoopActive = false;        // 強制ループ中か
+  let forcedLoopRemain = 0;            // 強制ループの残り時間(秒)
+  let forcedLoopClock = 0;             // 強制ループ開始からの経過時間(秒)。5〜10フレーム目の往復に使う
+  let lastCountdownShown = null;       // 直前にHTMLへ反映したカウントダウンの秒数（変化した時だけ書き換える）
+  function startForcedLoop() {
+    forcedLoopActive = true;
+    forcedLoopRemain = FORCED_LOOP_SEC;
+    forcedLoopClock = 0;
+    action3Above = false;              // 強制ループ中は通常のaction3判定を止めるため、立ち上がり検知もリセットしておく
+    if (hAct4) {
+      const from = hCurAct || hIdleAct;
+      hCurAct = hAct4;
+      hAct4.setLoop(THREE.LoopRepeat, Infinity);   // 20秒間、入力に関係なくループ再生させる
+      hAct4.clampWhenFinished = false;
+      hAct4.reset().play();
+      hAct4.setEffectiveWeight(1);
+      if (from && from !== hAct4) hAct4.crossFadeFrom(from, TRIGGER_FADE, false);
+    }
+  }
+  function endForcedLoop() {
+    forcedLoopActive = false;
+    if (hAct4) {
+      hAct4.setLoop(THREE.LoopOnce, 1);   // 元の「1回だけ再生」設定に戻す
+      hAct4.clampWhenFinished = true;
+    }
+    if (hCurAct === hAct4) {
+      const done = hCurAct; hCurAct = null;
+      armIdleHold(armCurAct);
+      if (hIdleAct) { hIdleAct.reset().play(); hIdleAct.crossFadeFrom(done, TRIGGER_FADE, false); }
+    }
+  }
+  function updateForcedLoopCountdown() {
+    const el = $('#countdown');
+    if (!el) return;
+    if (forcedLoopActive) {
+      const secs = Math.max(0, Math.ceil(forcedLoopRemain));
+      if (secs !== lastCountdownShown) { el.textContent = String(secs); lastCountdownShown = secs; }
+      el.classList.add('show');
+    } else if (lastCountdownShown !== null) {
+      lastCountdownShown = null;
+      el.classList.remove('show');
+    }
   }
 
   function mulberry32(a) {
@@ -1373,6 +1431,14 @@ body.stereo .dispbar{opacity:.55}
       anim0Time = clamp(anim0Time, 0, clip.duration);
       playerAct.time = anim0Time;
       mixer.update(0);
+      // 「5フレーム目」「10フレーム目」の秒数も同じキーフレーム間隔から算出しておく（強制ループ演出用）
+      const frameTimeOf = function (idx) {
+        if (times && times.length > idx) return times[idx];
+        if (times && times.length > 1) return (times[1] - times[0]) * idx;
+        return 0;
+      };
+      player2ActFrame5Time = clamp(frameTimeOf(5), 0, clip.duration);
+      player2ActFrame10Time = clamp(frameTimeOf(10), 0, clip.duration);
       playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=先頭 / ' + ANIM_ZERO_FRAME + 'F目=0° / ' + ANIM_ANGLE_MAX + '°=最後）';
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
@@ -1687,7 +1753,26 @@ body.stereo .dispbar{opacity:.55}
       tiltSmoothReady = false;
     }
     // 2action: 選んだ軸の角度で再生位置を決める。-20°=先頭フレーム／0°=5フレーム目／8°=最終フレーム（区分線形）
-    if (playerAct && tiltLive) {
+    if (forcedLoopActive) {
+      // ---- 注視で選択された直後の演出：入力を無視して、5〜10フレーム目とhのaction4を往復ループ ----
+      forcedLoopClock += dt;
+      forcedLoopRemain -= dt;
+      if (forcedLoopRemain <= 0) {
+        endForcedLoop();
+      } else {
+        if (playerAct) {
+          const segDur = Math.max(0.0001, player2ActFrame10Time - player2ActFrame5Time);
+          const cyclePos = forcedLoopClock % (segDur * 2);
+          const local = cyclePos > segDur ? (segDur * 2 - cyclePos) : cyclePos;   // 5→10→5…と往復させる
+          playerAct.time = clamp(player2ActFrame5Time + local, player2ActFrame5Time, player2ActFrame10Time);
+          mixer.update(0);
+          playerProg = '  強制ループ中（5〜10フレーム目） 残り' + Math.ceil(forcedLoopRemain) + '秒';
+        }
+        action3Above = false;   // 強制ループ中は通常のaction3判定を止める
+      }
+      updateForcedLoopCountdown();
+    } else if (playerAct && tiltLive) {
+      updateForcedLoopCountdown();
       const duration = playerAct.getClip().duration;
       let t;
       const tiltRaw = tiltSmooth;              // カクツキを抑えるため、補間後の角度で再生位置を決める
@@ -1735,6 +1820,7 @@ body.stereo .dispbar{opacity:.55}
       action3Above = action3IsAbove;
     } else {
       action3Above = false;   // 角度データが無い間は次に達した時すぐ発動できる状態に戻す
+      updateForcedLoopCountdown();
     }
 
     // ---- playerplus: 2actionと同じ角度で「2actionplus」を動かす ----
@@ -1824,7 +1910,8 @@ body.stereo .dispbar{opacity:.55}
         'playerplus.glb: ' + plusState + plusAnim + '\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
-        'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示');
+        'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +
+        '強制ループ: ' + (forcedLoopActive ? '再生中 残り' + Math.ceil(forcedLoopRemain) + '秒' : '停止中');
     }
   }
 })();

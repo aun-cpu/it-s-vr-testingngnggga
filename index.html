@@ -1524,6 +1524,9 @@ body.stereo .dispbar{opacity:.55}
         if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);   // action3/4の再生中に再発動したら、その場で頭から再生し直す
         triggerSplash();   // action3/4が出た瞬間、初期カメラ正面で水滴が軽く飛び散る
         tiltZeroPending = true;   // 発動した瞬間の向きを新しい基準(0°)にリセットし、次のジェスチャーをここから検知する
+        tiltSmoothReady = false;  // 基準が切り替わった直後の1フレームは補間せず即座にスナップさせる
+                                   // （補間で新基準へゆっくり近づく動きが「-方向への動き」として誤検知され、
+                                   //   たまに次のジェスチャーを取りこぼす原因になっていたため）
         // playerarm: hと同じタイミングで、対応する 2action3/4 を再生
         const aa = act === hAct3 ? armAct3 : act === hAct4 ? armAct4 : null;
         if (armMixer && aa) {

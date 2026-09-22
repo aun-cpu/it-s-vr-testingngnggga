@@ -275,7 +275,7 @@ body.stereo .dispbar{opacity:.55}
     </div>
     <div class="tiltsel"><button type="button" id="tiltManualBtn">手動角度</button><button type="button" id="tiltReset">角度リセット</button></div>
     <div class="tiltmanual hidden" id="tiltManualWrap">
-      <input type="range" id="tiltManualRng" min="-10" max="10" step="0.5" value="0">
+      <input type="range" id="tiltManualRng" min="-7" max="7" step="0.5" value="0">
       <div class="tiltmanualval" id="tiltManualValTxt">0°</div>
     </div>
   </div>
@@ -715,8 +715,8 @@ body.stereo .dispbar{opacity:.55}
   // player.glbで計算した縮尺・位置合わせをそのまま使って完全に重ねる
   let playerScale = null;
   let playerOffX = 0, playerOffY = 0, playerOffZ = 0;
-  const ANIM_ANGLE_MAX = 4;          // 4°=最後のフレーム
-  const ANIM_ANGLE_MIN = -10;        // -10°=最初のフレーム
+  const ANIM_ANGLE_MAX = 2.8;        // 2.8°=最後のフレーム
+  const ANIM_ANGLE_MIN = -7;         // -7°=最初のフレーム
   const ANIM_ZERO_FRAME = 7;         // 0°になる基準フレーム番号
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
@@ -1334,7 +1334,7 @@ body.stereo .dispbar{opacity:.55}
   $('#buildTag').textContent = '(' + BUILD + ')';
   // 表示する軸を1つだけ選ぶ（a=α 回転 / b=β 前後の傾き / g=γ 左右の傾き）
   let tiltAxis = 'b';
-  const TILT_MAX = 10;                       // 角度の測定範囲：基準から ±10° まで
+  const TILT_MAX = 7;                        // 角度の測定範囲：基準から ±7° まで
   let tiltRefQ = null;                       // 基準の向き（この向きを0°とする）
   let tiltZeroPending = true;                // 次に角度データが届いた時点を基準にする
   // 操作側からの角度は約30Hz送信だが描画は60〜120Hzで動くため、そのまま使うと値が数フレーム

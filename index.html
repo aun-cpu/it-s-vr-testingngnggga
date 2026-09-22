@@ -864,6 +864,13 @@ body.stereo .dispbar{opacity:.55}
   let hOutlineMat = null;
   const H_OUTLINE_RATIO = 0.006;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
   const _outlineWorldScale = new THREE.Vector3();
+  const hOutlineMeshes = [];   // 生成した輪郭線メッシュを全部覚えておき、後からON/OFFできるようにする
+  // devtoolsのコンソールで toggleHOutlines(false) と打つと輪郭線メッシュだけを瞬時に非表示にできる。
+  // これで「黒い塊」が消えれば輪郭線が原因、消えなければ別の場所（元モデルやトゥーン material側）が原因と切り分けられる。
+  window.toggleHOutlines = function (visible) {
+    hOutlineMeshes.forEach(function (m) { m.visible = visible; });
+    console.log('[outline] ' + hOutlineMeshes.length + '個の輪郭線メッシュを' + (visible ? '表示' : '非表示') + 'にしました');
+  };
   // ファイルサイズ削減のため position/normal が量子化整数（KHR_mesh_quantization等、
   // BufferAttribute.normalized=true）で格納されている glTF があり、その場合
   // getX/getY/getZ は -1〜1 や実座標ではなく生の整数（例: -32768〜32767）をそのまま返す。
@@ -913,8 +920,16 @@ body.stereo .dispbar{opacity:.55}
     // ジオメトリに適用すると、小さいノードほど相対的に押し出し量が過大になり、
     // 大きな黒い塊になってしまう。そのメッシュのワールドスケールで割り戻してから押し出す。
     o.getWorldScale(_outlineWorldScale);
-    const s = (_outlineWorldScale.x + _outlineWorldScale.y + _outlineWorldScale.z) / 3 || 1;
+    // 単純な (x+y+z)/3 だと、ミラーリングされたノード（軸によってscaleの符号が違う）で
+    // 正負が打ち消し合ってsがほぼ0や負になり、amountが異常に巨大／符号反転してしまう。
+    // 絶対値の積の立方根なら符号キャンセルが起きず、常に妥当な正のスケール量になる。
+    const s = Math.cbrt(Math.abs(_outlineWorldScale.x * _outlineWorldScale.y * _outlineWorldScale.z)) || 1;
     const amount = worldThickness / s;
+    if (amount > worldThickness * 5 || amount < worldThickness * 0.2) {
+      console.warn('[outline] "' + o.name + '" のワールドスケールが他と大きく異なる可能性', {
+        worldScale: _outlineWorldScale.toArray(), s: s, worldThickness: worldThickness, amount: amount
+      });
+    }
     if (o.geometry.attributes.position.normalized || (o.geometry.attributes.normal && o.geometry.attributes.normal.normalized)) {
       console.warn('[outline] "' + o.name + '" は量子化された(normalized)頂点属性を使用 → 実座標に変換して押し出します', {
         positionNormalized: o.geometry.attributes.position.normalized,
@@ -934,6 +949,7 @@ body.stereo .dispbar{opacity:.55}
     outline.receiveShadow = false;
     outline.userData.__outline = true;   // model.traverse中の再帰追加を防ぐ目印
     o.add(outline);
+    hOutlineMeshes.push(outline);
   }
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }

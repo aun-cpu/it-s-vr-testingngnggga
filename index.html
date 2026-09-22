@@ -638,10 +638,10 @@ body.stereo .dispbar{opacity:.55}
   // ---- hのaction3/4が出た瞬間に飛び散る水滴エフェクト（原点は操作側の位置コントローラー px/py/pz で直接動かす。人物モデル本体は固定） ----
   const SPLASH_HEIGHT = 1.5;         // 人物モデルの位置(px,py,pz)からの高さの上乗せ分(m)。顔付近を狙う
   const SPLASH_COUNT = 30;           // 水滴の数（細かく・多めに）
-  const SPLASH_SIZE = 0.012;         // 水滴の大きさ(m)（細かく・小さめに）
-  const SPLASH_SPREAD = 0.9;         // 飛び散る速さの目安(m/s)
-  const SPLASH_GRAVITY = 2.4;        // 落下の速さ(m/s^2)
-  const SPLASH_LIFE = 0.4;           // 秒: 飛び散ってから消えるまで
+  const SPLASH_SIZE = 0.0005;         // 水滴の大きさ(m)（細かく・小さめに）
+  const SPLASH_SPREAD = 1.2;         // 飛び散る速さの目安(m/s)
+  const SPLASH_GRAVITY = 2.7;        // 落下の速さ(m/s^2)
+  const SPLASH_LIFE = 0.2;           // 秒: 飛び散ってから消えるまで
   const splashDrops = [];            // {mesh, vel, age, life}
   let splashGroup = null;
   function initSplash(scene) {

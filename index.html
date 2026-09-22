@@ -75,6 +75,7 @@ h1{font-size:20px; margin:0 0 8px}
   border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:7px 14px; cursor:pointer;
 }
 .mini:active{background:rgba(255,255,255,.3)}
+.mini.on{background:var(--accent); color:var(--accent-fg); border-color:transparent}
 .pill{
   font-size:12px; padding:5px 12px; border-radius:999px;
   background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
@@ -308,6 +309,7 @@ body.stereo .dispbar{opacity:.55}
     <button class="mini" id="dispBack">← 戻る</button>
     <button class="mini" id="dispVr">VR分割 切替</button>
     <button class="mini" id="dispReset">視点リセット</button>
+    <button class="mini" id="dispTalkTest">話す動きテスト: OFF</button>
   </div>
 </div>
 
@@ -643,6 +645,12 @@ body.stereo .dispbar{opacity:.55}
   }
   $('#dispVr').addEventListener('click', () => setStereo(!stereo));
   $('#dispReset').addEventListener('click', () => { recenterPending = true; });
+  $('#dispTalkTest').addEventListener('click', () => {
+    talkOn = !talkOn;
+    $('#dispTalkTest').textContent = '話す動きテスト: ' + (talkOn ? 'ON' : 'OFF');
+    $('#dispTalkTest').classList.toggle('on', talkOn);
+    talkChangeAt = 0;   // 押した瞬間にすぐ新しい母音を選び直す
+  });
 
   const P = { x: 0, y: 0, z: 0 };   // 視点位置は固定
   // カメラ位置の補正(m)。基準は目の高さ(地面から1.6m)・ワールド座標（+Zが後ろ向き）
@@ -818,6 +826,16 @@ body.stereo .dispbar{opacity:.55}
   let hBlinkTargets = [];            // {mesh, idx}: hのまばたきモーフ
   let hBlinkHeld = false;            // action3/4の終了後、まばたきを0へ戻す減衰中はtrue
   const BLINK_RELEASE_TAU = 0.35;    // 秒: action3/4終了後、まばたきモーフが1→0へ戻る速さ（大きいほどゆっくり）
+  // ---- hの「話してる風」の口の動き（あ/い/う/え/おモーフを0〜0.5でランダムに動かす） ----
+  const MOUTH_NAMES = ['あ', 'い', 'う', 'え', 'お'];   // 対象にするモーフ名（完全一致）
+  let hMouthTargets = null;          // { 'あ': [{mesh, idx}], ... }: hの母音モーフ
+  let talkOn = false;                // true: 動きをテスト再生中（ボタンでON/OFF）
+  let talkActiveName = null;         // いま近づけている母音（null＝口を閉じる方向）
+  let talkTargetLevel = 0;           // 現在アクティブな母音の目標値（0〜0.5でランダムに決める）
+  let talkChangeAt = 0;              // 次に母音を切り替える時刻(ms, performance.now()基準)
+  const TALK_LEVEL_MIN = 0, TALK_LEVEL_MAX = 0.5;      // モーフの可動範囲
+  const TALK_CHANGE_MIN_MS = 90, TALK_CHANGE_MAX_MS = 220;   // 母音切り替えの間隔(ms)
+  const TALK_SMOOTH_TAU = 0.06;      // 秒: 目標値へ近づく速さ（口パクが滑らかになる）
   const H_NAME3 = 'action3';
   const TRIGGER_FADE = 0.15;         // 秒: idleとのつなぎ
   let hAct4 = null;                  // hの「action4」（クリップは読み込むが、現在は再生に使わない）
@@ -1175,12 +1193,15 @@ body.stereo .dispbar{opacity:.55}
       group.add(model);
       hState = '表示中';
 
-      // まばたきモーフ（シェイプキー）を探す
+      // まばたきモーフ・話す動き用の母音モーフ（シェイプキー）を探す
       hBlinkTargets = [];
+      hMouthTargets = {};
+      MOUTH_NAMES.forEach(function (n) { hMouthTargets[n] = []; });
       model.traverse(function (o) {
         if (!o.isMesh || o.userData.__outline || !o.morphTargetDictionary || !o.morphTargetInfluences) return;
         Object.keys(o.morphTargetDictionary).forEach(function (k) {
           if (H_BLINK_RE.test(k)) hBlinkTargets.push({ mesh: o, idx: o.morphTargetDictionary[k] });
+          if (hMouthTargets[k]) hMouthTargets[k].push({ mesh: o, idx: o.morphTargetDictionary[k] });
         });
       });
 
@@ -1549,6 +1570,29 @@ body.stereo .dispbar{opacity:.55}
         }
         hBlinkHeld = stillFading;   // idle側にまばたきトラックがあれば、完全に0へ戻った後はそちらが優先される
       }
+    }
+
+    // ---- 話してる風の口の動き（あ/い/う/え/おモーフを0〜0.5でランダムに動かす。ボタンでON/OFF）----
+    if (hMouthTargets) {
+      if (now >= talkChangeAt) {
+        // 次に近づける母音を決める（たまに口を閉じる状態も混ぜて自然にする）
+        talkActiveName = (talkOn && Math.random() >= 0.15)
+          ? MOUTH_NAMES[Math.floor(Math.random() * MOUTH_NAMES.length)]
+          : null;
+        talkTargetLevel = TALK_LEVEL_MIN + Math.random() * (TALK_LEVEL_MAX - TALK_LEVEL_MIN);
+        talkChangeAt = now + TALK_CHANGE_MIN_MS + Math.random() * (TALK_CHANGE_MAX_MS - TALK_CHANGE_MIN_MS);
+      }
+      const talkDecay = 1 - Math.exp(-dt / TALK_SMOOTH_TAU);
+      MOUTH_NAMES.forEach(function (n) {
+        const targets = hMouthTargets[n];
+        if (!targets || !targets.length) return;
+        const target = (talkOn && n === talkActiveName) ? talkTargetLevel : 0;
+        for (let i = 0; i < targets.length; i++) {
+          const t = targets[i];
+          const cur = t.mesh.morphTargetInfluences[t.idx] || 0;
+          t.mesh.morphTargetInfluences[t.idx] = cur + (target - cur) * talkDecay;
+        }
+      });
     }
 
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----

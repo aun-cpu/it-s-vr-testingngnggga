@@ -739,9 +739,7 @@ body.stereo .dispbar{opacity:.55}
   const TRIGGER_FADE = 0.15;         // 秒: idleとのつなぎ
   let hAct4 = null;                  // hの「action4」（クリップは読み込むが、現在は再生に使わない）
   const H_NAME4 = 'action4';
-  const ACTION3_DEG = 10;            // 度: 基準からこの角度以上動いたら無条件でaction3を再生
-  const ACTION3_REARM_DEG = 7;       // 度: 発動後、この角度未満まで戻ったら次の発動に備える（±の往復チャタリング防止）
-  let action3Armed = true;           // true: 次にACTION3_DEGへ達したら発動できる状態
+  const ACTION3_DEG = 7;              // 度: 基準からこの角度以上動いたら無条件でaction3を再生
   // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
@@ -1507,8 +1505,7 @@ body.stereo .dispbar{opacity:.55}
       playerProg = '  再生位置 ' + t.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
 
       // ---- action3/4の判定（角度しきい値方式）----
-      // 基準からACTION3_DEG以上動いたら、往復を待たずに即・無条件でaction3を再生する。
-      // 発動後はACTION3_REARM_DEG未満まで戻るまで再発動しない（同じ姿勢で連続発火しないようにするため）。
+      // 基準からACTION3_DEG以上動いたら、その時点で無条件でaction3を再生する。
       const playH = function (act) {
         const from = hCurAct || hIdleAct;
         hCurAct = act;
@@ -1527,14 +1524,9 @@ body.stereo .dispbar{opacity:.55}
           if (af && af !== aa) aa.crossFadeFrom(af, TRIGGER_FADE, false);
         }
       };
-      if (action3Armed && tiltRaw >= ACTION3_DEG) {
+      if (tiltRaw >= ACTION3_DEG) {
         if (hAct3) playH(hAct3);
-        action3Armed = false;      // 戻るまで再発動しない
-      } else if (!action3Armed && tiltRaw < ACTION3_REARM_DEG) {
-        action3Armed = true;       // 次の発動に備える
       }
-    } else {
-      action3Armed = true;      // 角度データが無い間は次回すぐ発動できる状態に戻す
     }
 
     // ---- playerplus: 2actionと同じ角度で「2actionplus」を動かす ----

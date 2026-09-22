@@ -160,6 +160,16 @@ body.stereo .tilt{display:none}
 .tiltmanual{margin-top:6px; pointer-events:auto}
 .tiltmanual input[type=range]{width:100%; height:26px; margin:0; accent-color:#6b93f0}
 .tiltmanualval{font-size:12px; color:#c9d1e2; margin-top:2px}
+.hproc{
+  z-index:5; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+  width:110px; padding:8px; border-radius:10px; background:rgba(0,0,0,.45); color:#fff;
+  font:11px/1.5 ui-monospace,Menlo,monospace; text-align:center;
+}
+body.stereo .hproc{display:none}
+.hproccap{color:#9aa6bd; margin-bottom:4px}
+.hproc .tiltsel{margin-top:4px}
+.hproc .tiltsel:first-of-type{margin-top:0}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
@@ -265,6 +275,12 @@ body.stereo .dispbar{opacity:.55}
       <input type="range" id="tiltManualRng" min="-20" max="20" step="0.5" value="0">
       <div class="tiltmanualval" id="tiltManualValTxt">0°</div>
     </div>
+  </div>
+  <div class="hproc" id="hproc">
+    <div class="hproccap">hの表示処理</div>
+    <div class="tiltsel"><button type="button" class="on" id="hpOutline">輪郭線</button></div>
+    <div class="tiltsel"><button type="button" class="on" id="hpLighten">色を薄く</button></div>
+    <div class="tiltsel"><button type="button" class="on" id="hpOpaque">不透明化</button></div>
   </div>
   <div class="wait" id="wait">
     <div id="waitMsg">接続を準備中…</div>
@@ -850,6 +866,7 @@ body.stereo .dispbar{opacity:.55}
     tex.needsUpdate = true;
     return tex;
   }
+  const hToonMats = [];   // {mat, origColor, litColor, origTransparent, origOpacity}: 各材質の元の状態とオン/オフを切り替えるための情報
   function applyToon(o) {
     if (!o.isMesh || !o.material) return;
     o.castShadow = true;
@@ -857,22 +874,26 @@ body.stereo .dispbar{opacity:.55}
     if (!hToonGradient) hToonGradient = makeToonGradient();
     const list = Array.isArray(o.material) ? o.material : [o.material];
     const made = list.map(function (m) {
+      const origColor = m.color ? m.color.clone() : new THREE.Color(0xffffff);
+      const origTransparent = !!m.transparent;
+      const origOpacity = m.opacity != null ? m.opacity : 1;
       const t = new THREE.MeshToonMaterial({
-        color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
+        color: origColor.clone(),
         map: m.map || null,
         gradientMap: hToonGradient,
-        transparent: false,        // 元の材質が半透明でも、hは常に不透明に戻す
-        opacity: 1
+        transparent: origTransparent,
+        opacity: origOpacity
       });
       // 瞳・眉・口の輪郭など、もともと暗い色の材質まで白へ寄せると浮いて見えるため、
       // 明るさに応じてなめらかに薄さを変える（輝度0.15〜0.55の間で0→フル適用に遷移。
       // しきい値で急にON/OFFすると、隣り合う材質の境目で色が急に変わって見えてしまう）
-      const lum = t.color ? (0.299 * t.color.r + 0.587 * t.color.g + 0.114 * t.color.b) : 1;
+      const lum = origColor.r * 0.299 + origColor.g * 0.587 + origColor.b * 0.114;
       const lumT = clamp((lum - 0.15) / (0.55 - 0.15), 0, 1);
       const lightenAmt = H_COLOR_LIGHTEN * (lumT * lumT * (3 - 2 * lumT));   // smoothstep
-      if (lightenAmt > 0) t.color.lerp(new THREE.Color(0xffffff), lightenAmt);   // 色を薄く（白に近づける）
+      const litColor = origColor.clone().lerp(new THREE.Color(0xffffff), lightenAmt);   // 色を薄く（白に近づける）
       if (o.isSkinnedMesh) t.skinning = true;
       if (o.morphTargetInfluences && o.morphTargetInfluences.length) t.morphTargets = true;
+      hToonMats.push({ mat: t, origColor: origColor, litColor: litColor, origTransparent: origTransparent, origOpacity: origOpacity });
       return t;
     });
     o.material = Array.isArray(o.material) ? made : made[0];
@@ -889,10 +910,26 @@ body.stereo .dispbar{opacity:.55}
   const H_OUTLINE_RATIO = 0.001;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
   const _outlineWorldScale = new THREE.Vector3();
   const hOutlineMeshes = [];   // 生成した輪郭線メッシュを全部覚えておき、後からON/OFFできるようにする
+  // 表示側で行っている「hの見た目の処理」のオン/オフ状態（ボタンで切替。既定はすべてON）
+  let hOutlineOn = true, hLightenOn = true, hOpaqueOn = true;
+  function applyHOutline() {
+    hOutlineMeshes.forEach(function (m) { m.visible = hOutlineOn; });
+  }
+  function applyHProcessing() {
+    for (let i = 0; i < hToonMats.length; i++) {
+      const e = hToonMats[i];
+      e.mat.color.copy(hLightenOn ? e.litColor : e.origColor);
+      if (hOpaqueOn) { e.mat.transparent = false; e.mat.opacity = 1; }
+      else { e.mat.transparent = e.origTransparent; e.mat.opacity = e.origOpacity; }
+      e.mat.needsUpdate = true;
+    }
+  }
   // devtoolsのコンソールで toggleHOutlines(false) と打つと輪郭線メッシュだけを瞬時に非表示にできる。
   // これで「黒い塊」が消えれば輪郭線が原因、消えなければ別の場所（元モデルやトゥーン material側）が原因と切り分けられる。
   window.toggleHOutlines = function (visible) {
-    hOutlineMeshes.forEach(function (m) { m.visible = visible; });
+    hOutlineOn = !!visible;
+    applyHOutline();
+    const btn = $('#hpOutline'); if (btn) btn.classList.toggle('on', hOutlineOn);
     console.log('[outline] ' + hOutlineMeshes.length + '個の輪郭線メッシュを' + (visible ? '表示' : '非表示') + 'にしました');
   };
   // ファイルサイズ削減のため position/normal が量子化整数（KHR_mesh_quantization等、
@@ -991,6 +1028,7 @@ body.stereo .dispbar{opacity:.55}
       // メッシュごとのノードscaleの違いはaddOutline側でgetWorldScale()を使って吸収する。
       const outlineWorldThickness = finalSize.y > 0 ? finalSize.y * H_OUTLINE_RATIO : H_OUTLINE_RATIO;
       model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o, outlineWorldThickness); } });
+      applyHOutline(); applyHProcessing();   // 初期状態（既定は全部ON）を反映
       group.add(model);
       hState = '表示中';
 
@@ -1275,6 +1313,22 @@ body.stereo .dispbar{opacity:.55}
     tiltManualVal = parseFloat(tiltManualRng.value) || 0;
     tiltManualValTxt.textContent = tiltManualVal.toFixed(1) + '°';
     lastTiltKey = '';
+  });
+  // hに施している表示処理（輪郭線・色を薄く・不透明化）のオン/オフボタン
+  $('#hpOutline').addEventListener('click', (e) => {
+    hOutlineOn = !hOutlineOn;
+    e.currentTarget.classList.toggle('on', hOutlineOn);
+    applyHOutline();
+  });
+  $('#hpLighten').addEventListener('click', (e) => {
+    hLightenOn = !hLightenOn;
+    e.currentTarget.classList.toggle('on', hLightenOn);
+    applyHProcessing();
+  });
+  $('#hpOpaque').addEventListener('click', (e) => {
+    hOpaqueOn = !hOpaqueOn;
+    e.currentTarget.classList.toggle('on', hOpaqueOn);
+    applyHProcessing();
   });
   const GYRO_LABEL = { off: '未使用', waiting: '待機中', active: '有効', denied: '拒否（端末設定を確認）', error: 'エラー', unsupported: '非対応（画面ドラッグで代用）' };
 

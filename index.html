@@ -173,15 +173,17 @@ body.stereo .hproc{display:none}
 .hproc .pl{width:4.2em; font-size:11px}
 .hproc .pv{width:3.2em; font-size:11px}
 .hproc input[type=range]{flex:1; min-width:0; height:26px; margin:0; accent-color:#6b93f0}
-/* action3の再生回数ゲージ（横向き・ピンク・バーのみ・VR中も表示） */
+/* action3の再生回数ゲージ（縦向き・ピンク・バーのみ・VR中も表示） */
 .gauge{
   z-index:5; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
-  width:min(50vw,220px); padding:0; border-radius:999px;
-  pointer-events:none;
+  width:14px; padding:0; pointer-events:none;
 }
-.gaugebar{width:100%; height:10px; border-radius:999px; background:rgba(255,255,255,.15); overflow:hidden}
-.gaugefill{height:100%; width:0%; background:#ff5fa8; box-shadow:0 0 6px #ff5fa8; transition:width .15s linear}
+.gaugebar{
+  width:100%; height:min(40vh,240px); border-radius:999px; background:rgba(255,255,255,.15);
+  overflow:hidden; display:flex; flex-direction:column; align-items:stretch; justify-content:flex-end;
+}
+.gaugefill{width:100%; height:0%; background:#ff5fa8; box-shadow:0 0 6px #ff5fa8; transition:height .15s linear}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
@@ -706,6 +708,74 @@ body.stereo .dispbar{opacity:.55}
     }
   }
 
+  // ---- hのaction3が出た瞬間にhの周りへランダムに飛び出すピンクのハート（🩷）----
+  const HEART_HEIGHT = SPLASH_HEIGHT;  // 人物モデルの位置(px,py,pz)からの高さの上乗せ分(m)。水滴と同じく顔付近を中心に散らす
+  const HEART_COUNT = 8;               // 1回のaction3で出すハートの数
+  const HEART_SIZE = 0.16;             // ハートの基準の大きさ(m)
+  const HEART_SPREAD = 0.4;            // hの周りに散らす半径の目安(m)
+  const HEART_RISE = 0.35;             // 上昇速度の目安(m/s)
+  const HEART_LIFE = 1.1;              // 秒: 出てから消えるまで
+  const heartSprites = [];             // {spr, age, life, vy}
+  let heartGroup = null;
+  let heartTexture = null;
+  function getHeartTexture() {
+    if (heartTexture) return heartTexture;
+    const cvs = document.createElement('canvas');
+    cvs.width = 128; cvs.height = 128;
+    const ctx = cvs.getContext('2d');
+    ctx.font = '104px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🩷', 64, 70);
+    heartTexture = new THREE.CanvasTexture(cvs);
+    return heartTexture;
+  }
+  function initHearts(scene) {
+    heartGroup = new THREE.Group();
+    const tex = getHeartTexture();
+    for (let i = 0; i < HEART_COUNT; i++) {
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false });
+      const spr = new THREE.Sprite(mat);
+      spr.visible = false;
+      spr.scale.setScalar(HEART_SIZE);
+      heartGroup.add(spr);
+      heartSprites.push({ spr: spr, age: 0, life: HEART_LIFE, vy: 0 });
+    }
+    scene.add(heartGroup);
+  }
+  function triggerHearts() {
+    if (!heartGroup) return;
+    // 原点はtriggerSplashと同じ「操作側の位置コントローラー（px,py,pz）」基準（＝hの顔付近）
+    const ox = inp.px, oy = inp.py + HEART_HEIGHT, oz = inp.pz;
+    for (let i = 0; i < heartSprites.length; i++) {
+      const h = heartSprites[i];
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * HEART_SPREAD;
+      h.spr.position.set(
+        ox + Math.cos(ang) * r,
+        oy + (Math.random() - 0.35) * HEART_SPREAD,
+        oz + Math.sin(ang) * r * 0.6
+      );
+      h.age = 0;
+      h.life = HEART_LIFE * (0.7 + Math.random() * 0.6);
+      h.vy = HEART_RISE * (0.6 + Math.random() * 0.8);
+      h.spr.visible = true;
+      h.spr.material.opacity = 0.95;
+      h.spr.scale.setScalar(HEART_SIZE * (0.7 + Math.random() * 0.6));
+    }
+  }
+  function updateHearts(dt) {
+    if (!heartGroup) return;
+    for (let i = 0; i < heartSprites.length; i++) {
+      const h = heartSprites[i];
+      if (!h.spr.visible) continue;
+      h.age += dt;
+      if (h.age >= h.life) { h.spr.visible = false; continue; }
+      h.spr.position.y += h.vy * dt;
+      h.spr.material.opacity = 0.95 * (1 - h.age / h.life);
+    }
+  }
+
   function mulberry32(a) {
     return function () {
       a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -758,7 +828,7 @@ body.stereo .dispbar{opacity:.55}
   function updateAction3Gauge() {
     const shown = Math.min(action3Count, ACTION3_COUNT_MAX);
     const gf = $('#gaugeFill');
-    if (gf) gf.style.width = (shown / ACTION3_COUNT_MAX * 100) + '%';
+    if (gf) gf.style.height = (shown / ACTION3_COUNT_MAX * 100) + '%';
   }
   // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
@@ -1301,6 +1371,7 @@ body.stereo .dispbar{opacity:.55}
       });
 
       initSplash(scene);   // hのaction3/4トリガー時の水滴エフェクト（初期カメラ正面の固定位置）
+      initHearts(scene);   // hのaction3トリガー時のハート（🩷）エフェクト
 
       R = {
         renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup,
@@ -1458,6 +1529,7 @@ body.stereo .dispbar{opacity:.55}
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     updateSplash(dt);                                         // 水滴エフェクトの飛散・落下・フェードを更新
+    updateHearts(dt);                                         // ハートエフェクトの上昇・フェードを更新
     // action3/4の再生中は、まばたきモーフを1にし続ける。終了後はゆっくり0へ戻す（mixerの更新後に上書きする）
     {
       const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
@@ -1533,6 +1605,7 @@ body.stereo .dispbar{opacity:.55}
         act.setEffectiveWeight(1);
         if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);
         triggerSplash();   // actionが出た瞬間、初期カメラ正面で水滴が軽く飛び散る
+        if (act === hAct3) triggerHearts();   // action3の瞬間、hの周りにピンクのハートをランダムに出す
         if (act === hAct3) { action3Count++; updateAction3Gauge(); }   // 再生回数をカウントしゲージへ反映
         // playerarm: hと同じタイミングで、対応する 2action3 を再生
         const aa = act === hAct3 ? armAct3 : null;

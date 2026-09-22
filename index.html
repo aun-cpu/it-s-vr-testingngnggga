@@ -161,19 +161,6 @@ body.stereo .tilt{display:none}
 .tiltmanual{margin-top:6px; pointer-events:auto}
 .tiltmanual input[type=range]{width:100%; height:26px; margin:0; accent-color:#6b93f0}
 .tiltmanualval{font-size:12px; color:#c9d1e2; margin-top:2px}
-.hproc{
-  z-index:5; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
-  width:min(58vw,220px); padding:8px 10px; border-radius:10px; background:rgba(0,0,0,.45); color:#fff;
-  font:11px/1.5 ui-monospace,Menlo,monospace; text-align:center;
-}
-body.stereo .hproc{display:none}
-.hproccap{color:#9aa6bd; margin-bottom:4px}
-.hproc .prow{margin:0 0 4px}
-.hproc .prow:last-child{margin-bottom:0}
-.hproc .pl{width:4.2em; font-size:11px}
-.hproc .pv{width:3.2em; font-size:11px}
-.hproc input[type=range]{flex:1; min-width:0; height:26px; margin:0; accent-color:#6b93f0}
 /* action3の再生回数ゲージ（縦向き・ピンク・バーのみ・VR中も表示） */
 .gauge{
   z-index:5; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px);
@@ -294,12 +281,6 @@ body.stereo .dispbar{opacity:.55}
       <div class="tiltmanualval" id="tiltManualValTxt">0°</div>
     </div>
   </div>
-  <div class="hproc" id="hproc">
-    <div class="hproccap">水滴の設定</div>
-    <div class="prow"><span class="pl">速さ</span><input type="range" id="rng-splashSpeed" min="0.1" max="3" step="0.05" value="0.9"><span class="pv" id="val-splashSpeed">0.90</span></div>
-    <div class="prow"><span class="pl">大きさ</span><input type="range" id="rng-splashSize" min="0.002" max="0.05" step="0.001" value="0.012"><span class="pv" id="val-splashSize">0.012</span></div>
-    <div class="prow"><span class="pl">持続時間</span><input type="range" id="rng-splashLife" min="0.1" max="2" step="0.05" value="0.4"><span class="pv" id="val-splashLife">0.40</span></div>
-  </div>
   <div class="wait" id="wait">
     <div id="waitMsg">接続を準備中…</div>
     <div class="code" id="codeText">------</div>
@@ -310,6 +291,7 @@ body.stereo .dispbar{opacity:.55}
     <button class="mini" id="dispVr">VR分割 切替</button>
     <button class="mini" id="dispReset">視点リセット</button>
     <button class="mini" id="dispTalkTest">話す動きテスト: OFF</button>
+    <button class="mini" id="dispGaugeTest">ゲージ 75→150</button>
   </div>
 </div>
 
@@ -1480,21 +1462,12 @@ body.stereo .dispbar{opacity:.55}
     tiltManualValTxt.textContent = tiltManualVal.toFixed(1) + '°';
     lastTiltKey = '';
   });
-  // 水滴（splash）の速さ・大きさ・持続時間のスライダー
-  const rngSplashSpeed = $('#rng-splashSpeed'), valSplashSpeed = $('#val-splashSpeed');
-  const rngSplashSize = $('#rng-splashSize'), valSplashSize = $('#val-splashSize');
-  const rngSplashLife = $('#rng-splashLife'), valSplashLife = $('#val-splashLife');
-  rngSplashSpeed.addEventListener('input', (e) => {
-    SPLASH_SPREAD = parseFloat(e.target.value);
-    valSplashSpeed.textContent = SPLASH_SPREAD.toFixed(2);
-  });
-  rngSplashSize.addEventListener('input', (e) => {
-    SPLASH_SIZE = parseFloat(e.target.value);
-    valSplashSize.textContent = SPLASH_SIZE.toFixed(3);
-  });
-  rngSplashLife.addEventListener('input', (e) => {
-    SPLASH_LIFE = parseFloat(e.target.value);
-    valSplashLife.textContent = SPLASH_LIFE.toFixed(2);
+  // ゲージのテスト用ボタン：押すたびに action3Count を 75 → 150 と交互に進める
+  let gaugeTestNext = 75;
+  $('#dispGaugeTest').addEventListener('click', () => {
+    action3Count = gaugeTestNext;
+    updateAction3Gauge();
+    gaugeTestNext = (gaugeTestNext === 75) ? 150 : 75;
   });
   const GYRO_LABEL = { off: '未使用', waiting: '待機中', active: '有効', denied: '拒否（端末設定を確認）', error: 'エラー', unsupported: '非対応（画面ドラッグで代用）' };
 

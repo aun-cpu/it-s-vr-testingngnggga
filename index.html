@@ -736,14 +736,12 @@ body.stereo .dispbar{opacity:.55}
   let hBlinkHeld = false;            // action3/4の終了後、まばたきを0へ戻す減衰中はtrue
   const BLINK_RELEASE_TAU = 0.35;    // 秒: action3/4終了後、まばたきモーフが1→0へ戻る速さ（大きいほどゆっくり）
   const H_NAME3 = 'action3';
-  const TRIGGER_WINDOW = 0.2;        // 秒: -方向へTRIGGER_DEG以上動いたと判定する検知窓（小さすぎる/遅すぎる変化を除外するため）
   const TRIGGER_FADE = 0.15;         // 秒: idleとのつなぎ
   let hAct4 = null;                  // hの「action4」（クリップは読み込むが、現在は再生に使わない）
   const H_NAME4 = 'action4';
-  const TRIGGER_DEG = 10;            // 度: TRIGGER_WINDOW秒以内にこの角度以上-方向へ動いたら判定開始（これ未満の小さな動きは無視。例: 0→-1→0は対象外）
-  let judgeActive = false;           // 判定中（-方向への動きを検知し、判定開始地点への戻り＝一往復の完了を待っている）かどうか
-  let judgeStartAngle = 0;           // 度: 判定開始地点（動き出す直前）の角度。ここまで戻ってきたら一往復とみなしaction3を再生
-  const angHist = [];                // {now(ms), a(度)} 直近TRIGGER_WINDOW秒ぶんの操作側の角度
+  const ACTION3_DEG = 10;            // 度: 基準からこの角度以上動いたら無条件でaction3を再生
+  const ACTION3_REARM_DEG = 7;       // 度: 発動後、この角度未満まで戻ったら次の発動に備える（±の往復チャタリング防止）
+  let action3Armed = true;           // true: 次にACTION3_DEGへ達したら発動できる状態
   // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
@@ -1508,11 +1506,9 @@ body.stereo .dispbar{opacity:.55}
       mixer.update(0);
       playerProg = '  再生位置 ' + t.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
 
-      // ---- action3/4の判定（完全書き換え）----
-      // -方向へTRIGGER_DEG以上動いたことを検知した時点で判定を開始し、動き出す直前の角度（判定開始地点）まで
-      // 戻ってきた＝一往復し終えたタイミングでaction3を再生する（0→-1→0のような小さすぎる動きはTRIGGER_DEG未満なので対象外）
-      angHist.push({ now: now, a: tiltRaw });
-      while (angHist.length > 1 && now - angHist[0].now > TRIGGER_WINDOW * 1000) angHist.shift();
+      // ---- action3/4の判定（角度しきい値方式）----
+      // 基準からACTION3_DEG以上動いたら、往復を待たずに即・無条件でaction3を再生する。
+      // 発動後はACTION3_REARM_DEG未満まで戻るまで再発動しない（同じ姿勢で連続発火しないようにするため）。
       const playH = function (act) {
         const from = hCurAct || hIdleAct;
         hCurAct = act;
@@ -1520,10 +1516,6 @@ body.stereo .dispbar{opacity:.55}
         act.setEffectiveWeight(1);
         if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);
         triggerSplash();   // actionが出た瞬間、初期カメラ正面で水滴が軽く飛び散る
-        tiltZeroPending = true;   // 発動した瞬間の向きを新しい基準(0°)にリセットし、次のジェスチャーをここから検知する
-        tiltSmoothReady = false;  // 基準が切り替わった直後の1フレームは補間せず即座にスナップさせる
-                                   // （補間で新基準へゆっくり近づく動きが「-方向への動き」として誤検知され、
-                                   //   たまに次のジェスチャーを取りこぼす原因になっていたため）
         // playerarm: hと同じタイミングで、対応する 2action3 を再生
         const aa = act === hAct3 ? armAct3 : null;
         if (armMixer && aa) {
@@ -1535,23 +1527,14 @@ body.stereo .dispbar{opacity:.55}
           if (af && af !== aa) aa.crossFadeFrom(af, TRIGGER_FADE, false);
         }
       };
-      if (!judgeActive) {
-        // 直近0.2秒の最大角度（動き出す直前の位置）からの-方向の進み量（度）を見る
-        let maxA = tiltRaw;
-        for (let i = 0; i < angHist.length; i++) if (angHist[i].a > maxA) maxA = angHist[i].a;
-        if (maxA - tiltRaw >= TRIGGER_DEG) {
-          judgeActive = true;
-          judgeStartAngle = maxA;   // ここへ戻ってきたら「一往復」とみなす判定開始地点
-        }
-      } else if (tiltRaw >= judgeStartAngle) {
-        // 判定開始地点まで戻ってきた＝一往復完了。時間の制限は設けず、必ずaction3を再生する
+      if (action3Armed && tiltRaw >= ACTION3_DEG) {
         if (hAct3) playH(hAct3);
-        judgeActive = false;
-        angHist.length = 0;   // すぐ次の一往復を検知できるようにリセット（速い連続再生に対応）
+        action3Armed = false;      // 戻るまで再発動しない
+      } else if (!action3Armed && tiltRaw < ACTION3_REARM_DEG) {
+        action3Armed = true;       // 次の発動に備える
       }
     } else {
-      angHist.length = 0;      // 角度データが無い間は履歴を捨てる
-      judgeActive = false;
+      action3Armed = true;      // 角度データが無い間は次回すぐ発動できる状態に戻す
     }
 
     // ---- playerplus: 2actionと同じ角度で「2actionplus」を動かす ----

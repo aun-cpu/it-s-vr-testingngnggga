@@ -710,6 +710,7 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- hのaction3が出た瞬間にhの周りへランダムに飛び出すピンクのハート（🩷）----
   const HEART_HEIGHT = SPLASH_HEIGHT;  // 人物モデルの位置(px,py,pz)からの高さの上乗せ分(m)。水滴と同じく顔付近を中心に散らす
+  const HEART_FORWARD = 0.5;           // hの位置から前方（-Z方向）へずらす距離(m)。もっと手前から出したい時はここを増やす
   const HEART_COUNT = 8;               // 1回のaction3で出すハートの数
   const HEART_SIZE = 0.16;             // ハートの基準の大きさ(m)
   const HEART_SPREAD = 0.4;            // hの周りに散らす半径の目安(m)
@@ -746,7 +747,7 @@ body.stereo .dispbar{opacity:.55}
   function triggerHearts() {
     if (!heartGroup) return;
     // 原点はtriggerSplashと同じ「操作側の位置コントローラー（px,py,pz）」基準（＝hの顔付近）
-    const ox = inp.px, oy = inp.py + HEART_HEIGHT, oz = inp.pz;
+    const ox = inp.px, oy = inp.py + HEART_HEIGHT, oz = inp.pz - HEART_FORWARD;   // -Zが前方なので引いて手前に出す
     for (let i = 0; i < heartSprites.length; i++) {
       const h = heartSprites[i];
       const ang = Math.random() * Math.PI * 2;

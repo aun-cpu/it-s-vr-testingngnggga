@@ -641,7 +641,7 @@ body.stereo .dispbar{opacity:.55}
   // ---- hのaction3/4が出た瞬間に飛び散る水滴エフェクト（原点は操作側の位置コントローラー px/py/pz で直接動かす。人物モデル本体は固定） ----
   const SPLASH_HEIGHT = 1.5;         // 人物モデルの位置(px,py,pz)からの高さの上乗せ分(m)。顔付近を狙う
   const SPLASH_COUNT = 30;           // 水滴の数（細かく・多めに）
-  let SPLASH_SIZE = 0.012;           // 水滴の大きさ(m)（表示側のスライダーで変更可）
+  let SPLASH_SIZE = 0.0004;           // 水滴の大きさ(m)（表示側のスライダーで変更可）
   let SPLASH_SPREAD = 0.9;           // 飛び散る速さの目安(m/s)（表示側のスライダーで変更可）
   const SPLASH_GRAVITY = 2.4;        // 落下の速さ(m/s^2)
   let SPLASH_LIFE = 0.4;             // 秒: 飛び散ってから消えるまで（表示側のスライダーで変更可）

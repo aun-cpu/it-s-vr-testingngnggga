@@ -914,7 +914,7 @@ body.stereo .dispbar{opacity:.55}
   }
   function addOutline(o, worldThickness) {
     if (!o.isMesh) return;
-    if (!hOutlineMat) hOutlineMat = new THREE.MeshBasicMaterial({ color: 0x0c0c0c, side: THREE.BackSide });
+    if (!hOutlineMat) hOutlineMat = new THREE.MeshBasicMaterial({ color: 0x0c0c0c, side: THREE.BackSide, skinning: true });
     // メッシュごとにローカル座標→ワールドの拡大率が違う（目・眉・髪・アクセサリ等は
     // 胴体と別のノードscaleを持つことが多い）。狙いの太さ(worldThickness)を毎回そのまま
     // ジオメトリに適用すると、小さいノードほど相対的に押し出し量が過大になり、

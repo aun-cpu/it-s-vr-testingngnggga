@@ -173,6 +173,18 @@ body.stereo .hproc{display:none}
 .hproc .pl{width:4.2em; font-size:11px}
 .hproc .pv{width:3.2em; font-size:11px}
 .hproc input[type=range]{flex:1; min-width:0; height:26px; margin:0; accent-color:#6b93f0}
+/* action3の再生回数ゲージ（横向き・ピンク） */
+.gauge{
+  z-index:5; position:absolute; left:50%; top:calc(env(safe-area-inset-top,0px) + 8px);
+  transform:translateX(-50%); width:min(64vw,280px); padding:7px 12px; border-radius:10px;
+  background:rgba(0,0,0,.45); color:#fff; font:11px/1.5 ui-monospace,Menlo,monospace; text-align:center;
+  pointer-events:none;
+}
+body.stereo .gauge{display:none}
+.gaugecap{color:#9aa6bd; margin-bottom:4px}
+.gaugebar{width:100%; height:10px; border-radius:999px; background:rgba(255,255,255,.15); overflow:hidden}
+.gaugefill{height:100%; width:0%; background:#ff5fa8; box-shadow:0 0 6px #ff5fa8; transition:width .15s linear}
+.gaugeval{margin-top:4px}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
@@ -264,6 +276,11 @@ body.stereo .dispbar{opacity:.55}
   <canvas id="cv"></canvas>
   <div id="seam"></div>
   <div class="hud" id="hud"></div>
+  <div class="gauge" id="gauge">
+    <div class="gaugecap">action3 再生回数</div>
+    <div class="gaugebar"><div class="gaugefill" id="gaugeFill"></div></div>
+    <div class="gaugeval" id="gaugeVal">0 / 150</div>
+  </div>
   <div class="tilt off" id="tilt">
     <div class="tiltcap">操作側の角度 <span id="buildTag"></span></div>
     <div class="tiltstage"><div class="tiltscene"><div class="tiltphone" id="tiltPhone"></div></div></div>
@@ -741,6 +758,14 @@ body.stereo .dispbar{opacity:.55}
   const H_NAME4 = 'action4';
   const ACTION3_DEG = 7;              // 度: 基準からこの角度以上動いたら無条件でaction3を再生
   let action3Above = false;           // 直前フレームでACTION3_DEG以上だったか（1回だけ再生するための立ち上がり検知用）
+  let action3Count = 0;                // action3を再生した回数（累計）
+  const ACTION3_COUNT_MAX = 150;       // ゲージの上限（この回数で満タン表示）
+  function updateAction3Gauge() {
+    const shown = Math.min(action3Count, ACTION3_COUNT_MAX);
+    const gf = $('#gaugeFill'), gv = $('#gaugeVal');
+    if (gf) gf.style.width = (shown / ACTION3_COUNT_MAX * 100) + '%';
+    if (gv) gv.textContent = shown + ' / ' + ACTION3_COUNT_MAX;
+  }
   // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
@@ -1514,6 +1539,7 @@ body.stereo .dispbar{opacity:.55}
         act.setEffectiveWeight(1);
         if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);
         triggerSplash();   // actionが出た瞬間、初期カメラ正面で水滴が軽く飛び散る
+        if (act === hAct3) { action3Count++; updateAction3Gauge(); }   // 再生回数をカウントしゲージへ反映
         // playerarm: hと同じタイミングで、対応する 2action3 を再生
         const aa = act === hAct3 ? armAct3 : null;
         if (armMixer && aa) {

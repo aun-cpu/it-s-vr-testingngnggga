@@ -830,14 +830,23 @@ body.stereo .dispbar{opacity:.55}
   let hToonGradient = null;
   function makeToonGradient() {
     const steps = 3;
-    const data = new Uint8Array(steps * 3);
-    for (let i = 0; i < steps; i++) {
-      const v = Math.round(255 * (i + 1) / steps);
+    const size = 64;                   // 段の境目をなめらかにするため高解像度にしてLinear補間する
+    const softness = 0.35;             // 各段の境目をぼかす幅（0〜1、大きいほどなめらか）
+    const data = new Uint8Array(size * 3);
+    for (let i = 0; i < size; i++) {
+      const x = i / (size - 1);                    // 0..1
+      const raw = x * steps;                       // 0..steps
+      const idx = Math.min(steps - 1, Math.floor(raw));
+      const frac = raw - idx;
+      const mixT = clamp((frac - (1 - softness)) / softness, 0, 1);   // 段の終わり付近だけ次の段へ混ぜる
+      const vLo = (idx + 1) / steps;
+      const vHi = (Math.min(steps - 1, idx + 1) + 1) / steps;
+      const v = Math.round(255 * (vLo + (vHi - vLo) * mixT));
       data[i * 3] = v; data[i * 3 + 1] = v; data[i * 3 + 2] = v;
     }
-    const tex = new THREE.DataTexture(data, steps, 1, THREE.RGBFormat);
-    tex.minFilter = THREE.NearestFilter;
-    tex.magFilter = THREE.NearestFilter;
+    const tex = new THREE.DataTexture(data, size, 1, THREE.RGBFormat);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
     tex.needsUpdate = true;
     return tex;
   }

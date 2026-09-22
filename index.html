@@ -817,7 +817,7 @@ body.stereo .dispbar{opacity:.55}
     if (!o.isMesh || !o.material) return;
     const list = Array.isArray(o.material) ? o.material : [o.material];
     list.forEach(function (m) {
-      if (m.color) m.color.lerp(new THREE.Color(0xffffff), 0.15);   // 色を少し薄く
+      if (m.color) m.color.lerp(new THREE.Color(0xffffff), 0);   // 色を少し薄く
       if ('roughness' in m) m.roughness = Math.min(m.roughness != null ? m.roughness : 0.8, 0.35);
       if ('metalness' in m) m.metalness = Math.max(m.metalness != null ? m.metalness : 0, 0.08);
       if ('shininess' in m) m.shininess = Math.max(m.shininess != null ? m.shininess : 30, 70);

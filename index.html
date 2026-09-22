@@ -855,9 +855,13 @@ body.stereo .dispbar{opacity:.55}
         transparent: false,        // 元の材質が半透明でも、hは常に不透明に戻す
         opacity: 1
       });
-      // 瞳・眉・口の輪郭など、もともと暗い色の材質まで白へ寄せると、そこだけ色が浮いて見えるため対象外にする
+      // 瞳・眉・口の輪郭など、もともと暗い色の材質まで白へ寄せると浮いて見えるため、
+      // 明るさに応じてなめらかに薄さを変える（輝度0.15〜0.55の間で0→フル適用に遷移。
+      // しきい値で急にON/OFFすると、隣り合う材質の境目で色が急に変わって見えてしまう）
       const lum = t.color ? (0.299 * t.color.r + 0.587 * t.color.g + 0.114 * t.color.b) : 1;
-      if (lum > 0.35) t.color.lerp(new THREE.Color(0xffffff), H_COLOR_LIGHTEN);   // 色を薄く（白に近づける）
+      const lumT = clamp((lum - 0.15) / (0.55 - 0.15), 0, 1);
+      const lightenAmt = H_COLOR_LIGHTEN * (lumT * lumT * (3 - 2 * lumT));   // smoothstep
+      if (lightenAmt > 0) t.color.lerp(new THREE.Color(0xffffff), lightenAmt);   // 色を薄く（白に近づける）
       if (o.isSkinnedMesh) t.skinning = true;
       if (o.morphTargetInfluences && o.morphTargetInfluences.length) t.morphTargets = true;
       return t;

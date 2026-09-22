@@ -172,17 +172,6 @@ body.stereo .tilt{display:none}
   overflow:hidden; display:flex; flex-direction:column; align-items:stretch; justify-content:flex-end;
 }
 .gaugefill{width:100%; height:0%; background:#ff5fa8; box-shadow:0 0 6px #ff5fa8; transition:height .15s linear}
-/* ゲージ満タン時にhの上に出るハートボタンを、視線で注視するためのレティクル（中央の丸） */
-.reticle{
-  position:absolute; top:50%; left:50%; width:30px; height:30px; margin:-15px 0 0 -15px;
-  border-radius:50%; pointer-events:none; z-index:6; display:none;
-  background:conic-gradient(#ff5fa8 calc(var(--gp,0) * 360deg), rgba(255,255,255,.3) 0deg);
-}
-.reticle.show{display:block}
-.reticle::after{content:""; position:absolute; inset:4px; border-radius:50%; background:rgba(10,10,14,.6)}
-.reticle.gazing::after{background:rgba(255,95,168,.45)}
-body.stereo #reticleL{left:25%}
-body.stereo #reticleR{left:75%}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
@@ -273,8 +262,6 @@ body.stereo .dispbar{opacity:.55}
 <div id="disp" class="screen dark hidden">
   <canvas id="cv"></canvas>
   <div id="seam"></div>
-  <div class="reticle" id="reticleL"></div>
-  <div class="reticle" id="reticleR"></div>
   <div class="hud" id="hud"></div>
   <div class="gauge" id="gauge">
     <div class="gaugebar"><div class="gaugefill" id="gaugeFill"></div></div>
@@ -780,6 +767,95 @@ body.stereo .dispbar{opacity:.55}
     }
   }
 
+  // ---- ゲージが満タン(150)になったら hの上に出す「ピンクの丸に♡」ボタン（視線で注視して選択）----
+  const ACTION_BUTTON_HEIGHT_OFFSET = 0.35;  // m: hの頭上からの高さ
+  const ACTION_BUTTON_SIZE = 0.22;           // m: ボタンの基準サイズ（直径目安）
+  const GAZE_HIT_RADIUS = 0.16;              // m: 視線判定の半径（ボタン中心からの許容距離）
+  const GAZE_DWELL_SEC = 1.2;                // 秒: これだけ注視し続けたら選択（決定）とみなす
+  let hHeight = 1.6;                         // h.glbの高さ(m)。読込完了後に実測値へ更新
+  let actionButtonGroup = null;              // ボタン本体（アイコン＋注視リング）
+  let actionButtonSprite = null;             // ピンクの丸に♡のスプライト
+  let actionButtonRingSprite = null;         // 注視の進み具合を示すリング
+  let actionButtonVisible = false;           // ボタンを表示中か（=ゲージが150に達しているか）
+  let gazeOnButton = false;                  // 今のフレームでボタンを注視しているか
+  let gazeDwell = 0;                         // 注視し続けている時間(秒)
+  let actionButtonTexture = null;
+  function getActionButtonTexture() {
+    if (actionButtonTexture) return actionButtonTexture;
+    const cvs = document.createElement('canvas');
+    cvs.width = 256; cvs.height = 256;
+    const ctx = cvs.getContext('2d');
+    ctx.beginPath();
+    ctx.arc(128, 128, 116, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff5fa8';
+    ctx.shadowColor = 'rgba(255,95,168,0.9)';
+    ctx.shadowBlur = 26;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.font = '138px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('♡', 128, 140);
+    actionButtonTexture = new THREE.CanvasTexture(cvs);
+    return actionButtonTexture;
+  }
+  let actionRingCanvas = null, actionRingCtx = null, actionRingTexture = null;
+  function getActionButtonRingTexture() {
+    if (actionRingTexture) return actionRingTexture;
+    actionRingCanvas = document.createElement('canvas');
+    actionRingCanvas.width = 256; actionRingCanvas.height = 256;
+    actionRingCtx = actionRingCanvas.getContext('2d');
+    actionRingTexture = new THREE.CanvasTexture(actionRingCanvas);
+    return actionRingTexture;
+  }
+  function drawActionButtonRing(progress) {
+    const ctx = actionRingCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 256, 256);
+    if (progress > 0) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const start = -Math.PI / 2;
+      ctx.arc(128, 128, 110, start, start + Math.PI * 2 * Math.min(1, progress));
+      ctx.stroke();
+    }
+    actionRingTexture.needsUpdate = true;
+  }
+  function initActionButton(scene) {
+    actionButtonGroup = new THREE.Group();
+    actionButtonGroup.visible = false;
+    const btnMat = new THREE.SpriteMaterial({ map: getActionButtonTexture(), transparent: true, depthWrite: false });
+    actionButtonSprite = new THREE.Sprite(btnMat);
+    actionButtonSprite.scale.setScalar(ACTION_BUTTON_SIZE);
+    actionButtonGroup.add(actionButtonSprite);
+    const ringMat = new THREE.SpriteMaterial({ map: getActionButtonRingTexture(), transparent: true, depthWrite: false, opacity: 0.95 });
+    actionButtonRingSprite = new THREE.Sprite(ringMat);
+    actionButtonRingSprite.scale.setScalar(ACTION_BUTTON_SIZE * 1.35);
+    actionButtonGroup.add(actionButtonRingSprite);
+    scene.add(actionButtonGroup);
+  }
+  function updateActionButtonVisual() {
+    if (!actionButtonSprite) return;
+    const s = ACTION_BUTTON_SIZE * (1 + 0.12 * (gazeDwell / GAZE_DWELL_SEC));
+    actionButtonSprite.scale.setScalar(s);
+    drawActionButtonRing(gazeDwell / GAZE_DWELL_SEC);
+  }
+  function setActionButtonVisible(v) {
+    if (actionButtonVisible === v) return;
+    actionButtonVisible = v;
+    if (actionButtonGroup) actionButtonGroup.visible = v;
+    if (!v) { gazeDwell = 0; gazeOnButton = false; drawActionButtonRing(0); }
+  }
+  function selectActionButton() {
+    // 注視で選択（決定）された時の演出：ハートを出し、ゲージをリセットして次に備える（ボタンは自動的に隠れる）
+    triggerHearts();
+    action3Count = 0;
+    updateAction3Gauge();
+  }
+
   function mulberry32(a) {
     return function () {
       a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -843,49 +919,7 @@ body.stereo .dispbar{opacity:.55}
     const shown = Math.min(action3Count, ACTION3_COUNT_MAX);
     const gf = $('#gaugeFill');
     if (gf) gf.style.height = (shown / ACTION3_COUNT_MAX * 100) + '%';
-  }
-  // ---- ゲージが満タン(150)になったらhの上に出す、ピンクの丸に♡のボタン（視線で注視して発動）----
-  const GAZEBTN_HEIGHT = SPLASH_HEIGHT + 0.55;  // hの頭上あたりの高さ(m)
-  const GAZEBTN_FORWARD = 0.3;                  // 前方（-Z）へのオフセット(m)
-  const GAZEBTN_SIZE = 0.3;                     // ボタンの基準の大きさ(m)
-  const GAZE_ANGLE_DEG = 9;                     // 度: 視線とボタンのズレがこの角度以内なら「注視中」とみなす
-  const GAZE_HOLD_SEC = 1.4;                    // 秒: 注視し続けたら発動するまでの時間
-  const CAM_POS = new THREE.Vector3(CAM_OFFSET.x, 1.6 + CAM_OFFSET.y, CAM_OFFSET.z);  // 視点位置は固定なのでカメラ位置も固定
-  let gazeBtnSprite = null, gazeBtnTexture = null;
-  let gazeBtnActive = false;   // ボタンを表示中か（ゲージ満タン中）
-  let gazeProgress = 0;        // 0〜1: 注視の進み具合
-  function getGazeBtnTexture() {
-    if (gazeBtnTexture) return gazeBtnTexture;
-    const cvs = document.createElement('canvas');
-    cvs.width = 160; cvs.height = 160;
-    const ctx = cvs.getContext('2d');
-    ctx.beginPath();
-    ctx.arc(80, 80, 74, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff5fa8';
-    ctx.fill();
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = 'rgba(255,255,255,.9)';
-    ctx.stroke();
-    ctx.font = '84px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('♡', 80, 88);
-    gazeBtnTexture = new THREE.CanvasTexture(cvs);
-    return gazeBtnTexture;
-  }
-  function initGazeBtn(scene) {
-    const mat = new THREE.SpriteMaterial({ map: getGazeBtnTexture(), transparent: true, depthWrite: false, depthTest: false });
-    gazeBtnSprite = new THREE.Sprite(mat);
-    gazeBtnSprite.scale.setScalar(GAZEBTN_SIZE);
-    gazeBtnSprite.visible = false;
-    gazeBtnSprite.renderOrder = 999;
-    scene.add(gazeBtnSprite);
-  }
-  function updateGazeReticle(active, gazing, progress) {
-    const l = $('#reticleL'), r = $('#reticleR');
-    if (l) { l.classList.toggle('show', active); l.classList.toggle('gazing', gazing); l.style.setProperty('--gp', progress); }
-    if (r) { r.classList.toggle('show', active && stereo); r.classList.toggle('gazing', gazing); r.style.setProperty('--gp', progress); }
+    setActionButtonVisible(action3Count >= ACTION3_COUNT_MAX);   // ゲージが150に達したらhの上のボタンを出す
   }
   // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
@@ -1223,6 +1257,7 @@ body.stereo .dispbar{opacity:.55}
       const finalSize = box.getSize(new THREE.Vector3());
       const c = box.getCenter(new THREE.Vector3());
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      if (finalSize.y > 0) hHeight = finalSize.y;   // 実測の高さをボタンの位置合わせに使う
       // 輪郭線の狙いの太さ（スケール適用後のワールド単位で共通の値にする）。
       // メッシュごとのノードscaleの違いはaddOutline側でgetWorldScale()を使って吸収する。
       const outlineWorldThickness = finalSize.y > 0 ? finalSize.y * H_OUTLINE_RATIO : H_OUTLINE_RATIO;
@@ -1432,7 +1467,7 @@ body.stereo .dispbar{opacity:.55}
 
       initSplash(scene);   // hのaction3/4トリガー時の水滴エフェクト（初期カメラ正面の固定位置）
       initHearts(scene);   // hのaction3トリガー時のハート（🩷）エフェクト
-      initGazeBtn(scene);  // ゲージ満タン時にhの上へ出す、視線注視ボタン
+      initActionButton(scene);   // ゲージ満タン時にhの上へ出す、視線で注視できるボタン
 
       R = {
         renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup,
@@ -1714,6 +1749,27 @@ body.stereo .dispbar{opacity:.55}
     const cam = R.camera;
     cam.quaternion.copy(T.camQ);
     const ex = P.x + CAM_OFFSET.x, ey = P.y + 1.6 + CAM_OFFSET.y, ez = P.z + CAM_OFFSET.z;
+
+    // ---- hの上のボタン（ゲージ満タン時）の位置更新と、視線での注視判定 ----
+    if (actionButtonGroup) {
+      actionButtonGroup.position.set(0, hHeight + ACTION_BUTTON_HEIGHT_OFFSET, 0);
+      if (actionButtonVisible) {
+        const bx = actionButtonGroup.position.x - ex, by = actionButtonGroup.position.y - ey, bz = actionButtonGroup.position.z - ez;
+        const bdist = Math.hypot(bx, by, bz);
+        let hit = false;
+        if (bdist > 0.001) {
+          const nx = bx / bdist, ny = by / bdist, nz = bz / bdist;
+          const dot = clamp(T.fwd.x * nx + T.fwd.y * ny + T.fwd.z * nz, -1, 1);
+          const hitAngle = Math.atan2(GAZE_HIT_RADIUS, bdist);   // ボタンの見かけの大きさに合わせた許容角度
+          hit = Math.acos(dot) <= hitAngle;
+        }
+        gazeOnButton = hit;
+        gazeDwell = hit ? Math.min(GAZE_DWELL_SEC, gazeDwell + dt) : Math.max(0, gazeDwell - dt * 2);
+        updateActionButtonVisual();
+        if (hit && gazeDwell >= GAZE_DWELL_SEC) selectActionButton();
+      }
+    }
+
     if (!stereo) {
       R.renderer.setScissorTest(false);
       R.renderer.setViewport(0, 0, W, H);
@@ -1767,7 +1823,8 @@ body.stereo .dispbar{opacity:.55}
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + '\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
-        '向き ' + yawDeg.toFixed(0) + '°';
+        '向き ' + yawDeg.toFixed(0) + '°\n' +
+        'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示');
     }
   }
 })();

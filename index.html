@@ -1519,10 +1519,11 @@ body.stereo .dispbar{opacity:.55}
       const playH = function (act) {
         const from = hCurAct || hIdleAct;
         hCurAct = act;
-        act.reset().play();
+        act.reset().play();                    // 再生中の同じ/別のactionでも、その場で頭から再生し直す（打ち切って構わない）
         act.setEffectiveWeight(1);
-        if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);   // action4の再生中に再発動したら、その場で頭から再生し直す
+        if (from && from !== act) act.crossFadeFrom(from, TRIGGER_FADE, false);   // action3/4の再生中に再発動したら、その場で頭から再生し直す
         triggerSplash();   // action3/4が出た瞬間、初期カメラ正面で水滴が軽く飛び散る
+        tiltZeroPending = true;   // 発動した瞬間の向きを新しい基準(0°)にリセットし、次のジェスチャーをここから検知する
         // playerarm: hと同じタイミングで、対応する 2action3/4 を再生
         const aa = act === hAct3 ? armAct3 : act === hAct4 ? armAct4 : null;
         if (armMixer && aa) {

@@ -229,7 +229,7 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" data-tab="plus">半透明(playerplus)</button>
     </div>
     <div id="posTab-body">
-      <p class="postitle">人物モデルの位置（表示側の視点からの座標・m）</p>
+      <p class="postitle">水滴の位置（表示側の視点からの座標・m）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="px" data-d="-1">−</button><input type="range" id="rng-px" data-k="px" min="-200" max="200" step="0.05"><button type="button" class="pstep" data-k="px" data-d="1">＋</button><span class="pv" id="val-px">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="py" data-d="-1">−</button><input type="range" id="rng-py" data-k="py" min="-200" max="200" step="0.05"><button type="button" class="pstep" data-k="py" data-d="1">＋</button><span class="pv" id="val-py">0.00</span></div>
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="pz" data-d="-1">−</button><input type="range" id="rng-pz" data-k="pz" min="-200" max="200" step="0.05"><button type="button" class="pstep" data-k="pz" data-d="1">＋</button><span class="pv" id="val-pz">0.00</span></div>
@@ -374,9 +374,9 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 表示側 ----
   // ce: 操作側の角度が有効か / cq: 操作側スマホの向き（四元数 [x,y,z,w]、画面基準）/ csa: 操作側の画面の向き(0/90/180/270)
-  // 人物モデルの位置（表示側の視点を原点、-Zが前。初期は視点と同じ0,0,0）。操作側で調整して表示側へ送る
+  // 水滴の位置（表示側の視点を原点、-Zが前。初期は視点と同じ0,0,0）。操作側で調整して表示側へ送る。人物モデル本体はこれに連動せず固定
   const POS_DEFAULT = {
-    px: 0, py: 0, pz: 0,                       // 人物モデル本体の位置
+    px: 0, py: 0, pz: 0,                       // 水滴エフェクトの原点位置
     aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
     pox: 0, poy: 0, poz: 0, por: 0             // playerplus: player本体とのズレ（位置m・回転°）
   };
@@ -635,13 +635,13 @@ body.stereo .dispbar{opacity:.55}
   let dragYaw = 0, dragPitch = 0;   // ジャイロが使えない時の代用（画面ドラッグ）
   let lastFx = 0, lastFz = -1;
 
-  // ---- hのaction3/4が出た瞬間に飛び散る水滴エフェクト（原点は人物モデルの位置コントローラーに連動） ----
+  // ---- hのaction3/4が出た瞬間に飛び散る水滴エフェクト（原点は操作側の位置コントローラー px/py/pz で直接動かす。人物モデル本体は固定） ----
   const SPLASH_HEIGHT = 1.5;         // 人物モデルの位置(px,py,pz)からの高さの上乗せ分(m)。顔付近を狙う
-  const SPLASH_COUNT = 12;           // 水滴の数（細かく・多めに）
-  const SPLASH_SIZE = 0.009;         // 水滴の大きさ(m)（細かく・小さめに）
+  const SPLASH_COUNT = 30;           // 水滴の数（細かく・多めに）
+  const SPLASH_SIZE = 0.012;         // 水滴の大きさ(m)（細かく・小さめに）
   const SPLASH_SPREAD = 0.9;         // 飛び散る速さの目安(m/s)
   const SPLASH_GRAVITY = 2.4;        // 落下の速さ(m/s^2)
-  const SPLASH_LIFE = 0.2;           // 秒: 飛び散ってから消えるまで
+  const SPLASH_LIFE = 0.4;           // 秒: 飛び散ってから消えるまで
   const splashDrops = [];            // {mesh, vel, age, life}
   let splashGroup = null;
   function initSplash(scene) {
@@ -659,7 +659,7 @@ body.stereo .dispbar{opacity:.55}
   }
   function triggerSplash() {
     if (!splashGroup) return;
-    // 原点は「人物モデルの位置」コントローラー（px,py,pz。距離の制限なく操作側から動かせる）に連動
+    // 原点は操作側の位置コントローラー（px,py,pz）が直接動かす水滴の位置。人物モデル本体はこの値に連動しない
     const ox = inp.px, oy = inp.py + SPLASH_HEIGHT, oz = inp.pz;
     for (let i = 0; i < splashDrops.length; i++) {
       const d = splashDrops[i];
@@ -1253,28 +1253,28 @@ body.stereo .dispbar{opacity:.55}
 
       const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
 
-      // 人物モデル（player.glb）。位置は操作側から届く値で動かす
+      // 人物モデル（player.glb）。位置は固定（操作側のpx/py/pzは水滴の位置に使う）
       const playerGroup = new THREE.Group();
-      playerGroup.position.set(inp.px, inp.py, inp.pz);
+      playerGroup.position.set(0, 0, 0);
       playerGroup.rotation.y = PLAYER_FACING;
       scene.add(playerGroup);
 
       // h.glb（idleをループ再生。player.glb の隣に据え置き）
       const hGroup = new THREE.Group();
-      hGroup.position.set(inp.px, inp.py, inp.pz);
+      hGroup.position.set(0, 0, 0);
       hGroup.rotation.y = H_FACING;
       scene.add(hGroup);
       loadH(hGroup);
 
-      // playerarm.glb（playerと同じ位置・向き）
+      // playerarm.glb（playerと同じ位置・向き。player本体は固定なのでズレ量だけを適用）
       const armGroup = new THREE.Group();
-      armGroup.position.set(inp.px + inp.aox, inp.py + inp.aoy, inp.pz + inp.aoz);
+      armGroup.position.set(inp.aox, inp.aoy, inp.aoz);
       armGroup.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
       scene.add(armGroup);
 
-      // playerplus.glb（playerと同じ位置・向き。半透明）
+      // playerplus.glb（playerと同じ位置・向き。半透明。player本体は固定なのでズレ量だけを適用）
       const plusGroup = new THREE.Group();
-      plusGroup.position.set(inp.px + inp.pox, inp.py + inp.poy, inp.pz + inp.poz);
+      plusGroup.position.set(inp.pox, inp.poy, inp.poz);
       plusGroup.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
       scene.add(plusGroup);
 
@@ -1429,15 +1429,15 @@ body.stereo .dispbar{opacity:.55}
     const fl = Math.hypot(T.fwd.x, T.fwd.z);
     if (fl > 0.2) { lastFx = T.fwd.x / fl; lastFz = T.fwd.z / fl; }
 
-    // ---- 人物モデルのアニメーションと位置 ----
-    R.player.position.set(inp.px, inp.py, inp.pz);
-    if (R.h) R.h.position.set(inp.px, inp.py, inp.pz);       // playerと同じ位置に追従
+    // ---- 人物モデルのアニメーションと位置（位置は固定。px/py/pzは水滴の位置操作に使う） ----
+    R.player.position.set(0, 0, 0);
+    if (R.h) R.h.position.set(0, 0, 0);       // playerと同じ位置（固定）に追従
     if (R.plus) {
-      R.plus.position.set(inp.px + inp.pox, inp.py + inp.poy, inp.pz + inp.poz);   // playerと同じ位置に追従（＋操作側からのズレ調整）
+      R.plus.position.set(inp.pox, inp.poy, inp.poz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）
       R.plus.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
     }
     if (R.arm) {
-      R.arm.position.set(inp.px + inp.aox, inp.py + inp.aoy, inp.pz + inp.aoz);   // playerと同じ位置に追従（＋操作側からのズレ調整）
+      R.arm.position.set(inp.aox, inp.aoy, inp.aoz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）
       R.arm.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
     }
     if (armMixer) armMixer.update(dt);
@@ -1630,7 +1630,7 @@ body.stereo .dispbar{opacity:.55}
         'h.glb: ' + hState + hAnim + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + '\n' +
-        '位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
+        '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°';
     }
   }

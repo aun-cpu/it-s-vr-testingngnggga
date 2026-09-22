@@ -163,13 +163,16 @@ body.stereo .tilt{display:none}
 .hproc{
   z-index:5; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
-  width:110px; padding:8px; border-radius:10px; background:rgba(0,0,0,.45); color:#fff;
+  width:min(58vw,220px); padding:8px 10px; border-radius:10px; background:rgba(0,0,0,.45); color:#fff;
   font:11px/1.5 ui-monospace,Menlo,monospace; text-align:center;
 }
 body.stereo .hproc{display:none}
 .hproccap{color:#9aa6bd; margin-bottom:4px}
-.hproc .tiltsel{margin-top:4px}
-.hproc .tiltsel:first-of-type{margin-top:0}
+.hproc .prow{margin:0 0 4px}
+.hproc .prow:last-child{margin-bottom:0}
+.hproc .pl{width:4.2em; font-size:11px}
+.hproc .pv{width:3.2em; font-size:11px}
+.hproc input[type=range]{flex:1; min-width:0; height:26px; margin:0; accent-color:#6b93f0}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
@@ -277,10 +280,10 @@ body.stereo .dispbar{opacity:.55}
     </div>
   </div>
   <div class="hproc" id="hproc">
-    <div class="hproccap">hの表示処理</div>
-    <div class="tiltsel"><button type="button" class="on" id="hpOutline">輪郭線</button></div>
-    <div class="tiltsel"><button type="button" class="on" id="hpLighten">色を薄く</button></div>
-    <div class="tiltsel"><button type="button" class="on" id="hpOpaque">不透明化</button></div>
+    <div class="hproccap">水滴の設定</div>
+    <div class="prow"><span class="pl">速さ</span><input type="range" id="rng-splashSpeed" min="0.1" max="3" step="0.05" value="0.9"><span class="pv" id="val-splashSpeed">0.90</span></div>
+    <div class="prow"><span class="pl">大きさ</span><input type="range" id="rng-splashSize" min="0.002" max="0.05" step="0.001" value="0.012"><span class="pv" id="val-splashSize">0.012</span></div>
+    <div class="prow"><span class="pl">持続時間</span><input type="range" id="rng-splashLife" min="0.1" max="2" step="0.05" value="0.4"><span class="pv" id="val-splashLife">0.40</span></div>
   </div>
   <div class="wait" id="wait">
     <div id="waitMsg">接続を準備中…</div>
@@ -638,15 +641,15 @@ body.stereo .dispbar{opacity:.55}
   // ---- hのaction3/4が出た瞬間に飛び散る水滴エフェクト（原点は操作側の位置コントローラー px/py/pz で直接動かす。人物モデル本体は固定） ----
   const SPLASH_HEIGHT = 1.5;         // 人物モデルの位置(px,py,pz)からの高さの上乗せ分(m)。顔付近を狙う
   const SPLASH_COUNT = 30;           // 水滴の数（細かく・多めに）
-  const SPLASH_SIZE = 0.0005;         // 水滴の大きさ(m)（細かく・小さめに）
-  const SPLASH_SPREAD = 1.2;         // 飛び散る速さの目安(m/s)
-  const SPLASH_GRAVITY = 2.7;        // 落下の速さ(m/s^2)
-  const SPLASH_LIFE = 0.2;           // 秒: 飛び散ってから消えるまで
+  let SPLASH_SIZE = 0.012;           // 水滴の大きさ(m)（表示側のスライダーで変更可）
+  let SPLASH_SPREAD = 0.9;           // 飛び散る速さの目安(m/s)（表示側のスライダーで変更可）
+  const SPLASH_GRAVITY = 2.4;        // 落下の速さ(m/s^2)
+  let SPLASH_LIFE = 0.4;             // 秒: 飛び散ってから消えるまで（表示側のスライダーで変更可）
   const splashDrops = [];            // {mesh, vel, age, life}
   let splashGroup = null;
   function initSplash(scene) {
     splashGroup = new THREE.Group();
-    const geo = new THREE.SphereGeometry(SPLASH_SIZE, 10, 8);   // 粒を細かく（分割数を増やして滑らかに）
+    const geo = new THREE.SphereGeometry(1, 10, 8);   // 単位球。実際の大きさはスケールでSPLASH_SIZEを反映（粒を細かく：分割数を増やして滑らかに）
     for (let i = 0; i < SPLASH_COUNT; i++) {
       const mat = new THREE.MeshBasicMaterial({ color: 0xcdeeff, transparent: true, opacity: 0, depthWrite: false });
       const mesh = new THREE.Mesh(geo, mat);
@@ -674,7 +677,7 @@ body.stereo .dispbar{opacity:.55}
       d.age = 0;
       d.life = SPLASH_LIFE * (0.75 + Math.random() * 0.5);
       d.mesh.visible = true;
-      d.mesh.scale.setScalar(0.6 + Math.random() * 0.6);
+      d.mesh.scale.setScalar(SPLASH_SIZE * (0.6 + Math.random() * 0.6));
       d.mesh.material.opacity = 0.8;
     }
   }
@@ -1372,21 +1375,21 @@ body.stereo .dispbar{opacity:.55}
     tiltManualValTxt.textContent = tiltManualVal.toFixed(1) + '°';
     lastTiltKey = '';
   });
-  // hに施している表示処理（輪郭線・色を薄く・不透明化）のオン/オフボタン
-  $('#hpOutline').addEventListener('click', (e) => {
-    hOutlineOn = !hOutlineOn;
-    e.currentTarget.classList.toggle('on', hOutlineOn);
-    applyHOutline();
+  // 水滴（splash）の速さ・大きさ・持続時間のスライダー
+  const rngSplashSpeed = $('#rng-splashSpeed'), valSplashSpeed = $('#val-splashSpeed');
+  const rngSplashSize = $('#rng-splashSize'), valSplashSize = $('#val-splashSize');
+  const rngSplashLife = $('#rng-splashLife'), valSplashLife = $('#val-splashLife');
+  rngSplashSpeed.addEventListener('input', (e) => {
+    SPLASH_SPREAD = parseFloat(e.target.value);
+    valSplashSpeed.textContent = SPLASH_SPREAD.toFixed(2);
   });
-  $('#hpLighten').addEventListener('click', (e) => {
-    hLightenOn = !hLightenOn;
-    e.currentTarget.classList.toggle('on', hLightenOn);
-    applyHProcessing();
+  rngSplashSize.addEventListener('input', (e) => {
+    SPLASH_SIZE = parseFloat(e.target.value);
+    valSplashSize.textContent = SPLASH_SIZE.toFixed(3);
   });
-  $('#hpOpaque').addEventListener('click', (e) => {
-    hOpaqueOn = !hOpaqueOn;
-    e.currentTarget.classList.toggle('on', hOpaqueOn);
-    applyHProcessing();
+  rngSplashLife.addEventListener('input', (e) => {
+    SPLASH_LIFE = parseFloat(e.target.value);
+    valSplashLife.textContent = SPLASH_LIFE.toFixed(2);
   });
   const GYRO_LABEL = { off: '未使用', waiting: '待機中', active: '有効', denied: '拒否（端末設定を確認）', error: 'エラー', unsupported: '非対応（画面ドラッグで代用）' };
 

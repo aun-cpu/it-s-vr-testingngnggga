@@ -157,6 +157,9 @@ body.stereo .tilt{display:none}
   border:1px solid rgba(255,255,255,.25); border-radius:8px; padding:5px 0; cursor:pointer; touch-action:manipulation;
 }
 .tiltsel button.on{background:var(--accent); color:var(--accent-fg); border-color:transparent; font-weight:700}
+.tiltmanual{margin-top:6px; pointer-events:auto}
+.tiltmanual input[type=range]{width:100%; height:26px; margin:0; accent-color:#6b93f0}
+.tiltmanualval{font-size:12px; color:#c9d1e2; margin-top:2px}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
@@ -257,7 +260,11 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" data-axis="b" class="on">β 前後</button>
       <button type="button" data-axis="g">γ 左右</button>
     </div>
-    <div class="tiltsel"><button type="button" id="tiltReset">角度リセット</button></div>
+    <div class="tiltsel"><button type="button" id="tiltManualBtn">手動角度</button><button type="button" id="tiltReset">角度リセット</button></div>
+    <div class="tiltmanual hidden" id="tiltManualWrap">
+      <input type="range" id="tiltManualRng" min="-20" max="20" step="0.5" value="0">
+      <div class="tiltmanualval" id="tiltManualValTxt">0°</div>
+    </div>
   </div>
   <div class="wait" id="wait">
     <div id="waitMsg">接続を準備中…</div>
@@ -1228,6 +1235,11 @@ body.stereo .dispbar{opacity:.55}
   let tiltSmooth = 0;                        // 補間後の角度（2action等の再生位置計算に使う）
   let tiltSmoothReady = false;               // 次に有効な角度が届いたら、補間をその値から始める
   const TILT_SMOOTH_TAU = 0.05;              // 秒: 補間の追従の速さ（小さいほど速く追従）
+  // 表示側のスライダーで角度を手動指定するモード（操作側スマホなしでテストできる）
+  let tiltManual = false;                    // true: スライダーの値を使う（操作側からの角度は無視）
+  let tiltManualVal = 0;                     // 手動角度（度）
+  const tiltManualBtn = $('#tiltManualBtn'), tiltManualWrap = $('#tiltManualWrap'),
+        tiltManualRng = $('#tiltManualRng'), tiltManualValTxt = $('#tiltManualValTxt');
   $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; lastTiltKey = ''; });
   $('#tiltSel').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-axis]');
@@ -1235,6 +1247,17 @@ body.stereo .dispbar{opacity:.55}
     tiltAxis = btn.dataset.axis;
     for (const b of $('#tiltSel').querySelectorAll('button')) b.classList.toggle('on', b === btn);
     lastTiltKey = '';      // 次のフレームで表示を更新
+  });
+  tiltManualBtn.addEventListener('click', () => {
+    tiltManual = !tiltManual;
+    tiltManualBtn.classList.toggle('on', tiltManual);
+    tiltManualWrap.classList.toggle('hidden', !tiltManual);
+    lastTiltKey = '';
+  });
+  tiltManualRng.addEventListener('input', () => {
+    tiltManualVal = parseFloat(tiltManualRng.value) || 0;
+    tiltManualValTxt.textContent = tiltManualVal.toFixed(1) + '°';
+    lastTiltKey = '';
   });
   const GYRO_LABEL = { off: '未使用', waiting: '待機中', active: '有効', denied: '拒否（端末設定を確認）', error: 'エラー', unsupported: '非対応（画面ドラッグで代用）' };
 
@@ -1311,17 +1334,26 @@ body.stereo .dispbar{opacity:.55}
     }
 
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
-    const tiltLive = fresh && inp.ce === 1;
+    const gyroLive = fresh && inp.ce === 1;
+    const tiltLive = tiltManual || gyroLive;   // 手動モード中は操作側からの受信の有無に関わらず「有効」として扱う
     if (!linked) { tiltZeroPending = true; tiltSmoothReady = false; }          // 切断中は次の接続で基準・補間を取り直す
-    if (tiltLive && tiltZeroPending) {            // 最初のデータ／リセット押下時の向きを0°にする
+    if (gyroLive && tiltZeroPending) {            // 最初のデータ／リセット押下時の向きを0°にする
       tiltRefQ = inp.cq.slice();
       tiltZeroPending = false;
     }
     // 基準からの回転（画面の軸まわり）: x=前後 / y=左右 / z=回転
-    const tiltRv = (tiltLive && tiltRefQ) ? relRot(tiltRefQ, inp.cq) : [0, 0, 0];
-    const tiltRaw = tiltAxis === 'a' ? tiltRv[2] : tiltAxis === 'b' ? tiltRv[0] : tiltRv[1];
+    let tiltRaw;
+    if (tiltManual) {
+      tiltRaw = tiltManualVal;                 // 手動モード中はスライダーの値をそのまま使う
+    } else {
+      const tiltRv = (gyroLive && tiltRefQ) ? relRot(tiltRefQ, inp.cq) : [0, 0, 0];
+      tiltRaw = tiltAxis === 'a' ? tiltRv[2] : tiltAxis === 'b' ? tiltRv[0] : tiltRv[1];
+    }
     const tiltVal2 = clamp(tiltRaw, -TILT_MAX, TILT_MAX);
-    if (tiltLive) {
+    if (tiltManual) {
+      tiltSmooth = tiltRaw;                    // 手動モードは補間せず、スライダーの値をそのまま反映
+      tiltSmoothReady = true;
+    } else if (tiltLive) {
       if (!tiltSmoothReady) { tiltSmooth = tiltRaw; tiltSmoothReady = true; }  // 復帰直後はいきなり現在値から始める
       else tiltSmooth += (tiltRaw - tiltSmooth) * (1 - Math.exp(-dt / TILT_SMOOTH_TAU));
     } else {

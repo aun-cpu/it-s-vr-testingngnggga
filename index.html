@@ -379,7 +379,7 @@ body.stereo .dispbar{opacity:.55}
   // ce: 操作側の角度が有効か / cq: 操作側スマホの向き（四元数 [x,y,z,w]、画面基準）/ csa: 操作側の画面の向き(0/90/180/270)
   // 水滴の位置（表示側の視点を原点、-Zが前。初期は視点と同じ0,0,0）。操作側で調整して表示側へ送る。人物モデル本体はこれに連動せず固定
   const POS_DEFAULT = {
-    px: 0, py: -6, pz: 2.5,                    // 水滴エフェクトの原点位置
+    px: 0, py: -0.6, pz: 0.25,                 // 水滴エフェクトの原点位置
     aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
     pox: 0, poy: 0, poz: 0, por: 0             // playerplus: player本体とのズレ（位置m・回転°）
   };

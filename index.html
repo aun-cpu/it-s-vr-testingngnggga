@@ -204,8 +204,8 @@ body.stereo .dispbar{opacity:.55}
 </head>
 <body>
 
-<!-- 最初に見せる黒画面：日数選択 -->
-<div id="days" class="screen dark">
+<!-- 黒画面：日数選択（役割選択画面の後に表示） -->
+<div id="days" class="screen dark hidden">
   <div class="daysCard">
     <h1>日数を選択してください</h1>
     <button class="daybtn" id="days3">3日</button>
@@ -214,8 +214,8 @@ body.stereo .dispbar{opacity:.55}
   </div>
 </div>
 
-<!-- 役割選択 -->
-<div id="select" class="screen hidden">
+<!-- 役割選択（最初に見せる画面） -->
+<div id="select" class="screen">
   <div class="card">
     <h1>2台スマホ VR操作テスト</h1>
     <p class="lead">同じページを2台のスマホで開き、1台を「表示」、もう1台を「操作」にします。表示側に出る6桁のコードを操作側で入力すると接続されます。</p>
@@ -384,11 +384,18 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 効果音（黒画面通過後／ゲージ75／注視後20秒目／10秒目 で再生。ファイルは index.html と同じ場所に置く） ----
   const SOUND_EXT = '.mp3';
+  let talkAudioCount = 0;   // 現在再生中の音声の数。0より大きい間は自動で話すモーフを動かす
   function playSound(name) {
     try {
       const a = new Audio(name + SOUND_EXT);
+      let counted = false;
+      const startTalk = () => { if (!counted) { counted = true; talkAudioCount++; } };
+      const stopTalk = () => { if (counted) { counted = false; talkAudioCount = Math.max(0, talkAudioCount - 1); } };
+      a.addEventListener('playing', startTalk);
+      a.addEventListener('ended', stopTalk);
+      a.addEventListener('error', stopTalk);
       const p = a.play();
-      if (p && p.catch) p.catch(() => {});
+      if (p && p.catch) p.catch(stopTalk);
     } catch (e) {}
   }
   function playRandomSound(names) {
@@ -584,23 +591,29 @@ body.stereo .dispbar{opacity:.55}
   }
 
   /* ================= 画面遷移 ================= */
-  // ---- 最初の黒画面：3日/5日/7日の選択 ----
+  // ---- 役割選択の後に出す黒画面：3日/5日/7日の選択 ----
   let chosenDays = null;   // 選んだ日数（3/5/7）。効果音のa/b/c選択にも使う
+  let pendingRole = null;  // 黒画面（日数選択）に進む前に選んだ役割（'display' / 'controller'）
   function pickDays(n) {
     chosenDays = n;
     playDaySound('1');   // 3日→1a / 5日→1b / 7日→1c
-    show('select');
+    if (pendingRole === 'display') {
+      role = 'display'; show('disp'); tryFullscreen(); keepAwake();
+      enableGyro();          // ユーザー操作の中で呼ぶ（iOSの許可ダイアログのため）
+      initScene(); startDisplayPeer();
+    } else if (pendingRole === 'controller') {
+      pairStatus(''); $('#pairGo').disabled = false; show('pair'); $('#codeIn').focus();
+    } else {
+      show('select');
+    }
+    pendingRole = null;
   }
   $('#days3').addEventListener('click', () => pickDays(3));
   $('#days5').addEventListener('click', () => pickDays(5));
   $('#days7').addEventListener('click', () => pickDays(7));
 
-  $('#pickDisp').addEventListener('click', () => {
-    role = 'display'; show('disp'); tryFullscreen(); keepAwake();
-    enableGyro();          // ユーザー操作の中で呼ぶ（iOSの許可ダイアログのため）
-    initScene(); startDisplayPeer();
-  });
-  $('#pickCtrl').addEventListener('click', () => { pairStatus(''); $('#pairGo').disabled = false; show('pair'); $('#codeIn').focus(); });
+  $('#pickDisp').addEventListener('click', () => { pendingRole = 'display'; show('days'); });
+  $('#pickCtrl').addEventListener('click', () => { pendingRole = 'controller'; show('days'); });
   $('#pairBack').addEventListener('click', () => { teardown(); show('select'); });
   $('#pairGo').addEventListener('click', () => {
     const v = $('#codeIn').value.replace(/\D/g, '');
@@ -1758,11 +1771,12 @@ body.stereo .dispbar{opacity:.55}
       }
     }
 
-    // ---- 話してる風の口の動き（あ/い/う/え/おモーフを0〜0.5でランダムに動かす。ボタンでON/OFF）----
+    // ---- 話してる風の口の動き（あ/い/う/え/おモーフを0〜0.5でランダムに動かす。ボタンでのテストON/OFF、または音声再生中は自動でON）----
     if (hMouthTargets) {
+      const talkActive = talkOn || talkAudioCount > 0;   // テストボタンON、または効果音・音声が再生中なら動かす
       if (now >= talkChangeAt) {
         // 次に近づける母音を決める（たまに口を閉じる状態も混ぜて自然にする）
-        talkActiveName = (talkOn && Math.random() >= 0.15)
+        talkActiveName = (talkActive && Math.random() >= 0.15)
           ? MOUTH_NAMES[Math.floor(Math.random() * MOUTH_NAMES.length)]
           : null;
         talkTargetLevel = TALK_LEVEL_MIN + Math.random() * (TALK_LEVEL_MAX - TALK_LEVEL_MIN);
@@ -1772,7 +1786,7 @@ body.stereo .dispbar{opacity:.55}
       MOUTH_NAMES.forEach(function (n) {
         const targets = hMouthTargets[n];
         if (!targets || !targets.length) return;
-        const target = (talkOn && n === talkActiveName) ? talkTargetLevel : 0;
+        const target = (talkActive && n === talkActiveName) ? talkTargetLevel : 0;
         for (let i = 0; i < targets.length; i++) {
           const t = targets[i];
           const cur = t.mesh.morphTargetInfluences[t.idx] || 0;

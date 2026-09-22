@@ -741,8 +741,8 @@ body.stereo .dispbar{opacity:.55}
   let hAct4 = null;                  // hの「action4」
   const H_NAME4 = 'action4';
   const TRIGGER_DEG = 3;             // 度: TRIGGER_WINDOW秒以内にこの角度以上-方向へ動いたら判定開始
-  const RETURN_FAST = 0.2;           // 秒: 判定開始地点への戻りがこの時間以内ならaction3
-  const RETURN_SLOW = 0.4;           // 秒: 判定開始地点への戻りがこの時間以内（RETURN_FAST超）ならaction4。これを超えたら不発
+  const RETURN_FAST = 0.3;           // 秒: 判定開始地点への戻りがこの時間以内ならaction3
+  const RETURN_SLOW = 0.5;           // 秒: 判定開始地点への戻りがこの時間以内（RETURN_FAST超）ならaction4。これを超えたら不発
   let judgeActive = false;           // 判定中（-5°の動きを検知し、判定開始地点への戻りを待っている）かどうか
   let judgeStartAngle = 0;           // 度: 判定開始地点（動き出す直前）の角度。ここに戻ってきたかで判定する
   let judgeStartTime = 0;            // ms: 判定を開始した時刻

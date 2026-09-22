@@ -862,7 +862,7 @@ body.stereo .dispbar{opacity:.55}
   //   transform（position/rotation/scale）は元メッシュと完全に同じままでよく、
   //   bindModeはデフォルトの'attached'でOK。ボーン変形・モード設定の影響を受けない。
   let hOutlineMat = null;
-  const H_OUTLINE_RATIO = 0.006;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
+  const H_OUTLINE_RATIO = 0.001;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
   const _outlineWorldScale = new THREE.Vector3();
   const hOutlineMeshes = [];   // 生成した輪郭線メッシュを全部覚えておき、後からON/OFFできるようにする
   // devtoolsのコンソールで toggleHOutlines(false) と打つと輪郭線メッシュだけを瞬時に非表示にできる。

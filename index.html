@@ -37,6 +37,15 @@ input{-webkit-user-select:text; user-select:text}
 
 /* ---------- 役割選択・コード入力 ---------- */
 #select,#pair{display:flex; align-items:center; justify-content:center; padding:16px}
+#days{display:flex; align-items:center; justify-content:center; padding:16px}
+.daysCard{width:100%; max-width:360px; text-align:center}
+.daysCard h1{color:#e8ecf3; margin:0 0 22px; font-size:20px; font-weight:600}
+.daybtn{
+  display:block; width:100%; font:inherit; font-size:18px; font-weight:600; padding:16px;
+  margin:0 0 12px; border-radius:14px; border:1px solid rgba(255,255,255,.25);
+  background:rgba(255,255,255,.08); color:#e8ecf3; cursor:pointer;
+}
+.daybtn:active{background:rgba(255,255,255,.22)}
 .card{
   width:100%; max-width:440px; background:var(--card); border:1px solid var(--line);
   border-radius:18px; padding:22px 20px; margin:auto;
@@ -195,8 +204,18 @@ body.stereo .dispbar{opacity:.55}
 </head>
 <body>
 
+<!-- 最初に見せる黒画面：日数選択 -->
+<div id="days" class="screen dark">
+  <div class="daysCard">
+    <h1>日数を選択してください</h1>
+    <button class="daybtn" id="days3">3日</button>
+    <button class="daybtn" id="days5">5日</button>
+    <button class="daybtn" id="days7">7日</button>
+  </div>
+</div>
+
 <!-- 役割選択 -->
-<div id="select" class="screen">
+<div id="select" class="screen hidden">
   <div class="card">
     <h1>2台スマホ VR操作テスト</h1>
     <p class="lead">同じページを2台のスマホで開き、1台を「表示」、もう1台を「操作」にします。表示側に出る6桁のコードを操作側で入力すると接続されます。</p>
@@ -312,7 +331,7 @@ body.stereo .dispbar{opacity:.55}
   'use strict';
   const BUILD = '0921h-hglb-samepos';
   const $ = (s) => document.querySelector(s);
-  const screens = { select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
+  const screens = { days: $('#days'), select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   // 四元数 [x,y,z,w] の計算（角度の特異点で数字が飛ばないよう、角度ではなく回転で扱う）
   const qMul = (a, b) => [
@@ -362,6 +381,24 @@ body.stereo .dispbar{opacity:.55}
     } catch (e) {}
   }
   function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+  // ---- 効果音（黒画面通過後／ゲージ75／注視後20秒目／10秒目 で再生。ファイルは index.html と同じ場所に置く） ----
+  const SOUND_EXT = '.mp3';
+  function playSound(name) {
+    try {
+      const a = new Audio(name + SOUND_EXT);
+      const p = a.play();
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) {}
+  }
+  function playRandomSound(names) {
+    playSound(names[Math.floor(Math.random() * names.length)]);
+  }
+  function playDaySound(prefix) {
+    // chosenDays(3/5/7) に応じて 例: prefix+'a' / prefix+'b' / prefix+'c' を再生
+    const suffix = chosenDays === 3 ? 'a' : chosenDays === 5 ? 'b' : chosenDays === 7 ? 'c' : null;
+    if (suffix) playSound(prefix + suffix);
+  }
 
   /* ================= 通信（PeerJS / WebRTC） ================= */
   const ID_PREFIX = 'vr2phone-test-';
@@ -547,6 +584,17 @@ body.stereo .dispbar{opacity:.55}
   }
 
   /* ================= 画面遷移 ================= */
+  // ---- 最初の黒画面：3日/5日/7日の選択 ----
+  let chosenDays = null;   // 選んだ日数（3/5/7）。効果音のa/b/c選択にも使う
+  function pickDays(n) {
+    chosenDays = n;
+    playDaySound('1');   // 3日→1a / 5日→1b / 7日→1c
+    show('select');
+  }
+  $('#days3').addEventListener('click', () => pickDays(3));
+  $('#days5').addEventListener('click', () => pickDays(5));
+  $('#days7').addEventListener('click', () => pickDays(7));
+
   $('#pickDisp').addEventListener('click', () => {
     role = 'display'; show('disp'); tryFullscreen(); keepAwake();
     enableGyro();          // ユーザー操作の中で呼ぶ（iOSの許可ダイアログのため）
@@ -862,6 +910,7 @@ body.stereo .dispbar{opacity:.55}
     // 注視で選択（決定）された時の演出：ハートを出し、ゲージをリセットして次に備える（ボタンは自動的に隠れる）
     triggerHearts();
     action3Count = 0;
+    gauge75Played = false;   // 次の周期でまた75到達時に音が鳴るようにリセット
     updateAction3Gauge();
     startForcedLoop();   // playerの2action(5〜10フレーム目)とhのaction4を、入力に関係なく20秒間ループさせる
   }
@@ -874,11 +923,14 @@ body.stereo .dispbar{opacity:.55}
   let forcedLoopRemain = 0;            // 強制ループの残り時間(秒)
   let forcedLoopClock = 0;             // 強制ループ開始からの経過時間(秒)。5〜10フレーム目の往復に使う
   let lastCountdownShown = null;       // 直前にHTMLへ反映したカウントダウンの秒数（変化した時だけ書き換える）
+  let tenSecPlayed = false;            // カウントダウンが10になった時の音を、1回だけ鳴らすためのフラグ
   function startForcedLoop() {
     forcedLoopActive = true;
     forcedLoopRemain = FORCED_LOOP_SEC;
     forcedLoopClock = 0;
+    tenSecPlayed = false;
     action3Above = false;              // 強制ループ中は通常のaction3判定を止めるため、立ち上がり検知もリセットしておく
+    playRandomSound(['31', '32', '33']);   // 注視後20秒目（強制ループ開始の瞬間）の音
     if (hAct4) {
       const from = hCurAct || hIdleAct;
       hCurAct = hAct4;
@@ -907,6 +959,7 @@ body.stereo .dispbar{opacity:.55}
     if (forcedLoopActive) {
       const secs = Math.max(0, Math.ceil(forcedLoopRemain));
       if (secs !== lastCountdownShown) { el.textContent = String(secs); lastCountdownShown = secs; }
+      if (!tenSecPlayed && secs <= 10) { tenSecPlayed = true; playDaySound('4'); }   // 10秒目：3日→4a/5日→4b/7日→4c
       el.classList.add('show');
     } else if (lastCountdownShown !== null) {
       lastCountdownShown = null;
@@ -973,10 +1026,12 @@ body.stereo .dispbar{opacity:.55}
   let action3Above = false;           // 直前フレームでACTION3_DEG以上だったか（1回だけ再生するための立ち上がり検知用）
   let action3Count = 0;                // action3を再生した回数（累計）
   const ACTION3_COUNT_MAX = 150;       // ゲージの上限（この回数で満タン表示）
+  let gauge75Played = false;           // ゲージが75に達した時の音を、1周期につき1回だけ鳴らすためのフラグ
   function updateAction3Gauge() {
     const shown = Math.min(action3Count, ACTION3_COUNT_MAX);
     const gf = $('#gaugeFill');
     if (gf) gf.style.height = (shown / ACTION3_COUNT_MAX * 100) + '%';
+    if (!gauge75Played && action3Count >= 75) { gauge75Played = true; playRandomSound(['21', '22', '23']); }
     setActionButtonVisible(action3Count >= ACTION3_COUNT_MAX);   // ゲージが150に達したらhの上のボタンを出す
   }
   // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----

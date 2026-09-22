@@ -862,22 +862,45 @@ body.stereo .dispbar{opacity:.55}
   //   transform（position/rotation/scale）は元メッシュと完全に同じままでよく、
   //   bindModeはデフォルトの'attached'でOK。ボーン変形・モード設定の影響を受けない。
   let hOutlineMat = null;
-  const H_OUTLINE_RATIO = 0.0001;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
+  const H_OUTLINE_RATIO = 0.006;      // 大きいほど輪郭線が太くなる（モデル高さに対する比率）
   const _outlineWorldScale = new THREE.Vector3();
+  // ファイルサイズ削減のため position/normal が量子化整数（KHR_mesh_quantization等、
+  // BufferAttribute.normalized=true）で格納されている glTF があり、その場合
+  // getX/getY/getZ は -1〜1 や実座標ではなく生の整数（例: -32768〜32767）をそのまま返す。
+  // それに気づかず amount を掛けても、頂点が実寸から大きく（数十〜数百単位）ズレてしまい、
+  // 黒い塊のような破綻した見た目になる。押し出し量をいくら小さくしても生の値そのものが
+  // 桁違いに大きいままなので、比率を変えても症状が変わらないのはこれが原因のことが多い。
+  // ここでは normalized な整数型を実数（-1〜1 / 実座標）に変換してから計算する。
+  function normalizedMaxOf(TypedArrayCtor) {
+    if (TypedArrayCtor === Int8Array) return 127;
+    if (TypedArrayCtor === Uint8Array) return 255;
+    if (TypedArrayCtor === Int16Array) return 32767;
+    if (TypedArrayCtor === Uint16Array) return 65535;
+    return null;   // Float32Array等はそのままの値でよい
+  }
+  function readVec3(attr, i) {
+    const x = attr.getX(i), y = attr.getY(i), z = attr.getZ(i);
+    if (!attr.normalized) return [x, y, z];
+    const max = normalizedMaxOf(attr.array.constructor);
+    if (!max) return [x, y, z];
+    return [x / max, y / max, z / max];
+  }
   function pushGeometryAlongNormals(geo, amount) {
     const out = geo.clone();          // 属性ごとdeep copyされるので元ジオメトリは変更されない
-    let normal = out.attributes.normal;
-    if (!normal) { out.computeVertexNormals(); normal = out.attributes.normal; }
-    const position = out.attributes.position;
-    for (let i = 0; i < position.count; i++) {
-      position.setXYZ(
-        i,
-        position.getX(i) + normal.getX(i) * amount,
-        position.getY(i) + normal.getY(i) * amount,
-        position.getZ(i) + normal.getZ(i) * amount
-      );
+    let normalAttr = out.attributes.normal;
+    if (!normalAttr) { out.computeVertexNormals(); normalAttr = out.attributes.normal; }
+    const posAttr = out.attributes.position;
+    const count = posAttr.count;
+    const newPos = new Float32Array(count * 3);   // 量子化されていても、ここで実座標のプレーンなFloat32に置き換える
+    for (let i = 0; i < count; i++) {
+      const p = readVec3(posAttr, i);
+      const n = readVec3(normalAttr, i);
+      const len = Math.hypot(n[0], n[1], n[2]) || 1;   // 生の法線の長さが1でなくても、方向だけ取り出して単位化する
+      newPos[i * 3] = p[0] + (n[0] / len) * amount;
+      newPos[i * 3 + 1] = p[1] + (n[1] / len) * amount;
+      newPos[i * 3 + 2] = p[2] + (n[2] / len) * amount;
     }
-    position.needsUpdate = true;
+    out.setAttribute('position', new THREE.BufferAttribute(newPos, 3));
     out.computeBoundingBox();
     out.computeBoundingSphere();
     return out;
@@ -892,6 +915,12 @@ body.stereo .dispbar{opacity:.55}
     o.getWorldScale(_outlineWorldScale);
     const s = (_outlineWorldScale.x + _outlineWorldScale.y + _outlineWorldScale.z) / 3 || 1;
     const amount = worldThickness / s;
+    if (o.geometry.attributes.position.normalized || (o.geometry.attributes.normal && o.geometry.attributes.normal.normalized)) {
+      console.warn('[outline] "' + o.name + '" は量子化された(normalized)頂点属性を使用 → 実座標に変換して押し出します', {
+        positionNormalized: o.geometry.attributes.position.normalized,
+        normalNormalized: !!(o.geometry.attributes.normal && o.geometry.attributes.normal.normalized)
+      });
+    }
     const outGeo = pushGeometryAlongNormals(o.geometry, amount);
     let outline;
     if (o.isSkinnedMesh) {

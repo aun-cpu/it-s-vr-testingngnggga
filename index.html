@@ -596,7 +596,7 @@ body.stereo .dispbar{opacity:.55}
   let pendingRole = null;  // 黒画面（日数選択）に進む前に選んだ役割（'display' / 'controller'）
   function pickDays(n) {
     chosenDays = n;
-    playDaySound('1');   // 3日→1a / 5日→1b / 7日→1c
+    if (pendingRole !== 'display') playDaySound('1');   // 3日→1a / 5日→1b / 7日→1c（表示側は、正面に戻った時に流す）
     if (pendingRole === 'display') {
       role = 'display'; show('disp'); tryFullscreen(); keepAwake();
       P.x = START_X_SHIFT;   // カメラ位置自体を左にずらしておく（ボタン注視で元に戻す）
@@ -1102,6 +1102,23 @@ body.stereo .dispbar{opacity:.55}
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
 
+  // ---- 正面に戻った直後の導入: 2action0（player・plusとも）を角度で動かす ----
+  // 0°=0フレーム目、INTRO_MAX_DEG°=最終フレーム。最終フレームに達したら、そのまま通常の2action/2actionplusの仕様に戻る。
+  const INTRO_MAX_DEG = 7;
+  let frontIntro = false;             // true: 導入の最中（2action0 / plusの導入クリップを使う）
+  let sidePrev = null;                // 直前フレームでカメラが横にあったか（横→正面の切り替わり検知用）
+  let playerAct0 = null;              // player.glb内の「2action0」
+  let plusAct0 = null;                // playerplus.glb内の「2action0」
+  function syncIntroActs() {
+    // 導入中は導入クリップだけ、それ以外は通常のクリップだけを有効にする（重ねると混ざってしまうため）
+    const p = frontIntro && !!playerAct0;
+    if (playerAct0) playerAct0.enabled = p;
+    if (playerAct) playerAct.enabled = !p;
+    const q = frontIntro && !!plusAct0;
+    if (plusAct0) plusAct0.enabled = q;
+    if (plusAct) plusAct.enabled = !q;
+  }
+
   // ---- カメラが横にある間（P.x が0でない間）の演出 ----
   // playerの位置にplayer0を代わりに表示し、player0は「motion」、hは「action4」を入力に関係なくループ。
   // playerはカメラの位置に置くだけ（このモード中は角度で動かさない）。
@@ -1215,6 +1232,17 @@ body.stereo .dispbar{opacity:.55}
       plusAct = plusMixer.clipAction(clip);
       plusAct.play();
       plusAct.paused = true;         // 時間では進めず、角度だけで位置を決める
+      // 正面に戻った直後に使う導入クリップ（あれば）。名前は「2action0」（念のため「2action0plus」「2actionplus0」も可）
+      const isIntro = function (n) { return n === '2action0' || n === '2action0plus' || n === '2actionplus0'; };
+      const clip0p = clips.find(function (c) { return nm(c) === '2action0'; }) ||
+                     clips.find(function (c) { return isIntro(nm(c)); }) ||
+                     clips.find(function (c) { return nm(c).endsWith('2action0'); });
+      if (clip0p) {
+        plusAct0 = plusMixer.clipAction(clip0p);
+        plusAct0.play();
+        plusAct0.paused = true;
+        plusAct0.enabled = false;
+      }
       const tm = clip.tracks && clip.tracks[0] && clip.tracks[0].times;
       if (tm && tm.length > ANIM_ZERO_FRAME) plusAnim0Time = tm[ANIM_ZERO_FRAME];
       else if (tm && tm.length > 1) plusAnim0Time = (tm[1] - tm[0]) * ANIM_ZERO_FRAME;
@@ -1222,7 +1250,8 @@ body.stereo .dispbar{opacity:.55}
       plusAnim0Time = clamp(plusAnim0Time, 0, clip.duration);
       plusAct.time = plusAnim0Time;
       plusMixer.update(0);
-      plusAnim = '  アクション: ' + clip.name + '（角度連動・透明度' + PLUS_OPACITY + '）';
+      plusAnim = '  アクション: ' + clip.name + '（角度連動・透明度' + PLUS_OPACITY + '）' +
+                 (clip0p ? ' ＋導入: ' + clip0p.name : ' ／導入クリップ（2action0）なし');
     }, undefined, function (err) {
       plusState = '読込失敗（playerplus.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -1653,6 +1682,15 @@ body.stereo .dispbar{opacity:.55}
       playerAct = mixer.clipAction(clip);
       playerAct.play();
       playerAct.paused = true;       // 時間では進めず、角度だけで位置を決める
+      // 正面に戻った直後に使う「2action0」（あれば）。普段は無効にしておき、通常の2actionと混ざらないようにする
+      const clip0 = clips.find(function (c) { return nm(c) === '2action0'; }) ||
+                    clips.find(function (c) { return nm(c).endsWith('2action0'); });
+      if (clip0) {
+        playerAct0 = mixer.clipAction(clip0);
+        playerAct0.play();
+        playerAct0.paused = true;
+        playerAct0.enabled = false;
+      }
       // 「5フレーム目」の実際の秒数を、トラックのキーフレーム間隔から算出する
       const track0 = clip.tracks && clip.tracks[0];
       const times = track0 && track0.times;
@@ -1674,7 +1712,8 @@ body.stereo .dispbar{opacity:.55}
       };
       player2ActFrame5Time = clamp(frameTimeOf(5), 0, clip.duration);
       player2ActFrame10Time = clamp(frameTimeOf(10), 0, clip.duration);
-      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=先頭 / ' + ANIM_ZERO_FRAME + 'F目=0° / ' + ANIM_ANGLE_MAX + '°=最後）';
+      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=先頭 / ' + ANIM_ZERO_FRAME + 'F目=0° / ' + ANIM_ANGLE_MAX + '°=最後）' +
+                   (clip0 ? ' ＋導入: ' + clip0.name : ' ／「2action0」なし（導入は行いません）');
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -1934,6 +1973,14 @@ body.stereo .dispbar{opacity:.55}
       endSideLoopH();
     }
     if (player0Mixer && sideNow) player0Mixer.update(dt);   // player0は「motion」をループ
+    // 横→正面に戻った瞬間から、導入（2action0 / plusの導入クリップ）を始める
+    if (sidePrev === true && !sideNow) {
+      playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、正面に戻ったこのタイミングで流す
+      if (playerAct0 || plusAct0) frontIntro = true;
+    }
+    sidePrev = sideNow;
+    if (sideNow || forcedLoopActive) frontIntro = false;   // 横にある間・強制ループ中は導入しない
+    syncIntroActs();
     if (R.h) R.h.position.set(0, 0, 0);       // playerと同じ位置（固定）に追従
     if (R.plus) {
       R.plus.visible = !sideNow;   // カメラ横の間はplayerの代わりにplayer0を出すので、playerに重ねるモデルは隠す
@@ -2047,6 +2094,14 @@ body.stereo .dispbar{opacity:.55}
       const duration = playerAct.getClip().duration;
       let t;
       const tiltRaw = tiltSmooth;              // カクツキを抑えるため、補間後の角度で再生位置を決める
+      if (frontIntro && playerAct0) {
+        // 導入: 0°=0フレーム目 → INTRO_MAX_DEG°=最終フレーム（範囲外は端のフレームで止める）
+        const d0 = playerAct0.getClip().duration;
+        t = d0 * clamp(tiltRaw / INTRO_MAX_DEG, 0, 1);
+        playerAct0.time = t;
+        mixer.update(0);
+        playerProg = '  導入 ' + t.toFixed(2) + 's / ' + d0.toFixed(2) + 's';
+      } else {
       if (tiltRaw <= ANIM_ANGLE_MIN) {
         t = 0;
       } else if (tiltRaw >= ANIM_ANGLE_MAX) {
@@ -2061,6 +2116,7 @@ body.stereo .dispbar{opacity:.55}
       playerAct.time = clamp(t, 0, duration);
       mixer.update(0);
       playerProg = '  再生位置 ' + t.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
+      }
 
       // ---- action3/4の判定（角度しきい値方式）----
       // 基準からACTION3_DEG以上動いた瞬間（立ち上がり）に1回だけaction3を再生する。
@@ -2085,7 +2141,7 @@ body.stereo .dispbar{opacity:.55}
         }
       };
       const action3IsAbove = tiltRaw >= ACTION3_DEG;
-      if (action3IsAbove && !action3Above) {
+      if (action3IsAbove && !action3Above && !frontIntro) {   // 導入中はaction3を流さない（hはidleのまま）
         if (hAct3) playH(hAct3);
       }
       action3Above = action3IsAbove;
@@ -2096,9 +2152,16 @@ body.stereo .dispbar{opacity:.55}
 
     // ---- playerplus: 2actionと同じ角度で「2actionplus」を動かす ----
     if (plusAct && tiltLive && !sideNow) {
-      plusAct.time = clamp(angleToTime(tiltSmooth, plusAct.getClip().duration, plusAnim0Time), 0, plusAct.getClip().duration);
+      if (frontIntro && plusAct0) {
+        const dp = plusAct0.getClip().duration;
+        plusAct0.time = dp * clamp(tiltSmooth / INTRO_MAX_DEG, 0, 1);   // 導入: 0°=0フレーム目 → 7°=最終フレーム
+      } else {
+        plusAct.time = clamp(angleToTime(tiltSmooth, plusAct.getClip().duration, plusAnim0Time), 0, plusAct.getClip().duration);
+      }
       plusMixer.update(0);
     }
+    // 最終フレーム（INTRO_MAX_DEG°）に達したら導入を終え、次のフレームから通常の2action/2actionplusの仕様に戻る
+    if (frontIntro && tiltLive && tiltSmooth >= INTRO_MAX_DEG) frontIntro = false;
 
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;

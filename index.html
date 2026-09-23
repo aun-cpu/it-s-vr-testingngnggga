@@ -599,10 +599,9 @@ body.stereo .dispbar{opacity:.55}
     playDaySound('1');   // 3日→1a / 5日→1b / 7日→1c
     if (pendingRole === 'display') {
       role = 'display'; show('disp'); tryFullscreen(); keepAwake();
+      P.x = START_X_SHIFT;   // カメラ位置自体を左にずらしておく（ボタン注視で元に戻す）
       enableGyro();          // ユーザー操作の中で呼ぶ（iOSの許可ダイアログのため）
       initScene(); startDisplayPeer();
-    } else if (pendingRole === 'controller') {
-      pairStatus(''); $('#pairGo').disabled = false; show('pair'); $('#codeIn').focus();
     } else {
       show('select');
     }
@@ -612,8 +611,9 @@ body.stereo .dispbar{opacity:.55}
   $('#days5').addEventListener('click', () => pickDays(5));
   $('#days7').addEventListener('click', () => pickDays(7));
 
+  // 表示側は日数選択（黒画面）を経由してから表示開始。操作側は日数選択を挟まず、直接コード入力へ
   $('#pickDisp').addEventListener('click', () => { pendingRole = 'display'; show('days'); });
-  $('#pickCtrl').addEventListener('click', () => { pendingRole = 'controller'; show('days'); });
+  $('#pickCtrl').addEventListener('click', () => { pairStatus(''); $('#pairGo').disabled = false; show('pair'); $('#codeIn').focus(); });
   $('#pairBack').addEventListener('click', () => { teardown(); show('select'); });
   $('#pairGo').addEventListener('click', () => {
     const v = $('#codeIn').value.replace(/\D/g, '');
@@ -670,6 +670,8 @@ body.stereo .dispbar{opacity:.55}
   /* ================= ジャイロ（表示側） ================= */
   const gyro = { state: 'off', a: 0, b: 0, g: 0, t: 0, startedAt: 0 };
   let recenterPending = true;
+  let startShiftPending = true;   // 表示開始後、最初の1回だけカメラを左にずらして始めるためのフラグ
+  const START_YAW_SHIFT = Math.PI / 2;   // rad: 開始時に向く角度（90°=右＝元のカメラ位置の方向を向く）
 
   function onOrient(e) {
     if (e.alpha === null || e.beta === null || e.gamma === null ||
@@ -705,6 +707,7 @@ body.stereo .dispbar{opacity:.55}
   });
 
   const P = { x: 0, y: 0, z: 0 };   // 視点位置は固定
+  const START_X_SHIFT = -5;   // m: 表示開始時にカメラ位置を左へずらす量
   // カメラ位置の補正(m)。基準は目の高さ(地面から1.6m)・ワールド座標（+Zが後ろ向き）
   const CAM_OFFSET = { x: 0, y: -0.2, z: 0.2 };
   let R = null, T = null;
@@ -926,6 +929,98 @@ body.stereo .dispbar{opacity:.55}
     gauge75Played = false;   // 次の周期でまた75到達時に音が鳴るようにリセット
     updateAction3Gauge();
     startForcedLoop();   // playerの2action(5〜10フレーム目)とhのaction4を、入力に関係なく20秒間ループさせる
+  }
+
+  // ---- 表示開始時に正面からずらしたカメラを、注視で「今の初期位置」に戻すための白いボタン ----
+  const CENTER_BUTTON_SIZE = 0.22;           // m: ボタンの基準サイズ（直径目安）
+  const CENTER_BUTTON_POS = { x: 0, y: 1.4, z: 0.2 };   // ワールド座標に固定（元のカメラ位置＝ずらす前の位置）
+  const CENTER_GAZE_HIT_RADIUS = 1.2;   // m: 遠く（5mほど離れた位置）から見るため、判定を広めにする
+  let centerButtonGroup = null;
+  let centerButtonSprite = null;
+  let centerButtonRingSprite = null;
+  let centerButtonVisible = false;
+  let centerGazeOn = false;
+  let centerGazeDwell = 0;
+  let centerButtonTexture = null;
+  function getCenterButtonTexture() {
+    if (centerButtonTexture) return centerButtonTexture;
+    const cvs = document.createElement('canvas');
+    cvs.width = 256; cvs.height = 256;
+    const ctx = cvs.getContext('2d');
+    ctx.beginPath();
+    ctx.arc(128, 128, 116, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.shadowColor = 'rgba(255,255,255,0.85)';
+    ctx.shadowBlur = 24;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#3b6fe0';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(128, 128, 58, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#3b6fe0';
+    ctx.beginPath();
+    ctx.arc(128, 128, 18, 0, Math.PI * 2);
+    ctx.fill();
+    centerButtonTexture = new THREE.CanvasTexture(cvs);
+    return centerButtonTexture;
+  }
+  let centerRingCanvas = null, centerRingCtx = null, centerRingTexture = null;
+  function getCenterButtonRingTexture() {
+    if (centerRingTexture) return centerRingTexture;
+    centerRingCanvas = document.createElement('canvas');
+    centerRingCanvas.width = 256; centerRingCanvas.height = 256;
+    centerRingCtx = centerRingCanvas.getContext('2d');
+    centerRingTexture = new THREE.CanvasTexture(centerRingCanvas);
+    return centerRingTexture;
+  }
+  function drawCenterButtonRing(progress) {
+    const ctx = centerRingCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 256, 256);
+    if (progress > 0) {
+      ctx.strokeStyle = '#3b6fe0';
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const start = -Math.PI / 2;
+      ctx.arc(128, 128, 110, start, start + Math.PI * 2 * Math.min(1, progress));
+      ctx.stroke();
+    }
+    centerRingTexture.needsUpdate = true;
+  }
+  function initCenterButton(scene) {
+    centerButtonGroup = new THREE.Group();
+    centerButtonGroup.visible = false;
+    centerButtonGroup.position.set(CENTER_BUTTON_POS.x, CENTER_BUTTON_POS.y, CENTER_BUTTON_POS.z);
+    const btnMat = new THREE.SpriteMaterial({ map: getCenterButtonTexture(), transparent: true, depthWrite: false });
+    centerButtonSprite = new THREE.Sprite(btnMat);
+    centerButtonSprite.scale.setScalar(CENTER_BUTTON_SIZE);
+    centerButtonGroup.add(centerButtonSprite);
+    const ringMat = new THREE.SpriteMaterial({ map: getCenterButtonRingTexture(), transparent: true, depthWrite: false, opacity: 0.95 });
+    centerButtonRingSprite = new THREE.Sprite(ringMat);
+    centerButtonRingSprite.scale.setScalar(CENTER_BUTTON_SIZE * 1.35);
+    centerButtonGroup.add(centerButtonRingSprite);
+    scene.add(centerButtonGroup);
+  }
+  function updateCenterButtonVisual() {
+    if (!centerButtonSprite) return;
+    const s = CENTER_BUTTON_SIZE * (1 + 0.12 * (centerGazeDwell / GAZE_DWELL_SEC));
+    centerButtonSprite.scale.setScalar(s);
+    drawCenterButtonRing(centerGazeDwell / GAZE_DWELL_SEC);
+  }
+  function setCenterButtonVisible(v) {
+    if (centerButtonVisible === v) return;
+    centerButtonVisible = v;
+    if (centerButtonGroup) centerButtonGroup.visible = v;
+    if (!v) { centerGazeDwell = 0; centerGazeOn = false; drawCenterButtonRing(0); }
+  }
+  function selectCenterButton() {
+    // 注視で選択：カメラ位置と視点の両方を、今の初期位置（表示開始時の元の位置）へ戻す
+    P.x = 0;
+    recenterPending = true;
+    setCenterButtonVisible(false);
   }
 
   // ---- 注視で選択された直後の演出：入力を無視して20秒間、playerの2action(5〜10フレーム目)とhのaction4をループ ----
@@ -1602,6 +1697,7 @@ body.stereo .dispbar{opacity:.55}
       initSplash(scene);   // hのaction3/4トリガー時の水滴エフェクト（初期カメラ正面の固定位置）
       initHearts(scene);   // hのaction3トリガー時のハート（🩷）エフェクト
       initActionButton(scene);   // ゲージ満タン時にhの上へ出す、視線で注視できるボタン
+      initCenterButton(scene);   // 表示開始時にずらした正面を、視線で注視して戻すためのボタン
 
       R = {
         renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup,
@@ -1721,12 +1817,22 @@ body.stereo .dispbar{opacity:.55}
         // いま向いている方向を「正面（北=赤い塔の方向）」にする
         T.fwd.set(0, 0, -1).applyQuaternion(T.qd);
         yawOffset = Math.atan2(-T.fwd.x, -T.fwd.z);
+        if (startShiftPending) {   // 表示開始直後だけ、元のカメラ位置の方向（右＝+X）を向かせる
+          yawOffset += START_YAW_SHIFT;
+          startShiftPending = false;
+          setCenterButtonVisible(true);
+        }
         recenterPending = false;
       }
       T.qy.setFromAxisAngle(T.yAxis, -yawOffset);
       T.camQ.copy(T.qy).multiply(T.qd);
     } else {
-      if (recenterPending) { dragYaw = 0; dragPitch = 0; recenterPending = false; }
+      if (recenterPending) {
+        dragYaw = startShiftPending ? -START_YAW_SHIFT : 0;
+        dragPitch = 0;
+        if (startShiftPending) { startShiftPending = false; setCenterButtonVisible(true); }
+        recenterPending = false;
+      }
       T.euler.set(dragPitch, dragYaw, 0, 'YXZ');
       T.camQ.setFromEuler(T.euler);
     }
@@ -1925,6 +2031,23 @@ body.stereo .dispbar{opacity:.55}
       }
     }
 
+    // ---- カメラ位置を左にずらした状態から、元のカメラ位置へ戻すボタンの、視線での注視判定 ----
+    if (centerButtonGroup && centerButtonVisible) {
+      const cx = centerButtonGroup.position.x - ex, cy = centerButtonGroup.position.y - ey, cz = centerButtonGroup.position.z - ez;
+      const cdist = Math.hypot(cx, cy, cz);
+      let chit = false;
+      if (cdist > 0.001) {
+        const nx = cx / cdist, ny = cy / cdist, nz = cz / cdist;
+        const dot = clamp(T.fwd.x * nx + T.fwd.y * ny + T.fwd.z * nz, -1, 1);
+        const hitAngle = Math.atan2(CENTER_GAZE_HIT_RADIUS, cdist);
+        chit = Math.acos(dot) <= hitAngle;
+      }
+      centerGazeOn = chit;
+      centerGazeDwell = chit ? Math.min(GAZE_DWELL_SEC, centerGazeDwell + dt) : Math.max(0, centerGazeDwell - dt * 2);
+      updateCenterButtonVisual();
+      if (chit && centerGazeDwell >= GAZE_DWELL_SEC) selectCenterButton();
+    }
+
     if (!stereo) {
       R.renderer.setScissorTest(false);
       R.renderer.setViewport(0, 0, W, H);
@@ -1980,6 +2103,7 @@ body.stereo .dispbar{opacity:.55}
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +
+        '正面リセットボタン: ' + (centerButtonVisible ? (centerGazeOn ? '注視中 ' + Math.round(centerGazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +
         '強制ループ: ' + (forcedLoopActive ? '再生中 残り' + Math.ceil(forcedLoopRemain) + '秒' : '停止中');
     }
   }

@@ -1936,8 +1936,10 @@ body.stereo .dispbar{opacity:.55}
         // いま向いている方向を「正面（北=赤い塔の方向）」にする
         T.fwd.set(0, 0, -1).applyQuaternion(T.qd);
         yawOffset = Math.atan2(-T.fwd.x, -T.fwd.z);
-        if (startShiftPending) {   // 表示開始直後だけ、元のカメラ位置の方向（右＝+X）を向かせる
+        if (P.x !== 0) {   // カメラが横にずれている間は、正面をplayer0の方向（元のカメラ位置の方向＝右＝+X）へ向かせる
           yawOffset += START_YAW_SHIFT;
+        }
+        if (startShiftPending) {   // センターボタンの表示は表示開始直後の1回だけ
           startShiftPending = false;
           setCenterButtonVisible(true);
         }
@@ -1947,7 +1949,7 @@ body.stereo .dispbar{opacity:.55}
       T.camQ.copy(T.qy).multiply(T.qd);
     } else {
       if (recenterPending) {
-        dragYaw = startShiftPending ? -START_YAW_SHIFT : 0;
+        dragYaw = (P.x !== 0) ? -START_YAW_SHIFT : 0;   // カメラが横にずれている間は、player0の方向へ向かせる
         dragPitch = 0;
         if (startShiftPending) { startShiftPending = false; setCenterButtonVisible(true); }
         recenterPending = false;
@@ -1966,6 +1968,7 @@ body.stereo .dispbar{opacity:.55}
     const sideNow = P.x !== 0;
     if (sideNow) R.player.position.set(P.x + CAM_OFFSET.x, 0, P.z + CAM_OFFSET.z);
     else R.player.position.set(0, 0, 0);
+    if (R.player) R.player.rotation.y = sideNow ? START_YAW_SHIFT : PLAYER_FACING;   // カメラが横にずれている間はplayer0の方向を向く
     if (R.player0) { R.player0.position.set(0, 0, 0); R.player0.visible = sideNow; }
     if (sideNow) {
       if (hAct4 && hCurAct !== hAct4) startSideLoopH();   // hはaction4を入力に関係なくループ

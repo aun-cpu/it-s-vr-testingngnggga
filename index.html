@@ -1102,6 +1102,17 @@ body.stereo .dispbar{opacity:.55}
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
 
+  // ---- カメラが横にある間（P.x が0でない間）の演出 ----
+  // playerの位置にplayer0を代わりに表示し、player0は「motion」、hは「action4」を入力に関係なくループ。
+  // playerはカメラの位置に置くだけ（このモード中は角度で動かさない）。
+  const PLAYER0_URL = 'player0.glb';   // index.html と同じ場所に置く
+  const PLAYER0_MOTION = 'motion';     // player0のループさせるクリップ名
+  let player0State = '未読込';
+  let player0Anim = '';
+  let player0Mixer = null;
+  let player0Act = null;
+  let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
+
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----
   const H_URL = 'h.glb';             // index.html と同じ場所に置く
   const H_HEIGHT = null;              // 身長(m)にそろえて表示。元のサイズのままなら null
@@ -1546,6 +1557,67 @@ body.stereo .dispbar{opacity:.55}
       try { console.error(err); } catch (e) {}
     });
   }
+  function loadPlayer0(group) {
+    if (!THREE.GLTFLoader) { player0State = '読込失敗（GLTFLoaderなし）'; return; }
+    player0State = '読込中…';
+    new THREE.GLTFLoader().load(PLAYER0_URL, function (gltf) {
+      const model = gltf.scene;
+      if (playerScale != null) {
+        // playerと同じ縮尺・位置合わせを使い、playerの位置にそのまま重なるようにする
+        model.scale.setScalar(playerScale);
+        model.position.set(playerOffX, playerOffY, playerOffZ);
+      } else {
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        if (PLAYER_HEIGHT && size.y > 0) model.scale.multiplyScalar(PLAYER_HEIGHT / size.y);
+        box.setFromObject(model);
+        const c = box.getCenter(new THREE.Vector3());
+        model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      }
+      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); } });
+      group.add(model);
+      player0State = '読込済み';
+
+      const clips = gltf.animations || [];
+      if (clips.length === 0) { player0Anim = '  アニメなし'; return; }
+      const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
+      const clip = clips.find(function (c) { return nm(c) === PLAYER0_MOTION; }) ||
+                   clips.find(function (c) { return nm(c).endsWith(PLAYER0_MOTION); });
+      if (!clip) {
+        player0Anim = '  「' + PLAYER0_MOTION + '」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
+        return;
+      }
+      player0Mixer = new THREE.AnimationMixer(model);
+      player0Act = player0Mixer.clipAction(clip);
+      player0Act.setLoop(THREE.LoopRepeat, Infinity);
+      player0Act.play();
+      player0Anim = '  ' + clip.name + '（ループ）';
+    }, undefined, function (err) {
+      player0State = '読込失敗（player0.glb を index.html と同じ場所に置く）';
+      try { console.error(err); } catch (e) {}
+    });
+  }
+  function startSideLoopH() {
+    if (!hAct4) return;
+    const from = hCurAct || hIdleAct;
+    hCurAct = hAct4;
+    hAct4.setLoop(THREE.LoopRepeat, Infinity);
+    hAct4.clampWhenFinished = false;
+    hAct4.reset().play();
+    hAct4.setEffectiveWeight(1);
+    if (from && from !== hAct4) hAct4.crossFadeFrom(from, TRIGGER_FADE, false);
+    sideLoopH = true;
+  }
+  function endSideLoopH() {
+    sideLoopH = false;
+    if (forcedLoopActive) return;   // 強制ループ中はそちらがhのaction4を引き継ぐ
+    if (hAct4) { hAct4.setLoop(THREE.LoopOnce, 1); hAct4.clampWhenFinished = true; }
+    if (hCurAct === hAct4) {
+      const done = hCurAct; hCurAct = null;
+      armIdleHold(armCurAct);
+      if (hIdleAct) { hIdleAct.reset().play(); hIdleAct.crossFadeFrom(done, TRIGGER_FADE, false); }
+    }
+  }
   function loadPlayer(group, onReady) {
     if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; if (onReady) onReady(); return; }
     playerState = '読込中…';
@@ -1687,11 +1759,19 @@ body.stereo .dispbar{opacity:.55}
       plusGroup.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
       scene.add(plusGroup);
 
+      // player0.glb（カメラが横にある間だけ、playerの位置にplayerの代わりに表示する）
+      const player0Group = new THREE.Group();
+      player0Group.position.set(0, 0, 0);
+      player0Group.rotation.y = PLAYER_FACING;
+      player0Group.visible = false;
+      scene.add(player0Group);
+
       // playerを先に読み込み、その縮尺・位置合わせが確定してからarm/plusを読み込む
       // （playerarm/playerplusはplayerのメッシュを間引いただけでボーンは同じなので、同じ値で重ねられる）
       loadPlayer(playerGroup, function () {
         loadArm(armGroup);
         loadPlus(plusGroup);
+        loadPlayer0(player0Group);
       });
 
       initSplash(scene);   // hのaction3/4トリガー時の水滴エフェクト（初期カメラ正面の固定位置）
@@ -1700,7 +1780,7 @@ body.stereo .dispbar{opacity:.55}
       initCenterButton(scene);   // 表示開始時にずらした正面を、視線で注視して戻すためのボタン
 
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, player0: player0Group, h: hGroup, arm: armGroup, plus: plusGroup,
         W: 0, H: 0
       };
       T = {
@@ -1843,13 +1923,25 @@ body.stereo .dispbar{opacity:.55}
     if (fl > 0.2) { lastFx = T.fwd.x / fl; lastFz = T.fwd.z / fl; }
 
     // ---- 人物モデルのアニメーションと位置（位置は固定。px/py/pzは水滴の位置操作に使う） ----
-    R.player.position.set(0, 0, 0);
+    // カメラが横にある間: playerの位置にはplayer0を出し、playerはカメラの位置に置くだけ
+    const sideNow = P.x !== 0;
+    if (sideNow) R.player.position.set(P.x + CAM_OFFSET.x, 0, P.z + CAM_OFFSET.z);
+    else R.player.position.set(0, 0, 0);
+    if (R.player0) { R.player0.position.set(0, 0, 0); R.player0.visible = sideNow; }
+    if (sideNow) {
+      if (hAct4 && hCurAct !== hAct4) startSideLoopH();   // hはaction4を入力に関係なくループ
+    } else if (sideLoopH) {
+      endSideLoopH();
+    }
+    if (player0Mixer && sideNow) player0Mixer.update(dt);   // player0は「motion」をループ
     if (R.h) R.h.position.set(0, 0, 0);       // playerと同じ位置（固定）に追従
     if (R.plus) {
+      R.plus.visible = !sideNow;   // カメラ横の間はplayerの代わりにplayer0を出すので、playerに重ねるモデルは隠す
       R.plus.position.set(inp.pox, inp.poy, inp.poz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）
       R.plus.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
     }
     if (R.arm) {
+      R.arm.visible = !sideNow;
       R.arm.position.set(inp.aox, inp.aoy, inp.aoz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）
       R.arm.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
     }
@@ -1946,6 +2038,10 @@ body.stereo .dispbar{opacity:.55}
         action3Above = false;   // 強制ループ中は通常のaction3判定を止める
       }
       updateForcedLoopCountdown();
+    } else if (sideNow) {
+      // ---- カメラが横にある間: playerは角度で動かさず、action3判定も止める ----
+      action3Above = false;
+      updateForcedLoopCountdown();
     } else if (playerAct && tiltLive) {
       updateForcedLoopCountdown();
       const duration = playerAct.getClip().duration;
@@ -1999,7 +2095,7 @@ body.stereo .dispbar{opacity:.55}
     }
 
     // ---- playerplus: 2actionと同じ角度で「2actionplus」を動かす ----
-    if (plusAct && tiltLive) {
+    if (plusAct && tiltLive && !sideNow) {
       plusAct.time = clamp(angleToTime(tiltSmooth, plusAct.getClip().duration, plusAnim0Time), 0, plusAct.getClip().duration);
       plusMixer.update(0);
     }
@@ -2098,6 +2194,7 @@ body.stereo .dispbar{opacity:.55}
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         'h.glb: ' + hState + hAnim + '\n' +
+        'player0.glb: ' + player0State + player0Anim + (P.x !== 0 ? '（カメラ横：表示中）' : '') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + '\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +

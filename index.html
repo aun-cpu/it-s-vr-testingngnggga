@@ -1129,6 +1129,10 @@ body.stereo .dispbar{opacity:.55}
   let player0Anim = '';
   let player0Mixer = null;
   let player0Act = null;
+  let player0Act2 = null;              // motionをループさせる際、ループの継ぎ目をなめらかにするための2つ目のインスタンス
+  let player0CurAct = null;            // 現在再生中側（player0Act / player0Act2 のどちらか）
+  let player0Dur = 0;                  // motionクリップの長さ（秒）
+  let player0Swapped = false;          // このループ周回で既に継ぎ目のクロスフェードを行ったか
   let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
 
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----
@@ -1619,9 +1623,16 @@ body.stereo .dispbar{opacity:.55}
       }
       player0Mixer = new THREE.AnimationMixer(model);
       player0Act = player0Mixer.clipAction(clip);
-      player0Act.setLoop(THREE.LoopPingPong, Infinity);   // 再生→逆再生→再生…と往復させ、継ぎ目のズレを無くす
+      player0Act2 = player0Mixer.clipAction(clip);   // 同じクリップの別インスタンス。ループの継ぎ目をクロスフェードでつなぐ
+      [player0Act, player0Act2].forEach(function (a) {
+        a.setLoop(THREE.LoopRepeat, Infinity);
+        a.clampWhenFinished = false;
+      });
       player0Act.play();
-      player0Anim = '  ' + clip.name + '（往復ループ）';
+      player0CurAct = player0Act;
+      player0Dur = clip.duration || 0;
+      player0Swapped = false;
+      player0Anim = '  ' + clip.name + '（ループ）';
     }, undefined, function (err) {
       player0State = '読込失敗（player0.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -1976,7 +1987,25 @@ body.stereo .dispbar{opacity:.55}
     } else if (sideLoopH) {
       endSideLoopH();
     }
-    if (player0Mixer && sideNow) player0Mixer.update(dt);   // player0は「motion」を往復ループ
+    if (player0Mixer && sideNow) {
+      player0Mixer.update(dt);   // player0は「motion」をループ
+      // ループの継ぎ目（最終フレーム→先頭フレーム）がなめらかでないクリップ対策：
+      // 終わりに近づいたら、同じクリップのもう一方のインスタンスを0フレーム目から再生し、hと同じTRIGGER_FADEでクロスフェードして継ぎ目の段差を隠す
+      if (player0CurAct && player0Dur > 0) {
+        const t0 = player0CurAct.time % player0Dur;
+        if (player0Dur - t0 <= TRIGGER_FADE) {
+          if (!player0Swapped) {
+            const next = (player0CurAct === player0Act) ? player0Act2 : player0Act;
+            next.reset().play();
+            next.crossFadeFrom(player0CurAct, TRIGGER_FADE, false);
+            player0CurAct = next;
+            player0Swapped = true;
+          }
+        } else {
+          player0Swapped = false;
+        }
+      }
+    }
     // 横→正面に戻った瞬間から、導入（2action0 / plusの導入クリップ）を始める
     if (sidePrev === true && !sideNow) {
       playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、正面に戻ったこのタイミングで流す

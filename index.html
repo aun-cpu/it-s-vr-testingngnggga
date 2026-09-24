@@ -1204,17 +1204,19 @@ body.stereo .dispbar{opacity:.55}
   const BG_POS = { x: 0, y: 0, z: 0 };                 // 配置位置
   const BG_ROT_Y = Math.PI / 2;                        // y軸回転（90°）
   let bgState = '未読込';
-  function loadBg(group) {
-    if (!THREE.GLTFLoader) { bgState = '読込失敗（GLTFLoaderなし）'; return; }
+  function loadBg(group, onDone) {
+    if (!THREE.GLTFLoader) { bgState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     bgState = '読込中…';
     new THREE.GLTFLoader().load(BG_URL, function (gltf) {
       const model = gltf.scene;
       model.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       group.add(model);
       bgState = '表示中';
+      if (onDone) onDone();
     }, undefined, function (err) {
       bgState = '読込失敗（bg.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
+      if (onDone) onDone();
     });
   }
 
@@ -1267,10 +1269,11 @@ body.stereo .dispbar{opacity:.55}
   let plusAnim = '';
   let plusMixer = null;
   let plusAct = null;                // 「2actionplus」（角度で再生位置を決める）
-  function loadPlus(group) {
-    if (!THREE.GLTFLoader) { plusState = '読込失敗（GLTFLoaderなし）'; return; }
+  function loadPlus(group, onDone) {
+    if (!THREE.GLTFLoader) { plusState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     plusState = '読込中…';
     new THREE.GLTFLoader().load(PLUS_URL, function (gltf) {
+      (function () {
       const model = gltf.scene;
       if (playerScale != null) {
         // player.glbのメッシュを間引いただけでボーンは同じなので、playerと全く同じ縮尺・位置合わせを使う
@@ -1332,9 +1335,12 @@ body.stereo .dispbar{opacity:.55}
       plusMixer.update(0);
       plusAnim = '  アクション: ' + clip.name + '（playerと同じ再生位置・透明度' + PLUS_OPACITY + '）' +
                  (clip0p ? ' ＋導入: ' + clip0p.name : ' ／導入クリップ（2action0）なし');
+      })();
+      if (onDone) onDone();
     }, undefined, function (err) {
       plusState = '読込失敗（playerplus.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
+      if (onDone) onDone();
     });
   }
   // ---- playerarm.glb（playerと同じ読み込み。hのaction2/3/4と同じタイミングで 2action2/3/4 を再生） ----
@@ -1357,10 +1363,11 @@ body.stereo .dispbar{opacity:.55}
     armAct2.paused = true;   // 時間は進めず0フレーム目のまま止める（フェードの重みだけは進む）
     armCurAct = armAct2;
   }
-  function loadArm(group) {
-    if (!THREE.GLTFLoader) { armState = '読込失敗（GLTFLoaderなし）'; return; }
+  function loadArm(group, onDone) {
+    if (!THREE.GLTFLoader) { armState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     armState = '読込中…';
     new THREE.GLTFLoader().load(ARM_URL, function (gltf) {
+      (function () {
       const model = gltf.scene;
       if (playerScale != null) {
         // player.glbのメッシュを間引いただけでボーンは同じなので、playerと全く同じ縮尺・位置合わせを使う
@@ -1397,9 +1404,12 @@ body.stereo .dispbar{opacity:.55}
       armAct2 = mk(c2); armAct3 = mk(c3); armAct4 = mk(c4);
       armIdleHold();   // 何も再生していない間は「2action2」の0フレーム目で固定表示
       armAnim = '  ' + (c2 ? c2.name : '「2action2」なし') + ' / ' + (c3 ? c3.name : '「2action3」なし') + ' / ' + (c4 ? c4.name : '「2action4」なし');
+      })();
+      if (onDone) onDone();
     }, undefined, function (err) {
       armState = '読込失敗（playerarm.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
+      if (onDone) onDone();
     });
   }
   // モデルの色合いを少し薄く・光沢を少し加える（PBR/Phong どちらのマテリアルでも効くように分岐）
@@ -1654,10 +1664,11 @@ body.stereo .dispbar{opacity:.55}
     hGroundY = hGroundY == null ? target : cur + (target - cur) * Math.min(1, dt / SIDE_LOOP_H_GROUND_SMOOTH);
     return hGroundY;
   }
-  function loadH(group) {
-    if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
+  function loadH(group, onDone) {
+    if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     hState = '読込中…';
     new THREE.GLTFLoader().load(H_URL, function (gltf) {
+      (function () {
       const model = gltf.scene;
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
@@ -1730,9 +1741,12 @@ body.stereo .dispbar{opacity:.55}
       act.setLoop(THREE.LoopRepeat, Infinity);
       act.play();
       hAnim = '  アクション: ' + clip.name + '（ループ再生）' + (a4 ? ' / ' + a4.name : ' / 「' + H_NAME4 + '」なし') + (a3 ? ' / ' + a3.name : ' / 「' + H_NAME3 + '」なし');
+      })();
+      if (onDone) onDone();
     }, undefined, function (err) {
       hState = '読込失敗（h.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
+      if (onDone) onDone();
     });
   }
   // クリップ内の「全ての親」ボーンの位置トラックを、最初のフレームの値に固定する（腰・センター系のボーンは固定しない）。
@@ -1785,10 +1799,11 @@ body.stereo .dispbar{opacity:.55}
     try { console.log('[player0] bone chain:', chain, 'locked:', info.locked, 'pos bones:', info.posBones); } catch (e) {}
     return info;
   }
-  function loadPlayer0(group) {
-    if (!THREE.GLTFLoader) { player0State = '読込失敗（GLTFLoaderなし）'; return; }
+  function loadPlayer0(group, onDone) {
+    if (!THREE.GLTFLoader) { player0State = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     player0State = '読込中…';
     new THREE.GLTFLoader().load(PLAYER0_URL, function (gltf) {
+      (function () {
       const model = gltf.scene;
       if (playerScale != null) {
         // playerと同じ縮尺・位置合わせを使い、playerの位置にそのまま重なるようにする
@@ -1833,9 +1848,12 @@ body.stereo .dispbar{opacity:.55}
         '\n  固定:' + (lockInfo.locked.length ? lockInfo.locked.join(',') : 'なし') +
         ' / 階層:' + lockInfo.chain.join('>') +
         ' / 位置アニメ有:' + (lockInfo.posBones.length ? lockInfo.posBones.join(',') : 'なし') : '');
+      })();
+      if (onDone) onDone();
     }, undefined, function (err) {
       player0State = '読込失敗（player0.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
+      if (onDone) onDone();
     });
   }
   function startSideLoopH() {
@@ -1960,31 +1978,6 @@ body.stereo .dispbar{opacity:.55}
       sun.shadow.radius = 3;
       scene.add(sun);
 
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshPhongMaterial({ color: 0x86ad76, shininess: 20, specular: 0x333333 }));
-      floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-      const grid = new THREE.GridHelper(90, 45, 0x2f4f2f, 0x4c7a4c);
-      grid.position.y = 0.02; scene.add(grid);
-
-      // 方角の目印（北=赤 / 東=緑 / 南=青 / 西=黄）
-      const tower = (x, z, color) => {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(2, 14, 2), new THREE.MeshPhongMaterial({ color: color, shininess: 45, specular: 0x555555 }));
-        m.position.set(x, 7, z); scene.add(m);
-      };
-      tower(0, -30, 0xec7266);
-      tower(30, 0, 0x5cd48c);
-      tower(0, 30, 0x5faee0);
-      tower(-30, 0, 0xf4d15e);
-
-      const rnd = mulberry32(20260919);
-      for (let i = 0; i < 42; i++) {
-        let x = (rnd() * 2 - 1) * 40, z = (rnd() * 2 - 1) * 40;
-        if (Math.hypot(x, z) < 5) { x += 8; z += 8; }
-        const w = 1 + rnd() * 2.5, h = 0.8 + rnd() * 5, d = 1 + rnd() * 2.5;
-        const c = new THREE.Color().setHSL(rnd(), 0.45, 0.65);
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: c, shininess: 35, specular: 0x444444 }));
-        m.position.set(x, h / 2, z); scene.add(m);
-      }
-
       const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
 
       // bg.glb（背景として据え置き。y=90°回転、x=36・z=34へ移動）
@@ -1992,7 +1985,6 @@ body.stereo .dispbar{opacity:.55}
       bgGroup.position.set(BG_POS.x, BG_POS.y, BG_POS.z);
       bgGroup.rotation.y = BG_ROT_Y;
       scene.add(bgGroup);
-      loadBg(bgGroup);
 
       // 人物モデル（player.glb）。位置は固定（操作側のpx/py/pzは水滴の位置に使う）
       const playerGroup = new THREE.Group();
@@ -2005,7 +1997,6 @@ body.stereo .dispbar{opacity:.55}
       hGroup.position.set(0, 0, 0);
       hGroup.rotation.y = H_FACING;
       scene.add(hGroup);
-      loadH(hGroup);
 
       // playerarm.glb（playerと同じ位置・向き。player本体は固定なのでズレ量だけを適用）
       const armGroup = new THREE.Group();
@@ -2026,12 +2017,18 @@ body.stereo .dispbar{opacity:.55}
       player0Group.visible = false;
       scene.add(player0Group);
 
-      // playerを先に読み込み、その縮尺・位置合わせが確定してからarm/plusを読み込む
-      // （playerarm/playerplusはplayerのメッシュを間引いただけでボーンは同じなので、同じ値で重ねられる）
-      loadPlayer(playerGroup, function () {
-        loadArm(armGroup);
-        loadPlus(plusGroup);
-        loadPlayer0(player0Group);
+      // 読み込みは同時に走らせず、1つずつ順番に行う（端末によっては同時読込でクラッシュするため）
+      // bg → h → player →（playerの縮尺確定後）arm → plus → player0
+      loadBg(bgGroup, function () {
+        loadH(hGroup, function () {
+          loadPlayer(playerGroup, function () {
+            loadArm(armGroup, function () {
+              loadPlus(plusGroup, function () {
+                loadPlayer0(player0Group);
+              });
+            });
+          });
+        });
       });
 
       initSplash(scene);   // hのaction3/4トリガー時の水滴エフェクト（初期カメラ正面の固定位置）

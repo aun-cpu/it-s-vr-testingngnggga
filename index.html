@@ -1046,6 +1046,7 @@ body.stereo .dispbar{opacity:.55}
       hAct4.clampWhenFinished = false;
       hAct4.reset().play();
       hAct4.setEffectiveWeight(1);
+      hAct4.timeScale = 1;
       if (from && from !== hAct4) hAct4.crossFadeFrom(from, TRIGGER_FADE, false);
     }
   }
@@ -1143,6 +1144,8 @@ body.stereo .dispbar{opacity:.55}
   let player0FadeT = 0;                // 移行の経過時間（秒）
   let player0FadeFrom = null;          // 移行元（最後のポーズで静止）
   let player0FadeTo = null;            // 移行先（最初のポーズで静止→移行完了後に再生再開）
+  const SIDE_LOOP_H_SPEED = 0.8;       // 最初(カメラ横の間)だけ、hのaction4ループの再生速度
+  const SIDE_LOOP_H_DROP = 0.2;        // 最初(カメラ横の間)だけ、hの位置を下げる量（Y）
   let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
 
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----
@@ -1712,11 +1715,13 @@ body.stereo .dispbar{opacity:.55}
     hAct4.clampWhenFinished = false;
     hAct4.reset().play();
     hAct4.setEffectiveWeight(1);
+    hAct4.timeScale = SIDE_LOOP_H_SPEED;   // 最初だけ0.8倍速
     if (from && from !== hAct4) hAct4.crossFadeFrom(from, TRIGGER_FADE, false);
     sideLoopH = true;
   }
   function endSideLoopH() {
     sideLoopH = false;
+    if (hAct4) hAct4.timeScale = 1;   // 0.8倍速は最初だけ。以降は通常速度
     if (forcedLoopActive) return;   // 強制ループ中はそちらがhのaction4を引き継ぐ
     if (hAct4) { hAct4.setLoop(THREE.LoopOnce, 1); hAct4.clampWhenFinished = true; }
     if (hCurAct === hAct4) {
@@ -2090,7 +2095,7 @@ body.stereo .dispbar{opacity:.55}
     sidePrev = sideNow;
     if (sideNow || forcedLoopActive) frontIntro = false;   // 横にある間・強制ループ中は導入しない
     syncIntroActs();
-    if (R.h) R.h.position.set(0, 0, 0);       // playerと同じ位置（固定）に追従
+    if (R.h) R.h.position.set(0, sideNow ? -SIDE_LOOP_H_DROP : 0, 0);   // playerと同じ位置（固定）に追従。最初(カメラ横の間)だけ少し下げる
     if (R.plus) {
       R.plus.visible = !sideNow;   // カメラ横の間はplayerの代わりにplayer0を出すので、playerに重ねるモデルは隠す
       R.plus.position.set(inp.pox, inp.poy, inp.poz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）

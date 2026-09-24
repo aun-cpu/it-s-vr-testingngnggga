@@ -1158,6 +1158,11 @@ body.stereo .dispbar{opacity:.55}
   let player0FadeTo = null;            // 移行先（最初のポーズで静止→移行完了後に再生再開）
   const SIDE_LOOP_H_SPEED = 0.8;       // 最初(カメラ横の間)だけ、hのaction4ループの再生速度
   const SIDE_LOOP_H_DROP = 0.03;       // 最初(カメラ横の間)だけ、hの位置を下げる量（Y）
+  const SIDE_LOOP_H_GROUND = true;     // 最初(カメラ横の間)は、hの一番低い点(足)が地面(y=0)に付くよう毎フレーム高さを合わせる（trueの間は上のDROPは使わない）
+  const SIDE_LOOP_H_GROUND_MARGIN = 0; // m: 足を地面よりさらに上げたい場合の量（+で浮かせる）
+  const SIDE_LOOP_H_GROUND_SMOOTH = 0.12;   // 秒: 高さ合わせの追従の速さ（小さいほど素早く追従）
+  let hFootSets = [];                  // hの足まわりの頂点（接地判定用）
+  let hGroundY = null;                 // 接地のために今かけているhのYオフセット（null=未計算）
   let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
 
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----
@@ -1536,6 +1541,74 @@ body.stereo .dispbar{opacity:.55}
     o.add(outline);
     hOutlineMeshes.push(outline);
   }
+  // 接地判定用: 読込直後の姿勢で低い位置にある頂点（足〜すね）を、メッシュごとに最大1000個ためておく
+  function buildHFootSets(model, height) {
+    hFootSets = [];
+    model.updateMatrixWorld(true);
+    const limit = (height > 0 ? height : 1.6) * 0.2;
+    const v = new THREE.Vector3();
+    model.traverse(function (o) {
+      if (!o.isSkinnedMesh || o.userData.__outline || !o.skeleton) return;
+      const g = o.geometry, pa = g.attributes.position, sia = g.attributes.skinIndex, swa = g.attributes.skinWeight;
+      if (!pa || !sia || !swa) return;
+      const swMax = swa.normalized ? normalizedMaxOf(swa.array.constructor) : null;
+      const cand = [];
+      for (let i = 0; i < pa.count; i++) {
+        const q = readVec3(pa, i);
+        v.set(q[0], q[1], q[2]).applyMatrix4(o.matrixWorld);
+        if (v.y <= limit) cand.push([i, v.y]);
+      }
+      if (!cand.length) return;
+      cand.sort(function (a, b) { return a[1] - b[1]; });
+      const n = Math.min(1000, cand.length);
+      const fs = { mesh: o, count: n, pos: new Float32Array(n * 3), si: new Float32Array(n * 4), sw: new Float32Array(n * 4) };
+      for (let k = 0; k < n; k++) {
+        const i = cand[k][0];
+        const q = readVec3(pa, i);
+        fs.pos[k * 3] = q[0]; fs.pos[k * 3 + 1] = q[1]; fs.pos[k * 3 + 2] = q[2];
+        fs.si[k * 4] = sia.getX(i); fs.si[k * 4 + 1] = sia.getY(i); fs.si[k * 4 + 2] = sia.getZ(i); fs.si[k * 4 + 3] = sia.getW(i);
+        const w = [swa.getX(i), swa.getY(i), swa.getZ(i), swa.getW(i)];
+        for (let j = 0; j < 4; j++) fs.sw[k * 4 + j] = swMax ? w[j] / swMax : w[j];
+      }
+      hFootSets.push(fs);
+    });
+    try { console.log('[h] 接地用の頂点セット:', hFootSets.map(function (f) { return f.count; })); } catch (e) {}
+  }
+  const _hV4a = new THREE.Vector4(), _hV4b = new THREE.Vector4(), _hV3 = new THREE.Vector3(), _hM4 = new THREE.Matrix4();
+  // 今のポーズでの、足まわりの頂点のワールド最低Y（スキニング後）
+  function hLowestWorldY() {
+    let low = Infinity;
+    for (let f = 0; f < hFootSets.length; f++) {
+      const fs = hFootSets[f], mesh = fs.mesh, sk = mesh.skeleton;
+      sk.update();
+      const be = sk.boneMatrices;
+      for (let i = 0; i < fs.count; i++) {
+        _hV4a.set(fs.pos[i * 3], fs.pos[i * 3 + 1], fs.pos[i * 3 + 2], 1).applyMatrix4(mesh.bindMatrix);
+        let ax = 0, ay = 0, az = 0;
+        for (let j = 0; j < 4; j++) {
+          const w = fs.sw[i * 4 + j];
+          if (!w) continue;
+          _hM4.fromArray(be, fs.si[i * 4 + j] * 16);
+          _hV4b.copy(_hV4a).applyMatrix4(_hM4);
+          ax += _hV4b.x * w; ay += _hV4b.y * w; az += _hV4b.z * w;
+        }
+        _hV3.set(ax, ay, az).applyMatrix4(mesh.bindMatrixInverse).applyMatrix4(mesh.matrixWorld);
+        if (_hV3.y < low) low = _hV3.y;
+      }
+    }
+    return low;
+  }
+  // 一番低い点が地面(y=0)に付くための、hのYオフセット（急な変化をならす）
+  function updateHGround(dt) {
+    const hg = R.h;
+    hg.updateMatrixWorld(true);
+    const cur = hg.position.y;                       // 直前に適用したオフセット（今の姿勢の測定にはこれが含まれる）
+    const low = hLowestWorldY();
+    if (!isFinite(low)) return hGroundY == null ? 0 : hGroundY;
+    const target = -(low - cur) + SIDE_LOOP_H_GROUND_MARGIN;
+    hGroundY = hGroundY == null ? target : cur + (target - cur) * Math.min(1, dt / SIDE_LOOP_H_GROUND_SMOOTH);
+    return hGroundY;
+  }
   function loadH(group) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; return; }
     hState = '読込中…';
@@ -1555,6 +1628,7 @@ body.stereo .dispbar{opacity:.55}
       model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o, outlineWorldThickness); } });
       applyHOutline(); applyHProcessing();   // 初期状態（既定は全部ON）を反映
       group.add(model);
+      buildHFootSets(model, finalSize.y);
       hState = '表示中';
 
       // まばたきモーフ・話す動き用の母音モーフ（シェイプキー）を探す
@@ -2107,7 +2181,15 @@ body.stereo .dispbar{opacity:.55}
     sidePrev = sideNow;
     if (sideNow || forcedLoopActive) frontIntro = false;   // 横にある間・強制ループ中は導入しない
     syncIntroActs();
-    if (R.h) R.h.position.set(0, sideNow ? -SIDE_LOOP_H_DROP : 0, 0);   // playerと同じ位置（固定）に追従。最初(カメラ横の間)だけ少し下げる
+    if (R.h) {   // playerと同じ位置（固定）に追従。最初(カメラ横の間)は足が地面に付くように高さを合わせる
+      let hy = 0;
+      if (sideNow) {
+        hy = (SIDE_LOOP_H_GROUND && hFootSets.length) ? updateHGround(dt) : -SIDE_LOOP_H_DROP;
+      } else {
+        hGroundY = null;
+      }
+      R.h.position.set(0, hy, 0);
+    }
     if (R.plus) {
       R.plus.visible = !sideNow;   // カメラ横の間はplayerの代わりにplayer0を出すので、playerに重ねるモデルは隠す
       R.plus.position.set(inp.pox, inp.poy, inp.poz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）

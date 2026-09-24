@@ -707,7 +707,7 @@ body.stereo .dispbar{opacity:.55}
   });
 
   const P = { x: 0, y: 0, z: 0 };   // 視点位置は固定
-  const START_X_SHIFT = -1.5;   // m: 表示開始時にカメラ位置を左へずらす量
+  const START_X_SHIFT = -3;   // m: 表示開始時にカメラ位置を左へずらす量
   // カメラ位置の補正(m)。基準は目の高さ(地面から1.6m)・ワールド座標（+Zが後ろ向き）
   const CAM_OFFSET = { x: 0, y: -0.2, z: 0.2 };
   let R = null, T = null;
@@ -933,7 +933,7 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 表示開始時に正面からずらしたカメラを、注視で「今の初期位置」に戻すための白いボタン ----
   const CENTER_BUTTON_SIZE = 0.22;           // m: ボタンの基準サイズ（直径目安）
-  const CENTER_BUTTON_POS = { x: 0, y: 1.4, z: 0.2 };   // ワールド座標に固定（元のカメラ位置＝ずらす前の位置）
+  const CENTER_BUTTON_POS = { x: 0, y: 1.8, z: 0.2 };   // ワールド座標に固定（元のカメラ位置＝ずらす前の位置）。yは1.4から0.4上げた
   const CENTER_GAZE_HIT_RADIUS = 1.2;   // m: 遠く（5mほど離れた位置）から見るため、判定を広めにする
   let centerButtonGroup = null;
   let centerButtonSprite = null;
@@ -1145,7 +1145,7 @@ body.stereo .dispbar{opacity:.55}
   let player0FadeFrom = null;          // 移行元（最後のポーズで静止）
   let player0FadeTo = null;            // 移行先（最初のポーズで静止→移行完了後に再生再開）
   const SIDE_LOOP_H_SPEED = 0.8;       // 最初(カメラ横の間)だけ、hのaction4ループの再生速度
-  const SIDE_LOOP_H_DROP = 0.03;        // 最初(カメラ横の間)だけ、hの位置を下げる量（Y）
+  const SIDE_LOOP_H_DROP = 0.2;        // 最初(カメラ横の間)だけ、hの位置を下げる量（Y）
   let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
 
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----

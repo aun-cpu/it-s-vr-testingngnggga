@@ -1702,6 +1702,176 @@ body.stereo .dispbar{opacity:.55}
     hGroundY = hGroundY == null ? target : cur + (target - cur) * Math.min(1, dt / SIDE_LOOP_H_GROUND_SMOOTH);
     return hGroundY;
   }
+  // ---- hの視線: 両目・左目・右目ボーンを回して、人間らしい目の動きにする ----
+  // ・小さな視線移動(サッカード)を不規則な間隔で起こし、合間にごく小さな揺れ(ドリフト・マイクロサッカード)を足す
+  // ・ときどきカメラ（見ている人）へ視線を向け、しばらく追ってから外す（近い対象を見る時は左右の目が寄る）
+  // ・アニメ(idle/action)が書いた目の向きを基準に、その上へ重ねる（アニメで目を動かしていても壊さない）
+  const H_GAZE_ENABLED = true;        // false: 視線処理を止める
+  const EYE_MAX_DEG = 30;             // 度: 目がアニメの向きから回れる最大角度
+  const GAZE_WANDER_YAW_SD = 7;       // 度: 自由に見回す時の左右のばらつき（標準偏差）
+  const GAZE_WANDER_PITCH_SD = 3.5;   // 度: 同・上下
+  const GAZE_FIX = [0.35, 1.9];       // 秒: 次の視線移動までの間隔（この範囲でランダム）
+  const GAZE_CAM_PROB = 0.35;         // 視線移動のたびにカメラへ向ける確率
+  const GAZE_CAM_HOLD = [1.2, 3.2];   // 秒: カメラを見続ける長さ
+  const GAZE_CAM_MAX_YAW = 35;        // 度: カメラがこの左右角より外なら見ない（首が向いていない時は無理に見ない）
+  const GAZE_CAM_MAX_PITCH = 25;      // 度: 同・上下
+  const GAZE_CAM_MIN_DIST = 0.3;      // m: これより近いカメラは見ない
+  const D2R = Math.PI / 180;
+  let hEyes = null;                   // { eyes: [{bone,fLocal,base,applied}], common: 両目 or null }
+  let hEyeInfo = '未検出';
+  const hGaze = { yaw: 0, pitch: 0, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t0: 0, dur: 0.06,
+                  nextAt: 0, dist: 2, mode: 'wander', camUntil: 0, muYaw: 0, muPitch: 0, muNext: 0 };
+  const _gq = { p: new THREE.Quaternion(), e: new THREE.Quaternion(), n: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion() };
+  const _gv = { pos: new THREE.Vector3(), f: new THREE.Vector3(), d: new THREE.Vector3(), s: new THREE.Vector3(),
+                t: new THREE.Vector3(), g: new THREE.Vector3(), cam: new THREE.Vector3(), mid: new THREE.Vector3(), fm: new THREE.Vector3() };
+  const gzRand = function (r) { return r[0] + Math.random() * (r[1] - r[0]); };
+  const gzRandn = function () { return Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random()); };
+  const gzClamp = function (v, lo, hi) { return Math.max(lo, Math.min(hi, v)); };
+  const gzWrap = function (a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+  const gzYaw = function (v) { return Math.atan2(v.x, v.z); };
+  const gzPitch = function (v) { return Math.asin(gzClamp(v.y, -1, 1)); };
+
+  function findEyeBone(model, exactRe, prefixRe) {
+    let exact = null, prefix = null;
+    model.traverse(function (o) {
+      if (!o.isBone) return;
+      const n = o.name || '';
+      if (!exact && exactRe.test(n)) exact = o;
+      else if (!prefix && prefixRe.test(n) && !/光|ハイライト|highlight/i.test(n)) prefix = o;
+    });
+    return exact || prefix;
+  }
+  function isAncestorOf(a, b) {
+    for (let o = b && b.parent; o; o = o.parent) if (o === a) return true;
+    return false;
+  }
+  // 読込直後(初期姿勢)に、両目/左目/右目のボーンを探して準備する
+  function setupHEyes(model) {
+    hEyes = null; hEyeInfo = '目のボーンなし';
+    if (!H_GAZE_ENABLED) { hEyeInfo = '無効'; return; }
+    model.updateMatrixWorld(true);
+    const both = findEyeBone(model, /^(両目|両眼|both_?eyes?|eyes)$/i, /^(両目|両眼)/);
+    const left = findEyeBone(model, /^(左目|左眼|eye_?l|l_?eye|left_?eye)$/i, /^(左目|左眼|left_?eye)/i);
+    const right = findEyeBone(model, /^(右目|右眼|eye_?r|r_?eye|right_?eye)$/i, /^(右目|右眼|right_?eye)/i);
+    if (!both && !left && !right) return;
+    const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();
+    const rel = function (b) {
+      const m = new THREE.Matrix4().multiplyMatrices(inv, b.matrixWorld);
+      const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+      m.decompose(p, q, sc);
+      return { p: p, q: q };
+    };
+    // 顔の正面: 「キャラの左目 - 右目」と上方向の外積（左が+Xなら+Z向き）。両目が揃わなければ+Z
+    let fModel = new THREE.Vector3(0, 0, 1);
+    if (left && right) {
+      const lat = rel(left).p.sub(rel(right).p); lat.y = 0;
+      const f = new THREE.Vector3().crossVectors(lat, new THREE.Vector3(0, 1, 0));
+      if (f.lengthSq() > 1e-10) fModel = f.normalize();
+    }
+    // 各ボーンについて「初期姿勢で正面を向いている軸」をボーンのローカル座標で覚える（リグの軸の向きに依存しないため）
+    const mk = function (b) {
+      const r = rel(b);
+      return { bone: b, fLocal: fModel.clone().applyQuaternion(r.q.clone().invert()).normalize(), base: b.quaternion.clone(), applied: null };
+    };
+    const eyes = [left, right].filter(Boolean).map(mk);
+    let common = null, bothNote = '';
+    if (both) {
+      // 両目が左目・右目の親なら、両目を回せば両方が動く。親でなければ見た目に効かないので使わない
+      if (!eyes.length || eyes.every(function (e) { return isAncestorOf(both, e.bone); })) { common = mk(both); bothNote = both.name + '(親)'; }
+      else bothNote = both.name + '(親でないため未使用)';
+    }
+    hEyes = { eyes: eyes, common: common };
+    hEyeInfo = [bothNote, left && left.name, right && right.name].filter(Boolean).join(' / ');
+  }
+  // アニメが書いた最新の姿勢での、ボーンの位置と正面（自分が前フレームで足した回転は含めない）
+  function eyeFrame(e, pos, f) {
+    if (!e.applied || e.bone.quaternion.angleTo(e.applied) > 1e-5) e.base.copy(e.bone.quaternion);
+    const par = e.bone.parent;
+    par.updateWorldMatrix(true, false);
+    par.matrixWorld.decompose(_gv.t, _gq.p, _gv.s);
+    pos.copy(e.bone.position).applyMatrix4(par.matrixWorld);
+    _gq.e.copy(_gq.p).multiply(e.base);
+    f.copy(e.fLocal).applyQuaternion(_gq.e);
+  }
+  // ボーンを、ワールド座標の点Gへ向ける（最大EYE_MAX_DEGまで）
+  function aimEye(e, G) {
+    eyeFrame(e, _gv.pos, _gv.f);
+    _gv.d.subVectors(G, _gv.pos);
+    if (_gv.d.lengthSq() < 1e-10) return;
+    _gv.d.normalize();
+    const ang = _gv.f.angleTo(_gv.d);
+    if (ang > 2.6) return;                                  // ほぼ真後ろは無視
+    _gq.r.setFromUnitVectors(_gv.f, _gv.d);
+    const mx = EYE_MAX_DEG * D2R;
+    if (ang > mx) _gq.r.copy(_gq.id).slerp(_gq.r, mx / ang);
+    _gq.n.copy(_gq.r).multiply(_gq.e);                       // 世界での新しい向き
+    _gq.p.invert();
+    e.bone.quaternion.copy(_gq.p.multiply(_gq.n));           // 親の座標系へ戻す
+    if (!e.applied) e.applied = new THREE.Quaternion();
+    e.applied.copy(e.bone.quaternion);
+  }
+  function updateHGaze(dt, nowMs) {
+    if (!hEyes || !R || !R.camera) return;
+    const g = hGaze, t = nowMs / 1000, eyes = hEyes.eyes, common = hEyes.common;
+    // 目の中心と、アニメ上の顔の正面
+    const mid = _gv.mid, fm = _gv.fm;
+    if (common) eyeFrame(common, mid, fm);
+    else {
+      mid.set(0, 0, 0); fm.set(0, 0, 0);
+      for (let i = 0; i < eyes.length; i++) { eyeFrame(eyes[i], _gv.pos, _gv.f); mid.add(_gv.pos); fm.add(_gv.f); }
+      mid.multiplyScalar(1 / eyes.length);
+    }
+    fm.normalize();
+    const fmYaw = gzYaw(fm), fmPitch = gzPitch(fm);
+    // カメラ（見ている人）が見られる範囲にいるか
+    R.camera.getWorldPosition(_gv.cam);
+    _gv.s.subVectors(_gv.cam, mid);
+    const camDist = _gv.s.length();
+    let camYaw = 0, camPitch = 0, camOk = false;
+    if (camDist > GAZE_CAM_MIN_DIST) {
+      _gv.s.multiplyScalar(1 / camDist);
+      camYaw = gzWrap(gzYaw(_gv.s) - fmYaw); camPitch = gzPitch(_gv.s) - fmPitch;
+      camOk = Math.abs(camYaw) <= GAZE_CAM_MAX_YAW * D2R && Math.abs(camPitch) <= GAZE_CAM_MAX_PITCH * D2R;
+    }
+    // 視線移動（サッカード）の開始: 移動量が大きいほど少し長くかかる
+    const startSac = function (y, p) {
+      g.fromYaw = g.yaw; g.fromPitch = g.pitch; g.toYaw = y; g.toPitch = p;
+      const amp = Math.hypot(y - g.yaw, p - g.pitch) / D2R;
+      g.dur = Math.min(0.14, 0.04 + 0.0025 * amp); g.t0 = t;
+    };
+    const pickWander = function () {
+      const home = Math.random() < 0.25;                      // ときどき正面付近へ戻る
+      const k = Math.random() < 0.1 ? 2 : 1;                  // たまに大きめに見回す
+      const y = home ? gzRandn() * 1.5 * D2R : gzClamp(gzRandn() * GAZE_WANDER_YAW_SD * k, -16, 16) * D2R;
+      const p = home ? gzRandn() * 1 * D2R : gzClamp(gzRandn() * GAZE_WANDER_PITCH_SD - 1, -9, 7) * D2R;
+      g.dist = 1.2 + Math.random() * 1.8;
+      startSac(y, p);
+    };
+    if (!g.nextAt) g.nextAt = t + 0.5;
+    if (g.mode === 'camera') {
+      if (!camOk || t >= g.camUntil) { g.mode = 'wander'; pickWander(); g.nextAt = t + gzRand(GAZE_FIX); }
+      else { g.toYaw = camYaw; g.toPitch = camPitch; g.dist = camDist; }   // 見ている間は追い続ける
+    } else if (t >= g.nextAt) {
+      if (camOk && Math.random() < GAZE_CAM_PROB) {
+        g.mode = 'camera'; g.camUntil = t + gzRand(GAZE_CAM_HOLD); g.dist = camDist; startSac(camYaw, camPitch);
+      } else { pickWander(); g.nextAt = t + gzRand(GAZE_FIX); }
+    }
+    const u = g.dur > 0 ? gzClamp((t - g.t0) / g.dur, 0, 1) : 1, sm = u * u * (3 - 2 * u);
+    g.yaw = g.fromYaw + (g.toYaw - g.fromYaw) * sm;
+    g.pitch = g.fromPitch + (g.toPitch - g.fromPitch) * sm;
+    // 固視微動: ごく小さなジャンプ(マイクロサッカード)＋ゆっくりしたドリフト
+    if (t >= g.muNext) {
+      const a = (0.1 + Math.random() * 0.25) * D2R, th = Math.random() * Math.PI * 2;
+      g.muYaw = a * Math.cos(th); g.muPitch = a * Math.sin(th) * 0.7; g.muNext = t + 0.25 + Math.random() * 0.7;
+    } else { const kd = Math.exp(-dt / 0.5); g.muYaw *= kd; g.muPitch *= kd; }
+    const drY = 0.12 * D2R * (Math.sin(t * 1.7) + 0.6 * Math.sin(t * 4.3 + 1.1));
+    const drP = 0.10 * D2R * (Math.sin(t * 1.3 + 2) + 0.6 * Math.sin(t * 3.9));
+    const ay = fmYaw + g.yaw + g.muYaw + drY, ap = fmPitch + g.pitch + g.muPitch + drP, cp = Math.cos(ap);
+    // 注視点（距離が近いほど、左右の目が内側へ寄る）
+    _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);
+    if (common) aimEye(common, _gv.g);
+    for (let i = 0; i < eyes.length; i++) aimEye(eyes[i], _gv.g);
+  }
   function loadH(group, onDone) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     hState = '読込中…';
@@ -1736,6 +1906,8 @@ body.stereo .dispbar{opacity:.55}
           if (hMouthTargets[k]) hMouthTargets[k].push({ mesh: o, idx: o.morphTargetDictionary[k] });
         });
       });
+
+      setupHEyes(model);   // 両目・左目・右目ボーンを探す（アニメの有無に関係なく視線を動かす）
 
       const clips = gltf.animations || [];
       if (clips.length === 0) { hAnim = '  アニメなし'; return; }
@@ -2293,6 +2465,7 @@ body.stereo .dispbar{opacity:.55}
     }
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
+    updateHGaze(dt, now);                                     // アニメの後に、両目・左目・右目ボーンへ視線を重ねる
     updateSplash(dt);                                         // 水滴エフェクトの飛散・落下・フェードを更新
     updateHearts(dt);                                         // ハートエフェクトの上昇・フェードを更新
     // action3/4の再生中は、まばたきモーフを1にし続ける。終了後はゆっくり0へ戻す（mixerの更新後に上書きする）
@@ -2567,6 +2740,7 @@ body.stereo .dispbar{opacity:.55}
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         'h.glb: ' + hState + hAnim + '\n' +
+        'h視線: ' + hEyeInfo + (hEyes ? (hGaze.mode === 'camera' ? '（カメラを見ている）' : '（自由に見ている）') : '') + '\n' +
         'player0.glb: ' + player0State + player0Anim + (P.x !== 0 ? '（カメラ横：表示中）' : '') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + '\n' +

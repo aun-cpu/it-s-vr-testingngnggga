@@ -187,6 +187,17 @@ body.stereo .tilt{display:none}
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
 }
 body.stereo .dispbar{opacity:.55}
+.bgpad{
+  z-index:5; position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+  padding:8px; border-radius:12px; background:rgba(0,0,0,.45); color:#fff;
+  font:11px/1.4 ui-monospace,Menlo,monospace; text-align:center;
+}
+body.stereo .bgpad{opacity:.55}
+.bgpadtitle{color:#9aa6bd; margin-bottom:4px}
+.bgpadgrid{display:grid; grid-template-columns:repeat(3,34px); grid-template-rows:repeat(3,34px); gap:4px}
+.bgpadgrid .mini{padding:0; width:34px; height:34px; font-size:15px; line-height:34px}
+.bgpadval{margin-top:4px}
 .wait{
   position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center;
   font-size:14px; color:#fff; background:rgba(0,0,0,.6); padding:14px 20px; border-radius:14px; pointer-events:none; line-height:1.7;
@@ -314,6 +325,15 @@ body.stereo .dispbar{opacity:.55}
     <button class="mini" id="dispReset">視点リセット</button>
     <button class="mini" id="dispTalkTest">話す動きテスト: OFF</button>
     <button class="mini" id="dispGaugeTest">ゲージ 75→150</button>
+  </div>
+  <div class="bgpad" id="bgpad">
+    <div class="bgpadtitle">背景位置（水平）</div>
+    <div class="bgpadgrid">
+      <span></span><button type="button" class="mini" id="bgFwd">↑</button><span></span>
+      <button type="button" class="mini" id="bgLeftBtn">←</button><button type="button" class="mini" id="bgResetBtn">●</button><button type="button" class="mini" id="bgRightBtn">→</button>
+      <span></span><button type="button" class="mini" id="bgBackBtn">↓</button><span></span>
+    </div>
+    <div class="bgpadval" id="bgpadVal">X 0.0 / Z 0.0</div>
   </div>
 </div>
 
@@ -697,6 +717,27 @@ body.stereo .dispbar{opacity:.55}
     $('#dispTalkTest').textContent = '話す動きテスト: ' + (talkOn ? 'ON' : 'OFF');
     $('#dispTalkTest').classList.toggle('on', talkOn);
     talkChangeAt = 0;   // 押した瞬間にすぐ新しい母音を選び直す
+  });
+
+  // ---- bg.glbを水平方向（X・Z）だけ動かすボタン（表示側） ----
+  const BG_STEP = 1;   // m: 1回のタップで動かす量
+  function updateBgpadVal() {
+    const el = $('#bgpadVal');
+    if (el) el.textContent = 'X ' + BG_POS.x.toFixed(1) + ' / Z ' + BG_POS.z.toFixed(1);
+  }
+  function moveBg(dx, dz) {
+    BG_POS.x += dx; BG_POS.z += dz;
+    if (R && R.bg) { R.bg.position.x = BG_POS.x; R.bg.position.z = BG_POS.z; }
+    updateBgpadVal();
+  }
+  $('#bgFwd').addEventListener('click', () => moveBg(0, -BG_STEP));
+  $('#bgBackBtn').addEventListener('click', () => moveBg(0, BG_STEP));
+  $('#bgLeftBtn').addEventListener('click', () => moveBg(-BG_STEP, 0));
+  $('#bgRightBtn').addEventListener('click', () => moveBg(BG_STEP, 0));
+  $('#bgResetBtn').addEventListener('click', () => {
+    BG_POS.x = 0; BG_POS.z = 0;
+    if (R && R.bg) { R.bg.position.x = 0; R.bg.position.z = 0; }
+    updateBgpadVal();
   });
 
   const P = { x: 0, y: 0, z: 0 };   // 視点位置は固定

@@ -1019,16 +1019,47 @@ body.stereo .dispbar{opacity:.55}
   // 注視で選択してから、カメラ位置が戻るまでの余韻（この間は横のまま、hとplayer0のモーションだけ速くなる）
   const CENTER_AFTERGLOW_SEC = 10;     // 秒: 選択してからカメラ位置が戻るまで
   const CENTER_AFTERGLOW_SPEED = 1.5;  // 余韻中のplayer0の倍率（最初の1倍速×この値。hは変えない）
+  const CENTER_AFTERGLOW_LATE_SEC = 4; // 余韻が始まってからこの秒数以降は「後半」：hはidle、player0はmotionの5〜10フレームだけを遅く再生
+  const PLAYER0_LATE_SPEED = 0.5;      // 後半のplayer0の再生速度（5〜10フレーム目の往復）
   let centerAfterglow = 0;             // 余韻の残り秒数（0=余韻中ではない）
+  let centerAfterglowLate = false;     // 余韻の後半に入ったか
   function selectCenterButton() {
     // 注視で選択：すぐには戻さず、まず余韻の時間を作る（ボタンは消す）。戻す処理は finishCenterSelect
     setCenterButtonVisible(false);
     centerAfterglow = CENTER_AFTERGLOW_SEC;
     if (player0Mixer) player0Mixer.timeScale = CENTER_AFTERGLOW_SPEED;                        // player0のモーションループだけ速くする（hは最初の速度のまま）
   }
+  // 余韻の後半（CENTER_AFTERGLOW_LATE_SEC秒目以降）に入る：hはidleへ、player0はmotionの5〜10フレーム目へ移る
+  function startAfterglowLate() {
+    centerAfterglowLate = true;
+    endSideLoopH();   // hのaction4ループを終えてidleへ（以降、横の間はaction4を再開しない）
+    if (player0Mixer && player0CurAct && player0Frame10Time > player0Frame5Time) {
+      player0Mixer.timeScale = 1;   // 前半の倍速は終わり（後半は下の時計で0.5倍）
+      if (player0Fading) {          // 継ぎ目の途中なら、先に完了させる
+        player0FadeFrom.stop();
+        player0FadeTo.weight = 1;
+        player0FadeTo.paused = false;
+        player0CurAct = player0FadeTo;
+        player0Fading = false;
+      }
+      // 今のポーズから、5フレーム目のポーズへ短くつなぐ（継ぎ目と同じ処理）
+      const next = (player0CurAct === player0Act) ? player0Act2 : player0Act;
+      player0CurAct.paused = true;
+      player0CurAct.weight = 1;
+      next.reset(); next.play(); next.time = player0Frame5Time; next.paused = true; next.weight = 0;
+      player0FadeFrom = player0CurAct;
+      player0FadeTo = next;
+      player0FadeT = 0;
+      player0Fading = true;
+      player0Late = true;
+      player0LateClock = 0;
+    }
+  }
   function finishCenterSelect() {
     // 余韻が終わったら、カメラ位置と視点の両方を、今の初期位置（表示開始時の元の位置）へ戻す
     centerAfterglow = 0;
+    centerAfterglowLate = false;
+    player0Late = false;
     if (player0Mixer) player0Mixer.timeScale = 1;
     P.x = 0;
     recenterPending = true;
@@ -1151,6 +1182,10 @@ body.stereo .dispbar{opacity:.55}
   let player0Act2 = null;              // motionループの継ぎ目用の2つ目のインスタンス（最初のポーズを保持しておく）
   let player0CurAct = null;            // 現在再生中側（player0Act / player0Act2 のどちらか）
   let player0Dur = 0;                  // motionクリップの長さ（秒）
+  let player0Frame5Time = 0;           // motionの5フレーム目の秒数（読込時に算出）
+  let player0Frame10Time = 0;          // motionの10フレーム目の秒数（読込時に算出）
+  let player0Late = false;             // 余韻の後半：5〜10フレーム目だけを往復再生中か
+  let player0LateClock = 0;            // 後半に入ってからの経過時間（PLAYER0_LATE_SPEED倍で進む）
   let player0Fading = false;           // 継ぎ目の移行中か
   let player0FadeT = 0;                // 移行の経過時間（秒）
   let player0FadeFrom = null;          // 移行元（最後のポーズで静止）
@@ -1782,6 +1817,17 @@ body.stereo .dispbar{opacity:.55}
       player0Act.play();
       player0CurAct = player0Act;
       player0Dur = clip.duration || 0;
+      {  // 「5フレーム目」「10フレーム目」の秒数を、キーフレーム数が一番多いトラックの時刻から算出する
+        let tt = null;
+        clip.tracks.forEach(function (t) { if (!tt || t.times.length > tt.length) tt = t.times; });
+        const ft = function (idx) {
+          if (tt && tt.length > idx) return tt[idx];
+          if (tt && tt.length > 1) return (tt[1] - tt[0]) * idx;
+          return 0;
+        };
+        player0Frame5Time = clamp(ft(5), 0, player0Dur);
+        player0Frame10Time = clamp(ft(10), 0, player0Dur);
+      }
       player0Fading = false;
       player0Anim = '  ' + clip.name + '（ループ）' + (lockInfo ?
         '\n  固定:' + (lockInfo.locked.length ? lockInfo.locked.join(',') : 'なし') +
@@ -2139,26 +2185,14 @@ body.stereo .dispbar{opacity:.55}
     if (R.player) R.player.rotation.y = sideNow ? START_YAW_SHIFT : PLAYER_FACING;   // カメラが横にずれている間はplayer0の方向を向く
     if (R.player0) { R.player0.position.set(0, 0, 0); R.player0.visible = sideNow; }
     if (sideNow) {
-      if (hAct4 && hCurAct !== hAct4) startSideLoopH();   // hはaction4を入力に関係なくループ
+      if (hAct4 && hCurAct !== hAct4 && !centerAfterglowLate) startSideLoopH();   // hはaction4を入力に関係なくループ（余韻の後半はidle）
     } else if (sideLoopH) {
       endSideLoopH();
     }
     if (player0Mixer && sideNow) {
       // player0の「motion」ループ：最後のポーズで一旦静止し、動きを混ぜずに重みだけをPLAYER0_LOOP_FADE秒かけて
       // 最初のポーズ（静止）へ移してから再生を再開する（hのTRIGGER_FADEとは別の、player0専用の継ぎ目処理）
-      if (!player0Fading) {
-        player0Mixer.update(dt);
-        if (player0CurAct && player0Dur > 0 && (player0Dur - player0CurAct.time) <= PLAYER0_LOOP_FADE) {
-          const next = (player0CurAct === player0Act) ? player0Act2 : player0Act;
-          player0CurAct.paused = true;             // 最後のポーズで静止
-          next.reset(); next.play(); next.paused = true; next.weight = 0;   // 最初のポーズで静止させておく
-          player0CurAct.weight = 1;
-          player0FadeFrom = player0CurAct;
-          player0FadeTo = next;
-          player0FadeT = 0;
-          player0Fading = true;
-        }
-      } else {
+      if (player0Fading) {
         player0FadeT += dt;
         const w = Math.min(1, player0FadeT / PLAYER0_LOOP_FADE);
         player0FadeFrom.weight = 1 - w;
@@ -2169,6 +2203,26 @@ body.stereo .dispbar{opacity:.55}
           player0FadeTo.paused = false;            // ここから先頭フレームより通常再生を再開
           player0CurAct = player0FadeTo;
           player0Fading = false;
+        }
+      } else if (player0Late) {
+        // 余韻の後半：motionの5〜10フレーム目だけを、PLAYER0_LATE_SPEED倍で往復再生（5→10→5…）
+        player0LateClock += dt * PLAYER0_LATE_SPEED;
+        const segDur = Math.max(0.0001, player0Frame10Time - player0Frame5Time);
+        const cyclePos = player0LateClock % (segDur * 2);
+        const local = cyclePos > segDur ? (segDur * 2 - cyclePos) : cyclePos;
+        player0CurAct.time = clamp(player0Frame5Time + local, player0Frame5Time, player0Frame10Time);
+        player0Mixer.update(0);
+      } else {
+        player0Mixer.update(dt);
+        if (player0CurAct && player0Dur > 0 && (player0Dur - player0CurAct.time) <= PLAYER0_LOOP_FADE) {
+          const next = (player0CurAct === player0Act) ? player0Act2 : player0Act;
+          player0CurAct.paused = true;             // 最後のポーズで静止
+          next.reset(); next.play(); next.paused = true; next.weight = 0;   // 最初のポーズで静止させておく
+          player0CurAct.weight = 1;
+          player0FadeFrom = player0CurAct;
+          player0FadeTo = next;
+          player0FadeT = 0;
+          player0Fading = true;
         }
       }
     }
@@ -2415,6 +2469,7 @@ body.stereo .dispbar{opacity:.55}
     }
     if (centerAfterglow > 0) {   // 余韻のカウントダウン。終わったらカメラ位置を戻す
       centerAfterglow -= dt;
+      if (!centerAfterglowLate && CENTER_AFTERGLOW_SEC - centerAfterglow >= CENTER_AFTERGLOW_LATE_SEC) startAfterglowLate();
       if (centerAfterglow <= 0) finishCenterSelect();
     }
 

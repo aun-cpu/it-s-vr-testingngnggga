@@ -1085,7 +1085,8 @@ body.stereo .dispbar{opacity:.55}
   }
 
   // ---- 人物モデルの読み込み ----
-  const PLAYER_URL = 'player.glb';   // index.html と同じ場所に置く
+  const ASSET_VERSION = 'v3';   // ← glbファイルを更新したら、このバージョン番号を必ず変更する（例: v3→v4）。GitHub PagesのCDNキャッシュ対策。
+  const PLAYER_URL = 'player.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
   const PLAYER_HEIGHT = 1.7;         // 身長(m)にそろえて表示。元のサイズのままなら null
   const PLAYER_FACING = Math.PI;     // モデルの向き。glb標準(+Z向き)と反対向き＝-Z（視点の初期方向）を向く
   let playerState = '未読込';
@@ -1122,7 +1123,7 @@ body.stereo .dispbar{opacity:.55}
   // ---- カメラが横にある間（P.x が0でない間）の演出 ----
   // playerの位置にplayer0を代わりに表示し、player0は「motion」、hは「action4」を入力に関係なくループ。
   // playerはカメラの位置に置くだけ（このモード中は角度で動かさない）。
-  const PLAYER0_URL = 'player0.glb';   // index.html と同じ場所に置く
+  const PLAYER0_URL = 'player0.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
   const PLAYER0_MOTION = 'motion';     // player0のループさせるクリップ名
   let player0State = '未読込';
   let player0Anim = '';
@@ -1131,7 +1132,7 @@ body.stereo .dispbar{opacity:.55}
   let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
 
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----
-  const H_URL = 'h.glb';             // index.html と同じ場所に置く
+  const H_URL = 'h.glb?' + ASSET_VERSION;             // index.html と同じ場所に置く
   const H_HEIGHT = null;              // 身長(m)にそろえて表示。元のサイズのままなら null
   const H_FACING = Math.PI;          // player.glb と同じ向きにそろえる
   let hState = '未読込';
@@ -1171,7 +1172,7 @@ body.stereo .dispbar{opacity:.55}
     setActionButtonVisible(action3Count >= ACTION3_COUNT_MAX);   // ゲージが150に達したらhの上のボタンを出す
   }
   // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
-  const PLUS_URL = 'playerplus.glb'; // index.html と同じ場所に置く
+  const PLUS_URL = 'playerplus.glb?' + ASSET_VERSION; // index.html と同じ場所に置く
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
   const PLUS_FACING = PLAYER_FACING; // playerと同じ向き
   const PLUS_OPACITY = 0.4;          // 透明度（1=不透明 / 0=完全に透明）
@@ -1258,7 +1259,7 @@ body.stereo .dispbar{opacity:.55}
     });
   }
   // ---- playerarm.glb（playerと同じ読み込み。hのaction2/3/4と同じタイミングで 2action2/3/4 を再生） ----
-  const ARM_URL = 'playerarm.glb';   // index.html と同じ場所に置く
+  const ARM_URL = 'playerarm.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
   const ARM_HEIGHT = PLAYER_HEIGHT;  // playerと同じ身長にそろえる。元のサイズのままなら null
   const ARM_FACING = PLAYER_FACING;  // playerと同じ向き
   let armState = '未読込';

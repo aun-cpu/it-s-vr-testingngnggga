@@ -707,7 +707,7 @@ body.stereo .dispbar{opacity:.55}
   });
 
   const P = { x: 0, y: 0, z: 0 };   // 視点位置は固定
-  const START_X_SHIFT = -3;   // m: 表示開始時にカメラ位置を左へずらす量
+  const START_X_SHIFT = -1.8;   // m: 表示開始時にカメラ位置を左へずらす量
   // カメラ位置の補正(m)。基準は目の高さ(地面から1.6m)・ワールド座標（+Zが後ろ向き）
   const CAM_OFFSET = { x: 0, y: -0.2, z: 0.2 };
   let R = null, T = null;
@@ -775,7 +775,7 @@ body.stereo .dispbar{opacity:.55}
   const HEART_HEIGHT = SPLASH_HEIGHT;  // 人物モデルの位置(px,py,pz)からの高さの上乗せ分(m)。水滴と同じく顔付近を中心に散らす
   const HEART_FORWARD = 0.5;           // hの位置から前方（-Z方向）へずらす距離(m)。もっと手前から出したい時はここを増やす
   const HEART_COUNT = 8;               // 1回のaction3で出すハートの数
-  const HEART_SIZE = 0.16;             // ハートの基準の大きさ(m)
+  const HEART_SIZE = 0.08;             // ハートの基準の大きさ(m)
   const HEART_SPREAD = 0.4;            // hの周りに散らす半径の目安(m)
   const HEART_RISE = 0.35;             // 上昇速度の目安(m/s)
   const HEART_LIFE = 1.1;              // 秒: 出てから消えるまで
@@ -933,8 +933,8 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 表示開始時に正面からずらしたカメラを、注視で「今の初期位置」に戻すための白いボタン ----
   const CENTER_BUTTON_SIZE = 0.22;           // m: ボタンの基準サイズ（直径目安）
-  const CENTER_BUTTON_POS = { x: 0, y: 1.8, z: 0.2 };   // ワールド座標に固定（元のカメラ位置＝ずらす前の位置）。yは1.4から0.4上げた
-  const CENTER_GAZE_HIT_RADIUS = 1.2;   // m: 遠く（5mほど離れた位置）から見るため、判定を広めにする
+  const CENTER_BUTTON_POS = { x: 0, y: 3.8, z: 0.2 };   // ワールド座標に固定（元のカメラ位置＝ずらす前の位置）。yは1.4から0.4上げた
+  const CENTER_GAZE_HIT_RADIUS = 1;   // m: 遠く（5mほど離れた位置）から見るため、判定を広めにする
   let centerButtonGroup = null;
   let centerButtonSprite = null;
   let centerButtonRingSprite = null;
@@ -1018,7 +1018,7 @@ body.stereo .dispbar{opacity:.55}
   }
   // 注視で選択してから、カメラ位置が戻るまでの余韻（この間は横のまま、hとplayer0のモーションだけ速くなる）
   const CENTER_AFTERGLOW_SEC = 10;     // 秒: 選択してからカメラ位置が戻るまで
-  const CENTER_AFTERGLOW_SPEED = 1.3;  // 余韻中の倍率（hは最初の0.8倍速×1.3、player0は最初の1倍速×1.3）
+  const CENTER_AFTERGLOW_SPEED = 1.5;  // 余韻中の倍率（hは最初の0.8倍速×1.3、player0は最初の1倍速×1.3）
   let centerAfterglow = 0;             // 余韻の残り秒数（0=余韻中ではない）
   function selectCenterButton() {
     // 注視で選択：すぐには戻さず、まず余韻の時間を作る（ボタンは消す）。戻す処理は finishCenterSelect

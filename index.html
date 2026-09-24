@@ -255,7 +255,6 @@ body.stereo .dispbar{opacity:.55}
     <div class="tiltsel" id="posTabs">
       <button type="button" class="on" data-tab="body">本体</button>
       <button type="button" data-tab="arm">腕(playerarm)</button>
-      <button type="button" data-tab="plus">半透明(playerplus)</button>
     </div>
     <div id="posTab-body">
       <p class="postitle">水滴の位置（表示側の視点からの座標・m）</p>
@@ -269,13 +268,6 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="aoy" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-aoy" data-k="aoy" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="aoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-aoy">0.00</span></div>
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="aoz" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-aoz" data-k="aoz" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="aoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-aoz">0.00</span></div>
       <div class="prow"><span class="pl">回転</span><button type="button" class="pstep" data-k="aor" data-d="-1" data-step="1">−</button><input type="range" id="rng-aor" data-k="aor" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="aor" data-d="1" data-step="1">＋</button><span class="pv" id="val-aor">0.00</span></div>
-    </div>
-    <div id="posTab-plus" class="hidden">
-      <p class="postitle">playerplusのズレ調整（player本体との差・m/°）</p>
-      <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="pox" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-pox" data-k="pox" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="pox" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-pox">0.00</span></div>
-      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="poy" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-poy" data-k="poy" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="poy" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-poy">0.00</span></div>
-      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="poz" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-poz" data-k="poz" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="poz" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-poz">0.00</span></div>
-      <div class="prow"><span class="pl">回転</span><button type="button" class="pstep" data-k="por" data-d="-1" data-step="1">−</button><input type="range" id="rng-por" data-k="por" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="por" data-d="1" data-step="1">＋</button><span class="pv" id="val-por">0.00</span></div>
     </div>
   </div>
 
@@ -431,8 +423,7 @@ body.stereo .dispbar{opacity:.55}
   // 水滴の位置（表示側の視点を原点、-Zが前。初期は視点と同じ0,0,0）。操作側で調整して表示側へ送る。人物モデル本体はこれに連動せず固定
   const POS_DEFAULT = {
     px: 0, py: -0.6, pz: 0.25,                 // 水滴エフェクトの原点位置
-    aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
-    pox: 0, poy: 0, poz: 0, por: 0             // playerplus: player本体とのズレ（位置m・回転°）
+    aox: 0, aoy: 0, aoz: 0.4, aor: 0           // playerarm: player本体とのズレ（位置m・回転°）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
   const inp = Object.assign({ vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0 }, POS_DEFAULT);
@@ -645,7 +636,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.pstep').forEach((b) => {
     b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], plus: ['pox', 'poy', 'poz', 'por'] };
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'] };
   let posTab = 'body';
   document.querySelectorAll('#posTabs button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -1214,7 +1205,7 @@ body.stereo .dispbar{opacity:.55}
     if (!gauge75Played && action3Count >= 75) { gauge75Played = true; playRandomSound(['21', '22', '23']); }
     setActionButtonVisible(action3Count >= ACTION3_COUNT_MAX);   // ゲージが150に達したらhの上のボタンを出す
   }
-  // ---- playerplus.glb（playerと同じ読み込み。「2actionplus」を、2actionと同じく角度で動かす。半透明） ----
+  // ---- playerplus.glb（playerと同じ位置・同じ読み込み。playerと同じ名前の動き「2action」を、playerと同じ再生位置で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb?' + ASSET_VERSION; // index.html と同じ場所に置く
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
   const PLUS_FACING = PLAYER_FACING; // playerと同じ向き
@@ -1223,14 +1214,6 @@ body.stereo .dispbar{opacity:.55}
   let plusAnim = '';
   let plusMixer = null;
   let plusAct = null;                // 「2actionplus」（角度で再生位置を決める）
-  let plusAnim0Time = 0;             // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)
-  // 角度→再生位置（2actionと同じ対応: -20°=先頭 / 0°=ANIM_ZERO_FRAME / 8°=最後）
-  function angleToTime(raw, duration, zeroTime) {
-    if (raw <= ANIM_ANGLE_MIN) return 0;
-    if (raw >= ANIM_ANGLE_MAX) return duration;
-    if (raw <= 0) return zeroTime * (raw - ANIM_ANGLE_MIN) / (0 - ANIM_ANGLE_MIN);
-    return zeroTime + (duration - zeroTime) * (raw / ANIM_ANGLE_MAX);
-  }
   function loadPlus(group) {
     if (!THREE.GLTFLoader) { plusState = '読込失敗（GLTFLoaderなし）'; return; }
     plusState = '読込中…';
@@ -1266,10 +1249,15 @@ body.stereo .dispbar{opacity:.55}
       const clips = gltf.animations || [];
       if (clips.length === 0) { plusAnim = '  アニメなし'; return; }
       const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
-      const clip = clips.find(function (c) { return nm(c) === '2actionplus'; }) ||
+      // playerと同じ名前の動き（2action）を使う。無ければ従来の名前（2actionplus）で代用
+      const playerClipName = playerAct ? nm(playerAct.getClip()) : '2action';
+      const clip = clips.find(function (c) { return nm(c) === playerClipName; }) ||
+                   clips.find(function (c) { return nm(c) === '2action'; }) ||
+                   clips.find(function (c) { return nm(c).endsWith('2action'); }) ||
+                   clips.find(function (c) { return nm(c) === '2actionplus'; }) ||
                    clips.find(function (c) { return nm(c).endsWith('2actionplus'); });
       if (!clip) {
-        plusAnim = '  「2actionplus」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
+        plusAnim = '  「' + playerClipName + '」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
         return;
       }
       plusMixer = new THREE.AnimationMixer(model);
@@ -1287,14 +1275,9 @@ body.stereo .dispbar{opacity:.55}
         plusAct0.paused = true;
         plusAct0.enabled = false;
       }
-      const tm = clip.tracks && clip.tracks[0] && clip.tracks[0].times;
-      if (tm && tm.length > ANIM_ZERO_FRAME) plusAnim0Time = tm[ANIM_ZERO_FRAME];
-      else if (tm && tm.length > 1) plusAnim0Time = (tm[1] - tm[0]) * ANIM_ZERO_FRAME;
-      else plusAnim0Time = 0;
-      plusAnim0Time = clamp(plusAnim0Time, 0, clip.duration);
-      plusAct.time = plusAnim0Time;
+      plusAct.time = playerAct ? clamp(playerAct.time, 0, clip.duration) : 0;   // playerと同じ再生位置から始める
       plusMixer.update(0);
-      plusAnim = '  アクション: ' + clip.name + '（角度連動・透明度' + PLUS_OPACITY + '）' +
+      plusAnim = '  アクション: ' + clip.name + '（playerと同じ再生位置・透明度' + PLUS_OPACITY + '）' +
                  (clip0p ? ' ＋導入: ' + clip0p.name : ' ／導入クリップ（2action0）なし');
     }, undefined, function (err) {
       plusState = '読込失敗（playerplus.glb を index.html と同じ場所に置く）';
@@ -1970,10 +1953,10 @@ body.stereo .dispbar{opacity:.55}
       armGroup.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
       scene.add(armGroup);
 
-      // playerplus.glb（playerと同じ位置・向き。半透明。player本体は固定なのでズレ量だけを適用）
+      // playerplus.glb（常にplayerと全く同じ位置・向き。半透明。ズレ調整なし）
       const plusGroup = new THREE.Group();
-      plusGroup.position.set(inp.pox, inp.poy, inp.poz);
-      plusGroup.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
+      plusGroup.position.copy(playerGroup.position);
+      plusGroup.rotation.y = playerGroup.rotation.y;
       scene.add(plusGroup);
 
       // player0.glb（カメラが横にある間だけ、playerの位置にplayerの代わりに表示する）
@@ -2201,8 +2184,8 @@ body.stereo .dispbar{opacity:.55}
     }
     if (R.plus) {
       R.plus.visible = !sideNow;   // カメラ横の間はplayerの代わりにplayer0を出すので、playerに重ねるモデルは隠す
-      R.plus.position.set(inp.pox, inp.poy, inp.poz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）
-      R.plus.rotation.y = PLUS_FACING + inp.por * Math.PI / 180;
+      R.plus.position.copy(R.player.position);   // 常にplayerと同じ位置・向き
+      R.plus.rotation.y = R.player.rotation.y;
     }
     if (R.arm) {
       R.arm.visible = !sideNow;
@@ -2367,17 +2350,14 @@ body.stereo .dispbar{opacity:.55}
       updateForcedLoopCountdown();
     }
 
-    // ---- playerplus: 2actionと同じ角度で「2actionplus」を動かす ----
-    if (plusAct && tiltLive && !sideNow) {
-      if (frontIntro && plusAct0) {
-        const dp = plusAct0.getClip().duration;
-        plusAct0.time = dp * clamp(tiltSmooth / INTRO_MAX_DEG, 0, 1);   // 導入: 0°=0フレーム目 → 7°=最終フレーム
-      } else {
-        plusAct.time = clamp(angleToTime(tiltSmooth, plusAct.getClip().duration, plusAnim0Time), 0, plusAct.getClip().duration);
-      }
+    // ---- playerplus: playerと同じ名前の動き（2action / 2action0）を、playerと同じ再生位置で動かす ----
+    // （角度連動・導入・強制ループ(5〜10フレーム)など、playerの再生位置の決まり方に関係なく、そのままコピーする）
+    if (plusMixer && plusAct && playerAct) {
+      plusAct.time = clamp(playerAct.time, 0, plusAct.getClip().duration);
+      if (plusAct0 && playerAct0) plusAct0.time = clamp(playerAct0.time, 0, plusAct0.getClip().duration);
       plusMixer.update(0);
     }
-    // 最終フレーム（INTRO_MAX_DEG°）に達したら導入を終え、次のフレームから通常の2action/2actionplusの仕様に戻る
+    // 最終フレーム（INTRO_MAX_DEG°）に達したら導入を終え、次のフレームから通常の2actionの仕様に戻る
     if (frontIntro && tiltLive && tiltSmooth >= INTRO_MAX_DEG) frontIntro = false;
 
     // ---- 描画 ----

@@ -131,12 +131,24 @@ h1{font-size:20px; margin:0 0 8px}
 #seam{position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:#000; display:none; pointer-events:none}
 #fadeBlack{position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; z-index:4}   /* 余韻のあと正面に戻る時の暗転 */
 body.stereo #seam{display:block}
-.hud{
-  position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
-  font:12px/1.55 ui-monospace,Menlo,monospace; color:#fff; background:rgba(0,0,0,.45);
-  padding:8px 10px; border-radius:10px; pointer-events:none; white-space:pre;
+.hudwrap{
+  z-index:5; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
+  max-width:calc(100vw - 170px); pointer-events:none;
 }
-body.stereo .hud{display:none}
+.hud{
+  margin-top:4px; font:12px/1.55 ui-monospace,Menlo,monospace; color:#fff; background:rgba(0,0,0,.45);
+  padding:8px 10px; border-radius:10px; pointer-events:none; white-space:pre; overflow:hidden;
+}
+.hudwrap.folded .hud{display:none}
+body.stereo .hudwrap{display:none}
+/* 折りたたみボタン（表示確認・角度UI共通） */
+.foldbtn{
+  pointer-events:auto; font:inherit; font-size:12px; color:#e8ecf3; background:rgba(0,0,0,.45);
+  border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:4px 10px; cursor:pointer; touch-action:manipulation;
+}
+.foldbtn:active{background:rgba(255,255,255,.3)}
+.foldbtn .arr{display:inline-block; transition:transform .15s; margin-right:4px}
+.folded > .foldbtn .arr, .folded > .tilthead .foldbtn .arr{transform:rotate(-90deg)}
 /* 操作側スマホの角度インジケータ */
 .tilt{
   z-index:5; position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
@@ -144,6 +156,13 @@ body.stereo .hud{display:none}
   font:11px/1.5 ui-monospace,Menlo,monospace; text-align:center; pointer-events:none;
 }
 body.stereo .tilt{display:none}
+.tilthead{display:flex; align-items:center; justify-content:space-between; gap:6px}
+.tilthead .tiltcap{margin:0; text-align:left; white-space:nowrap}
+.tilthead .foldbtn{padding:3px 8px; flex:none; background:rgba(255,255,255,.1)}
+.tilthead .foldbtn .arr{margin-right:0}
+.tilt.folded .tiltbody{display:none}
+.tilt.folded{width:auto}
+.tiltbody{margin-top:2px}
 .tilt.off .tiltstage{opacity:.25}
 .tiltcap{color:#9aa6bd; margin-bottom:2px}
 .tiltstage{width:100%; height:92px; perspective:320px; display:flex; align-items:center; justify-content:center}
@@ -187,17 +206,6 @@ body.stereo .tilt{display:none}
   bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
 }
 body.stereo .dispbar{opacity:.55}
-.bgpad{
-  z-index:5; position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
-  padding:8px; border-radius:12px; background:rgba(0,0,0,.45); color:#fff;
-  font:11px/1.4 ui-monospace,Menlo,monospace; text-align:center;
-}
-body.stereo .bgpad{opacity:.55}
-.bgpadtitle{color:#9aa6bd; margin-bottom:4px}
-.bgpadgrid{display:grid; grid-template-columns:repeat(3,34px); grid-template-rows:repeat(3,34px); gap:4px}
-.bgpadgrid .mini{padding:0; width:34px; height:34px; font-size:15px; line-height:34px}
-.bgpadval{margin-top:4px}
 .wait{
   position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center;
   font-size:14px; color:#fff; background:rgba(0,0,0,.6); padding:14px 20px; border-radius:14px; pointer-events:none; line-height:1.7;
@@ -294,13 +302,20 @@ body.stereo .bgpad{opacity:.55}
   <canvas id="cv"></canvas>
   <div id="seam"></div>
   <div id="fadeBlack"></div>
-  <div class="hud" id="hud"></div>
+  <div class="hudwrap" id="hudwrap">
+    <button type="button" class="foldbtn" id="hudFold" aria-expanded="true"><span class="arr">▼</span>表示確認</button>
+    <div class="hud" id="hud"></div>
+  </div>
   <div class="gauge" id="gauge">
     <div class="gaugebar"><div class="gaugefill" id="gaugeFill"></div></div>
   </div>
   <div class="countdown" id="countdown">20</div>
   <div class="tilt off" id="tilt">
-    <div class="tiltcap">操作側の角度 <span id="buildTag"></span></div>
+    <div class="tilthead">
+      <div class="tiltcap">操作側の角度 <span id="buildTag"></span></div>
+      <button type="button" class="foldbtn" id="tiltFold" aria-expanded="true" aria-label="角度UIを折りたたむ"><span class="arr">▼</span></button>
+    </div>
+    <div class="tiltbody">
     <div class="tiltstage"><div class="tiltscene"><div class="tiltphone" id="tiltPhone"></div></div></div>
     <div class="tiltval" id="tiltVal">--</div>
     <div class="tiltsel" id="tiltSel">
@@ -312,6 +327,7 @@ body.stereo .bgpad{opacity:.55}
     <div class="tiltmanual hidden" id="tiltManualWrap">
       <input type="range" id="tiltManualRng" min="-7" max="7" step="0.5" value="0">
       <div class="tiltmanualval" id="tiltManualValTxt">0°</div>
+    </div>
     </div>
   </div>
   <div class="wait" id="wait">
@@ -325,15 +341,6 @@ body.stereo .bgpad{opacity:.55}
     <button class="mini" id="dispReset">視点リセット</button>
     <button class="mini" id="dispTalkTest">話す動きテスト: OFF</button>
     <button class="mini" id="dispGaugeTest">ゲージ 75→150</button>
-  </div>
-  <div class="bgpad" id="bgpad">
-    <div class="bgpadtitle">背景位置（水平）</div>
-    <div class="bgpadgrid">
-      <span></span><button type="button" class="mini" id="bgFwd">↑</button><span></span>
-      <button type="button" class="mini" id="bgLeftBtn">←</button><button type="button" class="mini" id="bgResetBtn">●</button><button type="button" class="mini" id="bgRightBtn">→</button>
-      <span></span><button type="button" class="mini" id="bgBackBtn">↓</button><span></span>
-    </div>
-    <div class="bgpadval" id="bgpadVal">X -3.0 / Z 2.8</div>
   </div>
 </div>
 
@@ -705,6 +712,17 @@ body.stereo .bgpad{opacity:.55}
   }
 
   /* ================= 表示（VR画面） ================= */
+  // ---- 「表示確認」(HUD) と「操作側の角度」UIの折りたたみ ----
+  function bindFold(btnSel, boxSel) {
+    const btn = $(btnSel), box = $(boxSel);
+    btn.addEventListener('click', () => {
+      const folded = box.classList.toggle('folded');
+      btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+    });
+  }
+  bindFold('#hudFold', '#hudwrap');
+  bindFold('#tiltFold', '#tilt');
+
   let stereo = false;
   function setStereo(v) {
     stereo = !!v;
@@ -717,27 +735,6 @@ body.stereo .bgpad{opacity:.55}
     $('#dispTalkTest').textContent = '話す動きテスト: ' + (talkOn ? 'ON' : 'OFF');
     $('#dispTalkTest').classList.toggle('on', talkOn);
     talkChangeAt = 0;   // 押した瞬間にすぐ新しい母音を選び直す
-  });
-
-  // ---- bg.glbを水平方向（X・Z）だけ動かすボタン（表示側） ----
-  const BG_STEP = 1;   // m: 1回のタップで動かす量
-  function updateBgpadVal() {
-    const el = $('#bgpadVal');
-    if (el) el.textContent = 'X ' + BG_POS.x.toFixed(1) + ' / Z ' + BG_POS.z.toFixed(1);
-  }
-  function moveBg(dx, dz) {
-    BG_POS.x += dx; BG_POS.z += dz;
-    if (R && R.bg) { R.bg.position.x = BG_POS.x; R.bg.position.z = BG_POS.z; }
-    updateBgpadVal();
-  }
-  $('#bgFwd').addEventListener('click', () => moveBg(0, -BG_STEP));
-  $('#bgBackBtn').addEventListener('click', () => moveBg(0, BG_STEP));
-  $('#bgLeftBtn').addEventListener('click', () => moveBg(-BG_STEP, 0));
-  $('#bgRightBtn').addEventListener('click', () => moveBg(BG_STEP, 0));
-  $('#bgResetBtn').addEventListener('click', () => {
-    BG_POS.x = BG_HOME.x; BG_POS.z = BG_HOME.z;
-    if (R && R.bg) { R.bg.position.x = BG_POS.x; R.bg.position.z = BG_POS.z; }
-    updateBgpadVal();
   });
 
   const P = { x: 0, y: 0, z: 0 };   // 視点位置は固定
@@ -1243,7 +1240,6 @@ body.stereo .bgpad{opacity:.55}
   // ---- bg.glb（背景として置くだけの静的モデル） ----
   const BG_URL = 'bg.glb?' + ASSET_VERSION;           // index.html と同じ場所に置く
   const BG_POS = { x: -3, y: 0, z: 2.85 };             // 配置位置
-  const BG_HOME = { x: BG_POS.x, z: BG_POS.z };        // リセットボタンで戻す位置（初期配置と同じ）
   const BG_ROT_Y = -Math.PI / 2;                       // y軸回転（-90°、逆回転）
   let bgState = '未読込';
   function loadBg(group, onDone) {
@@ -2107,6 +2103,7 @@ body.stereo .bgpad{opacity:.55}
 
       requestAnimationFrame(frame);
     } catch (e) {
+      $('#hudwrap').classList.remove('folded');
       hud.textContent = '3D表示を開始できません: ' + (e && e.message ? e.message : e);
     }
   }

@@ -1202,7 +1202,7 @@ body.stereo .dispbar{opacity:.55}
   // ---- bg.glb（背景として置くだけの静的モデル） ----
   const BG_URL = 'bg.glb?' + ASSET_VERSION;           // index.html と同じ場所に置く
   const BG_POS = { x: 0, y: 0, z: 0 };                 // 配置位置
-  const BG_ROT_Y = Math.PI / 2;                        // y軸回転（90°）
+  const BG_ROT_Y = -Math.PI / 2;                       // y軸回転（-90°、逆回転）
   let bgState = '未読込';
   function loadBg(group, onDone) {
     if (!THREE.GLTFLoader) { bgState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }

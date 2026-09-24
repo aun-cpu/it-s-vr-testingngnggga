@@ -1127,6 +1127,10 @@ body.stereo .dispbar{opacity:.55}
   const PLAYER0_MOTION = 'motion';     // player0のループさせるクリップ名
   const PLAYER0_LOOP_FADE = 0.2;       // 秒: motionのループの継ぎ目（hのTRIGGER_FADEとは別・player0専用）
   const PLAYER0_LOCK_ROOT_BONE = true; // motion中に「全ての親のボーン」(最上位ボーン)が動いて原点ごと移動するのを止める（位置を最初のフレームに固定）
+  // 固定する「全ての親」ボーンの名前（MMD系の「全ての親」/ Root など）。見つからなければ、腰・センター系より上にあるボーンだけを固定する
+  const PLAYER0_ROOT_BONE_NAME = /全ての親|全て.?の親|all.?parent|zen.?no.?oya|^root$|^root[_.\-]|[_.\-]root$/i;
+  // 腰・センター系のボーン名（これらは固定しない＝水平に動かす）
+  const PLAYER0_HIPS_BONE_NAME = /センター|ｾﾝﾀｰ|center|centre|グルーブ|groove|腰|hips?|pelvis|waist|下半身|lower.?body/i;
   const PLAYER0_LOCK_PARENTS = false;  // trueにすると、ボーン以外の親ノード(Armature等)の位置も最初のフレームに固定する
   let player0State = '未読込';
   let player0Anim = '';
@@ -1597,23 +1601,55 @@ body.stereo .dispbar{opacity:.55}
       try { console.error(err); } catch (e) {}
     });
   }
-  // クリップ内の「全ての親のボーン」（最上位ボーン＝親がボーンでないボーン）の位置トラックを、最初のフレームの値に固定する。
-  // 他のボーンの動きは触らない。PLAYER0_LOCK_PARENTSがtrueのときは、ボーン以外の親ノード(Armature等)も固定する。戻り値: 固定したトラック数
+  // クリップ内の「全ての親」ボーンの位置トラックを、最初のフレームの値に固定する（腰・センター系のボーンは固定しない）。
+  // 対象: 名前が PLAYER0_ROOT_BONE_NAME に合うボーン。無ければ、最上位ボーンから1本道で下り、腰・センター系(PLAYER0_HIPS_BONE_NAME)に当たる手前までのボーン。
+  // PLAYER0_LOCK_PARENTSがtrueのときは、ボーン以外の親ノード(Armature等)も固定する。
+  // 戻り値: { count: 固定したトラック数, locked: 固定したボーン名, chain: 最上位からのボーン階層, posBones: 位置アニメーションを持つボーン名 }
   function lockRootMotion(model, clip) {
-    let count = 0;
+    const topBones = [];
+    const allBones = [];
+    model.traverse(function (o) {
+      if (!o.isBone) return;
+      allBones.push(o);
+      if (!(o.parent && o.parent.isBone)) topBones.push(o);
+    });
+    const boneKids = function (b) { return b.children.filter(function (c) { return c.isBone; }); };
+    const chain = [];
+    if (topBones[0]) {   // 診断表示用: 最上位ボーンから、先頭の子をたどった階層
+      let b = topBones[0];
+      for (let n = 0; b && n < 5; n++) { chain.push(b.name); b = boneKids(b)[0]; }
+    }
+    const targets = new Set();
+    if (PLAYER0_LOCK_ROOT_BONE) {
+      allBones.forEach(function (b) { if (PLAYER0_ROOT_BONE_NAME.test(b.name || '')) targets.add(b); });
+      if (targets.size === 0) {
+        topBones.forEach(function (top) {
+          let b = top;
+          while (b && !PLAYER0_HIPS_BONE_NAME.test(b.name || '')) {
+            targets.add(b);
+            const kids = boneKids(b);
+            b = kids.length === 1 ? kids[0] : null;   // 枝分かれしたらそこで終わり（それより下は固定しない）
+          }
+        });
+      }
+    }
+    const info = { count: 0, locked: [], chain: chain, posBones: [] };
     clip.tracks.forEach(function (track) {
       const i = track.name.lastIndexOf('.');
       if (i < 0 || track.name.slice(i + 1) !== 'position') return;
       const node = THREE.PropertyBinding.findNode(model, track.name.slice(0, i));
       if (!node || node === model || !node.parent) return;
-      const isRootBone = node.isBone && !node.parent.isBone;
+      if (node.isBone && info.posBones.length < 6) info.posBones.push(node.name);
+      const isRootBone = node.isBone && targets.has(node);
       const isParentNode = !node.isBone && node.children.length > 0;
-      if (!((PLAYER0_LOCK_ROOT_BONE && isRootBone) || (PLAYER0_LOCK_PARENTS && isParentNode))) return;
+      if (!(isRootBone || (PLAYER0_LOCK_PARENTS && isParentNode))) return;
       const v = track.values;
       for (let k = 3; k < v.length; k += 3) { v[k] = v[0]; v[k + 1] = v[1]; v[k + 2] = v[2]; }
-      count++;
+      info.count++;
+      info.locked.push(node.name);
     });
-    return count;
+    try { console.log('[player0] bone chain:', chain, 'locked:', info.locked, 'pos bones:', info.posBones); } catch (e) {}
+    return info;
   }
   function loadPlayer0(group) {
     if (!THREE.GLTFLoader) { player0State = '読込失敗（GLTFLoaderなし）'; return; }
@@ -1645,7 +1681,7 @@ body.stereo .dispbar{opacity:.55}
         player0Anim = '  「' + PLAYER0_MOTION + '」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
         return;
       }
-      const lockedTracks = (PLAYER0_LOCK_ROOT_BONE || PLAYER0_LOCK_PARENTS) ? lockRootMotion(model, clip) : 0;
+      const lockInfo = (PLAYER0_LOCK_ROOT_BONE || PLAYER0_LOCK_PARENTS) ? lockRootMotion(model, clip) : null;
       player0Mixer = new THREE.AnimationMixer(model);
       player0Act = player0Mixer.clipAction(clip);
       // 継ぎ目の移行用の2つ目。clipAction(clip)は同じクリップだと同一のactionを返してしまう（Act2===Act になり、
@@ -1659,7 +1695,10 @@ body.stereo .dispbar{opacity:.55}
       player0CurAct = player0Act;
       player0Dur = clip.duration || 0;
       player0Fading = false;
-      player0Anim = '  ' + clip.name + '（ループ）' + ((PLAYER0_LOCK_ROOT_BONE || PLAYER0_LOCK_PARENTS) ? '・親ボーン固定:' + lockedTracks + '本' : '');
+      player0Anim = '  ' + clip.name + '（ループ）' + (lockInfo ?
+        '\n  固定:' + (lockInfo.locked.length ? lockInfo.locked.join(',') : 'なし') +
+        ' / 階層:' + lockInfo.chain.join('>') +
+        ' / 位置アニメ有:' + (lockInfo.posBones.length ? lockInfo.posBones.join(',') : 'なし') : '');
     }, undefined, function (err) {
       player0State = '読込失敗（player0.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}

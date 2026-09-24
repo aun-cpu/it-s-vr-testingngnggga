@@ -1126,8 +1126,8 @@ body.stereo .dispbar{opacity:.55}
   const PLAYER0_URL = 'player0.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
   const PLAYER0_MOTION = 'motion';     // player0のループさせるクリップ名
   const PLAYER0_LOOP_FADE = 0.2;       // 秒: motionのループの継ぎ目（hのTRIGGER_FADEとは別・player0専用）
-  const PLAYER0_LOCK_ROOT_XZ = true;   // motion中にルート(腰など)が水平方向へ動いて原点ごと移動するのを止める
-  const PLAYER0_LOCK_ROOT_Y = false;   // trueにすると上下(Y)の動きも止める（通常はfalse：しゃがみ等は残す）
+  const PLAYER0_LOCK_ROOT_BONE = true; // motion中に「全ての親のボーン」(最上位ボーン)が動いて原点ごと移動するのを止める（位置を最初のフレームに固定）
+  const PLAYER0_LOCK_PARENTS = false;  // trueにすると、ボーン以外の親ノード(Armature等)の位置も最初のフレームに固定する
   let player0State = '未読込';
   let player0Anim = '';
   let player0Mixer = null;
@@ -1597,43 +1597,20 @@ body.stereo .dispbar{opacity:.55}
       try { console.error(err); } catch (e) {}
     });
   }
-  // クリップ内の「ルート」の位置トラックから、水平方向(XZ)の移動を取り除く（最初のフレームの位置に固定）。
-  // ルート＝最上位のボーン（その子がボーン1つだけならその子も）と、ボーン以外のノード。
-  // 軸の向きが不明でも効くよう、モデル空間の水平成分だけを消す。戻り値: 処理したトラック数
+  // クリップ内の「全ての親のボーン」（最上位ボーン＝親がボーンでないボーン）の位置トラックを、最初のフレームの値に固定する。
+  // 他のボーンの動きは触らない。PLAYER0_LOCK_PARENTSがtrueのときは、ボーン以外の親ノード(Armature等)も固定する。戻り値: 固定したトラック数
   function lockRootMotion(model, clip) {
-    model.updateMatrixWorld(true);
-    const invModel = new THREE.Matrix4().copy(model.matrixWorld).invert();
-    const rootBones = new Set();
-    model.traverse(function (o) {
-      if (!o.isBone || (o.parent && o.parent.isBone)) return;
-      let b = o;
-      rootBones.add(b);
-      for (;;) {
-        const kids = b.children.filter(function (c) { return c.isBone; });
-        if (kids.length !== 1) break;
-        b = kids[0];
-        rootBones.add(b);
-      }
-    });
     let count = 0;
     clip.tracks.forEach(function (track) {
       const i = track.name.lastIndexOf('.');
       if (i < 0 || track.name.slice(i + 1) !== 'position') return;
       const node = THREE.PropertyBinding.findNode(model, track.name.slice(0, i));
       if (!node || node === model || !node.parent) return;
-      if (node.isBone && !rootBones.has(node)) return;   // 腕・脚などのボーンはそのまま
-      const A = new THREE.Matrix4().copy(invModel).multiply(node.parent.matrixWorld);
-      A.setPosition(0, 0, 0);                            // 回転・拡縮だけ（親空間→モデル空間）
-      const Ainv = new THREE.Matrix4().copy(A).invert();
-      const v = track.values, d = new THREE.Vector3();
-      const x0 = v[0], y0 = v[1], z0 = v[2];
-      for (let k = 0; k < v.length; k += 3) {
-        d.set(v[k] - x0, v[k + 1] - y0, v[k + 2] - z0).applyMatrix4(A);
-        d.x = 0; d.z = 0;                                // 水平方向の移動を消す
-        if (PLAYER0_LOCK_ROOT_Y) d.y = 0;
-        d.applyMatrix4(Ainv);
-        v[k] = x0 + d.x; v[k + 1] = y0 + d.y; v[k + 2] = z0 + d.z;
-      }
+      const isRootBone = node.isBone && !node.parent.isBone;
+      const isParentNode = !node.isBone && node.children.length > 0;
+      if (!((PLAYER0_LOCK_ROOT_BONE && isRootBone) || (PLAYER0_LOCK_PARENTS && isParentNode))) return;
+      const v = track.values;
+      for (let k = 3; k < v.length; k += 3) { v[k] = v[0]; v[k + 1] = v[1]; v[k + 2] = v[2]; }
       count++;
     });
     return count;
@@ -1668,7 +1645,7 @@ body.stereo .dispbar{opacity:.55}
         player0Anim = '  「' + PLAYER0_MOTION + '」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
         return;
       }
-      const lockedTracks = PLAYER0_LOCK_ROOT_XZ ? lockRootMotion(model, clip) : 0;
+      const lockedTracks = (PLAYER0_LOCK_ROOT_BONE || PLAYER0_LOCK_PARENTS) ? lockRootMotion(model, clip) : 0;
       player0Mixer = new THREE.AnimationMixer(model);
       player0Act = player0Mixer.clipAction(clip);
       // 継ぎ目の移行用の2つ目。clipAction(clip)は同じクリップだと同一のactionを返してしまう（Act2===Act になり、
@@ -1682,7 +1659,7 @@ body.stereo .dispbar{opacity:.55}
       player0CurAct = player0Act;
       player0Dur = clip.duration || 0;
       player0Fading = false;
-      player0Anim = '  ' + clip.name + '（ループ）' + (PLAYER0_LOCK_ROOT_XZ ? '・原点固定:' + lockedTracks + '本' : '');
+      player0Anim = '  ' + clip.name + '（ループ）' + ((PLAYER0_LOCK_ROOT_BONE || PLAYER0_LOCK_PARENTS) ? '・親ボーン固定:' + lockedTracks + '本' : '');
     }, undefined, function (err) {
       player0State = '読込失敗（player0.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}

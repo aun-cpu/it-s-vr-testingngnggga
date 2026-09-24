@@ -1126,6 +1126,8 @@ body.stereo .dispbar{opacity:.55}
   const PLAYER0_URL = 'player0.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
   const PLAYER0_MOTION = 'motion';     // player0のループさせるクリップ名
   const PLAYER0_LOOP_FADE = 0.2;       // 秒: motionのループの継ぎ目（hのTRIGGER_FADEとは別・player0専用）
+  const PLAYER0_LOCK_ROOT_XZ = true;   // motion中にルート(腰など)が水平方向へ動いて原点ごと移動するのを止める
+  const PLAYER0_LOCK_ROOT_Y = false;   // trueにすると上下(Y)の動きも止める（通常はfalse：しゃがみ等は残す）
   let player0State = '未読込';
   let player0Anim = '';
   let player0Mixer = null;
@@ -1330,17 +1332,6 @@ body.stereo .dispbar{opacity:.55}
       armState = '読込失敗（playerarm.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
     });
-  }
-  // アニメーションのルートボーン（親がBoneでない最上位のBone）が持つ位置(position)トラックを取り除き、
-  // アニメーション中にモデル全体が原点から動いてしまう「ルートモーション」を無効化する
-  function stripRootMotion(clip, root) {
-    let rootBoneName = null;
-    root.traverse(function (o) {
-      if (!rootBoneName && o.isBone && !(o.parent && o.parent.isBone)) rootBoneName = o.name;
-    });
-    if (!rootBoneName) return clip;
-    clip.tracks = clip.tracks.filter(function (tr) { return tr.name !== (rootBoneName + '.position'); });
-    return clip;
   }
   // モデルの色合いを少し薄く・光沢を少し加える（PBR/Phong どちらのマテリアルでも効くように分岐）
   function applyGloss(o) {
@@ -1606,6 +1597,47 @@ body.stereo .dispbar{opacity:.55}
       try { console.error(err); } catch (e) {}
     });
   }
+  // クリップ内の「ルート」の位置トラックから、水平方向(XZ)の移動を取り除く（最初のフレームの位置に固定）。
+  // ルート＝最上位のボーン（その子がボーン1つだけならその子も）と、ボーン以外のノード。
+  // 軸の向きが不明でも効くよう、モデル空間の水平成分だけを消す。戻り値: 処理したトラック数
+  function lockRootMotion(model, clip) {
+    model.updateMatrixWorld(true);
+    const invModel = new THREE.Matrix4().copy(model.matrixWorld).invert();
+    const rootBones = new Set();
+    model.traverse(function (o) {
+      if (!o.isBone || (o.parent && o.parent.isBone)) return;
+      let b = o;
+      rootBones.add(b);
+      for (;;) {
+        const kids = b.children.filter(function (c) { return c.isBone; });
+        if (kids.length !== 1) break;
+        b = kids[0];
+        rootBones.add(b);
+      }
+    });
+    let count = 0;
+    clip.tracks.forEach(function (track) {
+      const i = track.name.lastIndexOf('.');
+      if (i < 0 || track.name.slice(i + 1) !== 'position') return;
+      const node = THREE.PropertyBinding.findNode(model, track.name.slice(0, i));
+      if (!node || node === model || !node.parent) return;
+      if (node.isBone && !rootBones.has(node)) return;   // 腕・脚などのボーンはそのまま
+      const A = new THREE.Matrix4().copy(invModel).multiply(node.parent.matrixWorld);
+      A.setPosition(0, 0, 0);                            // 回転・拡縮だけ（親空間→モデル空間）
+      const Ainv = new THREE.Matrix4().copy(A).invert();
+      const v = track.values, d = new THREE.Vector3();
+      const x0 = v[0], y0 = v[1], z0 = v[2];
+      for (let k = 0; k < v.length; k += 3) {
+        d.set(v[k] - x0, v[k + 1] - y0, v[k + 2] - z0).applyMatrix4(A);
+        d.x = 0; d.z = 0;                                // 水平方向の移動を消す
+        if (PLAYER0_LOCK_ROOT_Y) d.y = 0;
+        d.applyMatrix4(Ainv);
+        v[k] = x0 + d.x; v[k + 1] = y0 + d.y; v[k + 2] = z0 + d.z;
+      }
+      count++;
+    });
+    return count;
+  }
   function loadPlayer0(group) {
     if (!THREE.GLTFLoader) { player0State = '読込失敗（GLTFLoaderなし）'; return; }
     player0State = '読込中…';
@@ -1636,10 +1668,12 @@ body.stereo .dispbar{opacity:.55}
         player0Anim = '  「' + PLAYER0_MOTION + '」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
         return;
       }
-      stripRootMotion(clip, model);   // motion中にモデルごと原点から動いてしまわないようにする
+      const lockedTracks = PLAYER0_LOCK_ROOT_XZ ? lockRootMotion(model, clip) : 0;
       player0Mixer = new THREE.AnimationMixer(model);
       player0Act = player0Mixer.clipAction(clip);
-      player0Act2 = player0Mixer.clipAction(clip);   // 同じクリップの別インスタンス。継ぎ目の移行用に最初のポーズで待機させる
+      // 継ぎ目の移行用の2つ目。clipAction(clip)は同じクリップだと同一のactionを返してしまう（Act2===Act になり、
+      // 最初の継ぎ目でstop()され初期ポーズで固まる）ため、cloneしたクリップ(別uuid)から別のactionを作る
+      player0Act2 = player0Mixer.clipAction(clip.clone());
       [player0Act, player0Act2].forEach(function (a) {
         a.setLoop(THREE.LoopRepeat, Infinity);
         a.clampWhenFinished = false;
@@ -1648,7 +1682,7 @@ body.stereo .dispbar{opacity:.55}
       player0CurAct = player0Act;
       player0Dur = clip.duration || 0;
       player0Fading = false;
-      player0Anim = '  ' + clip.name + '（ループ）';
+      player0Anim = '  ' + clip.name + '（ループ）' + (PLAYER0_LOCK_ROOT_XZ ? '・原点固定:' + lockedTracks + '本' : '');
     }, undefined, function (err) {
       player0State = '読込失敗（player0.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
@@ -2006,17 +2040,13 @@ body.stereo .dispbar{opacity:.55}
     if (player0Mixer && sideNow) {
       // player0の「motion」ループ：最後のポーズで一旦静止し、動きを混ぜずに重みだけをPLAYER0_LOOP_FADE秒かけて
       // 最初のポーズ（静止）へ移してから再生を再開する（hのTRIGGER_FADEとは別の、player0専用の継ぎ目処理）
-      // 重みの移行自体はthree.js標準のcrossFadeFrom（自前で毎フレームweightを書き換えるより安全）に任せ、
-      // 両方のアクションをpausedにしたまま渡すことで「動きが混ざる」のを防ぐ
       if (!player0Fading) {
         player0Mixer.update(dt);
         if (player0CurAct && player0Dur > 0 && (player0Dur - player0CurAct.time) <= PLAYER0_LOOP_FADE) {
           const next = (player0CurAct === player0Act) ? player0Act2 : player0Act;
-          player0CurAct.paused = true;               // 最後のポーズで静止
-          next.reset();
-          next.paused = true;                        // 最初のポーズで静止させておく
-          next.play();
-          next.crossFadeFrom(player0CurAct, PLAYER0_LOOP_FADE, false);
+          player0CurAct.paused = true;             // 最後のポーズで静止
+          next.reset(); next.play(); next.paused = true; next.weight = 0;   // 最初のポーズで静止させておく
+          player0CurAct.weight = 1;
           player0FadeFrom = player0CurAct;
           player0FadeTo = next;
           player0FadeT = 0;
@@ -2024,10 +2054,13 @@ body.stereo .dispbar{opacity:.55}
         }
       } else {
         player0FadeT += dt;
-        player0Mixer.update(0);   // 時間は進めず、重みの移行だけを反映（動きは混ぜない）
-        if (player0FadeT >= PLAYER0_LOOP_FADE) {
+        const w = Math.min(1, player0FadeT / PLAYER0_LOOP_FADE);
+        player0FadeFrom.weight = 1 - w;
+        player0FadeTo.weight = w;
+        player0Mixer.update(0);   // 時間は進めず、重みの変化だけを反映（動きは混ぜない）
+        if (w >= 1) {
           player0FadeFrom.stop();
-          player0FadeTo.paused = false;              // ここから先頭フレームより通常再生を再開
+          player0FadeTo.paused = false;            // ここから先頭フレームより通常再生を再開
           player0CurAct = player0FadeTo;
           player0Fading = false;
         }

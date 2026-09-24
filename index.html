@@ -1242,7 +1242,7 @@ body.stereo .bgpad{opacity:.55}
 
   // ---- bg.glb（背景として置くだけの静的モデル） ----
   const BG_URL = 'bg.glb?' + ASSET_VERSION;           // index.html と同じ場所に置く
-  const BG_POS = { x: -3, y: 0, z: 2.8 };              // 配置位置
+  const BG_POS = { x: -3, y: 0, z: 2.85 };             // 配置位置
   const BG_HOME = { x: BG_POS.x, z: BG_POS.z };        // リセットボタンで戻す位置（初期配置と同じ）
   const BG_ROT_Y = -Math.PI / 2;                       // y軸回転（-90°、逆回転）
   let bgState = '未読込';
@@ -2266,8 +2266,11 @@ body.stereo .bgpad{opacity:.55}
     }
     // 横→正面に戻った瞬間から、導入（2action0 / plusの導入クリップ）を始める
     if (sidePrev === true && !sideNow) {
-      playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、正面に戻ったこのタイミングで流す
-      if (playerAct0 || plusAct0) frontIntro = true;
+      if (playerAct0 || plusAct0) {
+        frontIntro = true;   // 最初の音声は、導入が終わって2actionに切り替わる瞬間に流す（下のfrontIntro終了判定を参照）
+      } else {
+        playDaySound('1');   // 導入クリップが無い場合は、これまで通り正面に戻った瞬間に流す
+      }
     }
     sidePrev = sideNow;
     if (sideNow || forcedLoopActive) frontIntro = false;   // 横にある間・強制ループ中は導入しない
@@ -2457,7 +2460,10 @@ body.stereo .bgpad{opacity:.55}
       plusMixer.update(0);
     }
     // 最終フレーム（INTRO_MAX_DEG°）に達したら導入を終え、次のフレームから通常の2actionの仕様に戻る
-    if (frontIntro && tiltLive && tiltSmooth >= INTRO_MAX_DEG) frontIntro = false;
+    if (frontIntro && tiltLive && tiltSmooth >= INTRO_MAX_DEG) {
+      frontIntro = false;
+      playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、2action0→2actionに切り替わるこのタイミングで流す
+    }
 
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;

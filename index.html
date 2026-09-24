@@ -129,6 +129,7 @@ h1{font-size:20px; margin:0 0 8px}
 /* ---------- 表示（VR） ---------- */
 #cv{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
 #seam{position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:#000; display:none; pointer-events:none}
+#fadeBlack{position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; z-index:4}   /* 余韻のあと正面に戻る時の暗転 */
 body.stereo #seam{display:block}
 .hud{
   position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
@@ -281,6 +282,7 @@ body.stereo .dispbar{opacity:.55}
 <div id="disp" class="screen dark hidden">
   <canvas id="cv"></canvas>
   <div id="seam"></div>
+  <div id="fadeBlack"></div>
   <div class="hud" id="hud"></div>
   <div class="gauge" id="gauge">
     <div class="gaugebar"><div class="gaugefill" id="gaugeFill"></div></div>
@@ -1025,6 +1027,38 @@ body.stereo .dispbar{opacity:.55}
     centerAfterglowLate = true;
     endSideLoopH();   // hのaction4ループを終えてidleへ（以降、横の間はaction4を再開しない）
     if (player0Mixer) player0Mixer.timeScale = PLAYER0_LATE_SPEED;   // player0は今の位置からそのまま遅く続ける（以降の速度は毎フレーム減衰させる）
+  }
+  // 余韻が終わったら、いきなり正面に戻さず、黒い画面を滑らかに挟む（暗転→黒の間に切り替え→明転）
+  const BLACKOUT_OUT_SEC = 0.7;        // 秒: 暗転（画面が黒くなるまで）
+  const BLACKOUT_HOLD_SEC = 0.3;       // 秒: 真っ暗のまま待つ（この間に正面へ切り替える）
+  const BLACKOUT_IN_SEC = 0.9;         // 秒: 明転（黒から正面が見えるまで）
+  let blackPhase = null;               // null=なし / 'out' / 'hold' / 'in'
+  let blackT = 0;
+  let fadeBlackEl = null;
+  function setBlackAlpha(a) {
+    if (!fadeBlackEl) fadeBlackEl = $('#fadeBlack');
+    if (fadeBlackEl) fadeBlackEl.style.opacity = String(a * a * (3 - 2 * a));   // なめらかな立ち上がり・立ち下がり
+  }
+  function startBlackout() {
+    centerAfterglow = 0;
+    blackPhase = 'out';
+    blackT = 0;
+  }
+  function tickBlackout(dt) {
+    if (!blackPhase) return;
+    blackT += dt;
+    if (blackPhase === 'out') {
+      const a = Math.min(1, blackT / BLACKOUT_OUT_SEC);
+      setBlackAlpha(a);
+      if (a >= 1) { finishCenterSelect(); blackPhase = 'hold'; blackT = 0; }   // 真っ暗になった瞬間に正面へ切り替える
+    } else if (blackPhase === 'hold') {
+      setBlackAlpha(1);
+      if (blackT >= BLACKOUT_HOLD_SEC) { blackPhase = 'in'; blackT = 0; }
+    } else {
+      const a = 1 - Math.min(1, blackT / BLACKOUT_IN_SEC);
+      setBlackAlpha(a);
+      if (a <= 0) blackPhase = null;
+    }
   }
   function finishCenterSelect() {
     // 余韻が終わったら、カメラ位置と視点の両方を、今の初期位置（表示開始時の元の位置）へ戻す
@@ -2411,8 +2445,9 @@ body.stereo .dispbar{opacity:.55}
         const u = clamp((agElapsed - CENTER_AFTERGLOW_LATE_SEC) / Math.max(0.001, CENTER_AFTERGLOW_SEC - CENTER_AFTERGLOW_LATE_SEC), 0, 1);
         player0Mixer.timeScale = PLAYER0_LATE_SPEED * (1 - u);
       }
-      if (centerAfterglow <= 0) finishCenterSelect();
+      if (centerAfterglow <= 0) startBlackout();   // 余韻が終わったら、暗転を挟んでから正面へ戻す
     }
+    tickBlackout(dt);   // 暗転（余韻のあと正面に戻る時の黒い画面）
 
     if (!stereo) {
       R.renderer.setScissorTest(false);

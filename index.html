@@ -333,7 +333,7 @@ body.stereo .bgpad{opacity:.55}
       <button type="button" class="mini" id="bgLeftBtn">←</button><button type="button" class="mini" id="bgResetBtn">●</button><button type="button" class="mini" id="bgRightBtn">→</button>
       <span></span><button type="button" class="mini" id="bgBackBtn">↓</button><span></span>
     </div>
-    <div class="bgpadval" id="bgpadVal">X 0.0 / Z 0.0</div>
+    <div class="bgpadval" id="bgpadVal">X -3.0 / Z 2.8</div>
   </div>
 </div>
 
@@ -735,8 +735,8 @@ body.stereo .bgpad{opacity:.55}
   $('#bgLeftBtn').addEventListener('click', () => moveBg(-BG_STEP, 0));
   $('#bgRightBtn').addEventListener('click', () => moveBg(BG_STEP, 0));
   $('#bgResetBtn').addEventListener('click', () => {
-    BG_POS.x = 0; BG_POS.z = 0;
-    if (R && R.bg) { R.bg.position.x = 0; R.bg.position.z = 0; }
+    BG_POS.x = BG_HOME.x; BG_POS.z = BG_HOME.z;
+    if (R && R.bg) { R.bg.position.x = BG_POS.x; R.bg.position.z = BG_POS.z; }
     updateBgpadVal();
   });
 
@@ -1242,7 +1242,8 @@ body.stereo .bgpad{opacity:.55}
 
   // ---- bg.glb（背景として置くだけの静的モデル） ----
   const BG_URL = 'bg.glb?' + ASSET_VERSION;           // index.html と同じ場所に置く
-  const BG_POS = { x: 0, y: 0, z: 0 };                 // 配置位置
+  const BG_POS = { x: -3, y: 0, z: 2.8 };              // 配置位置
+  const BG_HOME = { x: BG_POS.x, z: BG_POS.z };        // リセットボタンで戻す位置（初期配置と同じ）
   const BG_ROT_Y = -Math.PI / 2;                       // y軸回転（-90°、逆回転）
   let bgState = '未読込';
   function loadBg(group, onDone) {

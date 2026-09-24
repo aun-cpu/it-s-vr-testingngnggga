@@ -1331,6 +1331,17 @@ body.stereo .dispbar{opacity:.55}
       try { console.error(err); } catch (e) {}
     });
   }
+  // アニメーションのルートボーン（親がBoneでない最上位のBone）が持つ位置(position)トラックを取り除き、
+  // アニメーション中にモデル全体が原点から動いてしまう「ルートモーション」を無効化する
+  function stripRootMotion(clip, root) {
+    let rootBoneName = null;
+    root.traverse(function (o) {
+      if (!rootBoneName && o.isBone && !(o.parent && o.parent.isBone)) rootBoneName = o.name;
+    });
+    if (!rootBoneName) return clip;
+    clip.tracks = clip.tracks.filter(function (tr) { return tr.name !== (rootBoneName + '.position'); });
+    return clip;
+  }
   // モデルの色合いを少し薄く・光沢を少し加える（PBR/Phong どちらのマテリアルでも効くように分岐）
   function applyGloss(o) {
     if (!o.isMesh || !o.material) return;
@@ -1625,6 +1636,7 @@ body.stereo .dispbar{opacity:.55}
         player0Anim = '  「' + PLAYER0_MOTION + '」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
         return;
       }
+      stripRootMotion(clip, model);   // motion中にモデルごと原点から動いてしまわないようにする
       player0Mixer = new THREE.AnimationMixer(model);
       player0Act = player0Mixer.clipAction(clip);
       player0Act2 = player0Mixer.clipAction(clip);   // 同じクリップの別インスタンス。継ぎ目の移行用に最初のポーズで待機させる
@@ -1994,13 +2006,17 @@ body.stereo .dispbar{opacity:.55}
     if (player0Mixer && sideNow) {
       // player0の「motion」ループ：最後のポーズで一旦静止し、動きを混ぜずに重みだけをPLAYER0_LOOP_FADE秒かけて
       // 最初のポーズ（静止）へ移してから再生を再開する（hのTRIGGER_FADEとは別の、player0専用の継ぎ目処理）
+      // 重みの移行自体はthree.js標準のcrossFadeFrom（自前で毎フレームweightを書き換えるより安全）に任せ、
+      // 両方のアクションをpausedにしたまま渡すことで「動きが混ざる」のを防ぐ
       if (!player0Fading) {
         player0Mixer.update(dt);
         if (player0CurAct && player0Dur > 0 && (player0Dur - player0CurAct.time) <= PLAYER0_LOOP_FADE) {
           const next = (player0CurAct === player0Act) ? player0Act2 : player0Act;
-          player0CurAct.paused = true;             // 最後のポーズで静止
-          next.reset(); next.play(); next.paused = true; next.weight = 0;   // 最初のポーズで静止させておく
-          player0CurAct.weight = 1;
+          player0CurAct.paused = true;               // 最後のポーズで静止
+          next.reset();
+          next.paused = true;                        // 最初のポーズで静止させておく
+          next.play();
+          next.crossFadeFrom(player0CurAct, PLAYER0_LOOP_FADE, false);
           player0FadeFrom = player0CurAct;
           player0FadeTo = next;
           player0FadeT = 0;
@@ -2008,13 +2024,10 @@ body.stereo .dispbar{opacity:.55}
         }
       } else {
         player0FadeT += dt;
-        const w = Math.min(1, player0FadeT / PLAYER0_LOOP_FADE);
-        player0FadeFrom.weight = 1 - w;
-        player0FadeTo.weight = w;
-        player0Mixer.update(0);   // 時間は進めず、重みの変化だけを反映（動きは混ぜない）
-        if (w >= 1) {
+        player0Mixer.update(0);   // 時間は進めず、重みの移行だけを反映（動きは混ぜない）
+        if (player0FadeT >= PLAYER0_LOOP_FADE) {
           player0FadeFrom.stop();
-          player0FadeTo.paused = false;            // ここから先頭フレームより通常再生を再開
+          player0FadeTo.paused = false;              // ここから先頭フレームより通常再生を再開
           player0CurAct = player0FadeTo;
           player0Fading = false;
         }

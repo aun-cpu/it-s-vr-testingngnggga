@@ -1125,10 +1125,18 @@ body.stereo .dispbar{opacity:.55}
   // playerはカメラの位置に置くだけ（このモード中は角度で動かさない）。
   const PLAYER0_URL = 'player0.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
   const PLAYER0_MOTION = 'motion';     // player0のループさせるクリップ名
+  const PLAYER0_LOOP_FADE = 0.2;       // 秒: motionのループの継ぎ目（hのTRIGGER_FADEとは別・player0専用）
   let player0State = '未読込';
   let player0Anim = '';
   let player0Mixer = null;
   let player0Act = null;
+  let player0Act2 = null;              // motionループの継ぎ目用の2つ目のインスタンス（最初のポーズを保持しておく）
+  let player0CurAct = null;            // 現在再生中側（player0Act / player0Act2 のどちらか）
+  let player0Dur = 0;                  // motionクリップの長さ（秒）
+  let player0Fading = false;           // 継ぎ目の移行中か
+  let player0FadeT = 0;                // 移行の経過時間（秒）
+  let player0FadeFrom = null;          // 移行元（最後のポーズで静止）
+  let player0FadeTo = null;            // 移行先（最初のポーズで静止→移行完了後に再生再開）
   let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
 
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----
@@ -1619,8 +1627,15 @@ body.stereo .dispbar{opacity:.55}
       }
       player0Mixer = new THREE.AnimationMixer(model);
       player0Act = player0Mixer.clipAction(clip);
-      player0Act.setLoop(THREE.LoopRepeat, Infinity);
+      player0Act2 = player0Mixer.clipAction(clip);   // 同じクリップの別インスタンス。継ぎ目の移行用に最初のポーズで待機させる
+      [player0Act, player0Act2].forEach(function (a) {
+        a.setLoop(THREE.LoopRepeat, Infinity);
+        a.clampWhenFinished = false;
+      });
       player0Act.play();
+      player0CurAct = player0Act;
+      player0Dur = clip.duration || 0;
+      player0Fading = false;
       player0Anim = '  ' + clip.name + '（ループ）';
     }, undefined, function (err) {
       player0State = '読込失敗（player0.glb を index.html と同じ場所に置く）';
@@ -1976,7 +1991,35 @@ body.stereo .dispbar{opacity:.55}
     } else if (sideLoopH) {
       endSideLoopH();
     }
-    if (player0Mixer && sideNow) player0Mixer.update(dt);   // player0は「motion」をループ
+    if (player0Mixer && sideNow) {
+      // player0の「motion」ループ：最後のポーズで一旦静止し、動きを混ぜずに重みだけをPLAYER0_LOOP_FADE秒かけて
+      // 最初のポーズ（静止）へ移してから再生を再開する（hのTRIGGER_FADEとは別の、player0専用の継ぎ目処理）
+      if (!player0Fading) {
+        player0Mixer.update(dt);
+        if (player0CurAct && player0Dur > 0 && (player0Dur - player0CurAct.time) <= PLAYER0_LOOP_FADE) {
+          const next = (player0CurAct === player0Act) ? player0Act2 : player0Act;
+          player0CurAct.paused = true;             // 最後のポーズで静止
+          next.reset(); next.play(); next.paused = true; next.weight = 0;   // 最初のポーズで静止させておく
+          player0CurAct.weight = 1;
+          player0FadeFrom = player0CurAct;
+          player0FadeTo = next;
+          player0FadeT = 0;
+          player0Fading = true;
+        }
+      } else {
+        player0FadeT += dt;
+        const w = Math.min(1, player0FadeT / PLAYER0_LOOP_FADE);
+        player0FadeFrom.weight = 1 - w;
+        player0FadeTo.weight = w;
+        player0Mixer.update(0);   // 時間は進めず、重みの変化だけを反映（動きは混ぜない）
+        if (w >= 1) {
+          player0FadeFrom.stop();
+          player0FadeTo.paused = false;            // ここから先頭フレームより通常再生を再開
+          player0CurAct = player0FadeTo;
+          player0Fading = false;
+        }
+      }
+    }
     // 横→正面に戻った瞬間から、導入（2action0 / plusの導入クリップ）を始める
     if (sidePrev === true && !sideNow) {
       playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、正面に戻ったこのタイミングで流す

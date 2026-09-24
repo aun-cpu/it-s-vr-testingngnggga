@@ -1016,11 +1016,23 @@ body.stereo .dispbar{opacity:.55}
     if (centerButtonGroup) centerButtonGroup.visible = v;
     if (!v) { centerGazeDwell = 0; centerGazeOn = false; drawCenterButtonRing(0); }
   }
+  // 注視で選択してから、カメラ位置が戻るまでの余韻（この間は横のまま、hとplayer0のモーションだけ速くなる）
+  const CENTER_AFTERGLOW_SEC = 10;     // 秒: 選択してからカメラ位置が戻るまで
+  const CENTER_AFTERGLOW_SPEED = 1.3;  // 余韻中の倍率（hは最初の0.8倍速×1.3、player0は最初の1倍速×1.3）
+  let centerAfterglow = 0;             // 余韻の残り秒数（0=余韻中ではない）
   function selectCenterButton() {
-    // 注視で選択：カメラ位置と視点の両方を、今の初期位置（表示開始時の元の位置）へ戻す
+    // 注視で選択：すぐには戻さず、まず余韻の時間を作る（ボタンは消す）。戻す処理は finishCenterSelect
+    setCenterButtonVisible(false);
+    centerAfterglow = CENTER_AFTERGLOW_SEC;
+    if (hAct4 && sideLoopH) hAct4.timeScale = SIDE_LOOP_H_SPEED * CENTER_AFTERGLOW_SPEED;   // hのモーションループ
+    if (player0Mixer) player0Mixer.timeScale = CENTER_AFTERGLOW_SPEED;                        // player0のモーションループ
+  }
+  function finishCenterSelect() {
+    // 余韻が終わったら、カメラ位置と視点の両方を、今の初期位置（表示開始時の元の位置）へ戻す
+    centerAfterglow = 0;
+    if (player0Mixer) player0Mixer.timeScale = 1;
     P.x = 0;
     recenterPending = true;
-    setCenterButtonVisible(false);
   }
 
   // ---- 注視で選択された直後の演出：入力を無視して20秒間、playerの2action(5〜10フレーム目)とhのaction4をループ ----
@@ -2319,6 +2331,10 @@ body.stereo .dispbar{opacity:.55}
       centerGazeDwell = chit ? Math.min(GAZE_DWELL_SEC, centerGazeDwell + dt) : Math.max(0, centerGazeDwell - dt * 2);
       updateCenterButtonVisual();
       if (chit && centerGazeDwell >= GAZE_DWELL_SEC) selectCenterButton();
+    }
+    if (centerAfterglow > 0) {   // 余韻のカウントダウン。終わったらカメラ位置を戻す
+      centerAfterglow -= dt;
+      if (centerAfterglow <= 0) finishCenterSelect();
     }
 
     if (!stereo) {

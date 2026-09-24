@@ -1199,6 +1199,25 @@ body.stereo .dispbar{opacity:.55}
   let hGroundY = null;                 // 接地のために今かけているhのYオフセット（null=未計算）
   let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
 
+  // ---- bg.glb（背景として置くだけの静的モデル） ----
+  const BG_URL = 'bg.glb?' + ASSET_VERSION;           // index.html と同じ場所に置く
+  const BG_POS = { x: 36, y: 0, z: 34 };               // 配置位置
+  const BG_ROT_Y = Math.PI / 2;                        // y軸回転（90°）
+  let bgState = '未読込';
+  function loadBg(group) {
+    if (!THREE.GLTFLoader) { bgState = '読込失敗（GLTFLoaderなし）'; return; }
+    bgState = '読込中…';
+    new THREE.GLTFLoader().load(BG_URL, function (gltf) {
+      const model = gltf.scene;
+      model.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      group.add(model);
+      bgState = '表示中';
+    }, undefined, function (err) {
+      bgState = '読込失敗（bg.glb を index.html と同じ場所に置く）';
+      try { console.error(err); } catch (e) {}
+    });
+  }
+
   // ---- h.glb（idleをループ再生するだけの追加モデル） ----
   const H_URL = 'h.glb?' + ASSET_VERSION;             // index.html と同じ場所に置く
   const H_HEIGHT = null;              // 身長(m)にそろえて表示。元のサイズのままなら null
@@ -1968,6 +1987,13 @@ body.stereo .dispbar{opacity:.55}
 
       const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
 
+      // bg.glb（背景として据え置き。y=90°回転、x=36・z=34へ移動）
+      const bgGroup = new THREE.Group();
+      bgGroup.position.set(BG_POS.x, BG_POS.y, BG_POS.z);
+      bgGroup.rotation.y = BG_ROT_Y;
+      scene.add(bgGroup);
+      loadBg(bgGroup);
+
       // 人物モデル（player.glb）。位置は固定（操作側のpx/py/pzは水滴の位置に使う）
       const playerGroup = new THREE.Group();
       playerGroup.position.set(0, 0, 0);
@@ -2014,7 +2040,7 @@ body.stereo .dispbar{opacity:.55}
       initCenterButton(scene);   // 表示開始時にずらした正面を、視線で注視して戻すためのボタン
 
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup, player0: player0Group, h: hGroup, arm: armGroup, plus: plusGroup,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, player0: player0Group, h: hGroup, arm: armGroup, plus: plusGroup, bg: bgGroup,
         W: 0, H: 0
       };
       T = {

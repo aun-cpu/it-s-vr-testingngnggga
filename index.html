@@ -1269,7 +1269,9 @@ body.stereo .dispbar{opacity:.55}
   let hAct3 = null;                  // hの「action3」（旧action2の発動条件も統合。2.5フレーム以上で1回再生）
   let hCurAct = null;                // いま再生中のワンショット（無ければnull）
   const H_BLINK_RE = /まばたき|瞬き|マバタキ|blink/i;   // hのまばたきモーフ名（この正規表現に合うモーフを対象にする）
+  const H_SMILE_EYE_RE = /笑い目|笑いめ|目.*笑い|smile.?eye|eye.?smile/i;   // hの「笑い目」モーフ名
   let hBlinkTargets = [];            // {mesh, idx}: hのまばたきモーフ
+  let hSmileEyeTargets = [];         // {mesh, idx}: hの「笑い目」モーフ
   let hBlinkHeld = false;            // action3/4の終了後、まばたきを0へ戻す減衰中はtrue
   const BLINK_RELEASE_TAU = 0.35;    // 秒: action3/4終了後、まばたきモーフが1→0へ戻る速さ（大きいほどゆっくり）
   const BLINK_CLOSE_TAU = 0.05;      // 秒: action3/4開始時、まばたきモーフが0→1へ閉じる速さ（人のまばたきの閉じ動作くらいの速さ）
@@ -1316,6 +1318,15 @@ body.stereo .dispbar{opacity:.55}
   const ACTION3_DEG = 7;              // 度: 基準からこの角度以上動いたら無条件でaction3を再生
   let action3Above = false;           // 直前フレームでACTION3_DEG以上だったか（1回だけ再生するための立ち上がり検知用）
   let action3Count = 0;                // action3を再生した回数（累計）
+  // action3が0.3秒以内の間隔で10回以上連続すると、目を開けて（閉じていれば）笑い目モーフを出す。連続が途切れたら終了する
+  let action3StreakCount = 0;          // 現在連続している回数（0.3秒以内の間隔が途切れたら1にリセット）
+  let action3StreakLastAt = -999;      // 直前にaction3が発動した時刻（秒）。連続判定に使う
+  const ACTION3_STREAK_GAP = 0.3;      // 秒: この間隔以内の発動なら「連続」とみなす
+  const ACTION3_STREAK_THRESHOLD = 10; // 回: この回数以上連続したら笑い目を出す
+  let hSmileEyeActive = false;         // 現在「笑い目」状態か（連続が途切れると自動でfalseに戻る）
+  let hSmileEyeAmt = 0;                // 現在の笑い目モーフ適用量（0〜1、滑らかにフェードする）
+  const H_SMILE_EYE_TARGET = 0.5;      // 笑い目モーフの目標量
+  const H_SMILE_EYE_EASE_TAU = 0.2;    // 秒: 笑い目モーフが立ち上がる/消える速さ
   const ACTION3_COUNT_MAX = 150;       // ゲージの上限（この回数で満タン表示）
   let gauge75Played = false;           // ゲージが75に達した時の音を、1周期につき1回だけ鳴らすためのフラグ
   function updateAction3Gauge() {
@@ -2066,12 +2077,14 @@ body.stereo .dispbar{opacity:.55}
 
       // まばたきモーフ・話す動き用の母音モーフ（シェイプキー）を探す
       hBlinkTargets = [];
+      hSmileEyeTargets = [];
       hMouthTargets = {};
       MOUTH_NAMES.forEach(function (n) { hMouthTargets[n] = []; });
       model.traverse(function (o) {
         if (!o.isMesh || o.userData.__outline || !o.morphTargetDictionary || !o.morphTargetInfluences) return;
         Object.keys(o.morphTargetDictionary).forEach(function (k) {
           if (H_BLINK_RE.test(k)) hBlinkTargets.push({ mesh: o, idx: o.morphTargetDictionary[k] });
+          if (H_SMILE_EYE_RE.test(k)) hSmileEyeTargets.push({ mesh: o, idx: o.morphTargetDictionary[k] });
           if (hMouthTargets[k]) hMouthTargets[k].push({ mesh: o, idx: o.morphTargetDictionary[k] });
         });
       });
@@ -2640,6 +2653,20 @@ body.stereo .dispbar{opacity:.55}
     updateHGaze(dt, now);                                     // アニメの後に、両目・左目・右目ボーンへ視線を重ねる
     updateSplash(dt);                                         // 水滴エフェクトの飛散・落下・フェードを更新
     updateHearts(dt);                                         // ハートエフェクトの上昇・フェードを更新
+    // action3が0.3秒以内の連続で10回以上続いたら、目を開けたまま笑い目モーフを出す。連続が途切れたら自動終了
+    if (hSmileEyeActive && (now / 1000 - action3StreakLastAt > ACTION3_STREAK_GAP)) {
+      hSmileEyeActive = false;
+      action3StreakCount = 0;
+    }
+    {
+      const smileTarget = hSmileEyeActive ? H_SMILE_EYE_TARGET : 0;
+      const smileK = 1 - Math.exp(-dt / H_SMILE_EYE_EASE_TAU);
+      hSmileEyeAmt += (smileTarget - hSmileEyeAmt) * smileK;
+      for (let i = 0; i < hSmileEyeTargets.length; i++) {
+        const st = hSmileEyeTargets[i];
+        st.mesh.morphTargetInfluences[st.idx] = hSmileEyeAmt;
+      }
+    }
     // action3/4の再生中は、まばたきモーフを1にし続ける。終了後はゆっくり0へ戻す（mixerの更新後に上書きする）
     {
       const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
@@ -2663,7 +2690,15 @@ body.stereo .dispbar{opacity:.55}
           }
         }
         const sinceHold = now / 1000 - hBlinkHoldSince;
-        if (hBlinkMode !== 'none' && sinceHold >= hBlinkCloseDelay) {
+        if (hSmileEyeActive) {
+          // 笑い目状態中は、まばたきモードに関わらず目を開けたままにする（閉じかけていても開き直す）
+          const openDecay = Math.exp(-dt / BLINK_CLOSE_TAU);
+          for (let i = 0; i < hBlinkTargets.length; i++) {
+            const bt = hBlinkTargets[i];
+            const cur = bt.mesh.morphTargetInfluences[bt.idx];
+            bt.mesh.morphTargetInfluences[bt.idx] = cur * openDecay;
+          }
+        } else if (hBlinkMode !== 'none' && sinceHold >= hBlinkCloseDelay) {
           // 「間」を置いたあと、指数的になめらかに目標値へ近づける（人のまばたきの閉じ動作くらいの速さ）
           const closeDecay = Math.exp(-dt / BLINK_CLOSE_TAU);
           let target = 1;
@@ -2819,6 +2854,12 @@ body.stereo .dispbar{opacity:.55}
         triggerSplash();   // actionが出た瞬間、初期カメラ正面で水滴が軽く飛び散る
         if (act === hAct3) triggerHearts();   // action3の瞬間、hの周りにピンクのハートをランダムに出す
         if (act === hAct3) { action3Count++; updateAction3Gauge(); }   // 再生回数をカウントしゲージへ反映
+        if (act === hAct3) {   // 0.3秒以内の連続発動を数え、10回以上続いたら笑い目状態にする
+          const tnow3 = now / 1000;
+          action3StreakCount = (tnow3 - action3StreakLastAt <= ACTION3_STREAK_GAP) ? action3StreakCount + 1 : 1;
+          action3StreakLastAt = tnow3;
+          if (action3StreakCount >= ACTION3_STREAK_THRESHOLD) hSmileEyeActive = true;
+        }
         // playerarm: hと同じタイミングで、対応する 2action3 を再生
         const aa = act === hAct3 ? armAct3 : null;
         if (armMixer && aa) {

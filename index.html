@@ -1781,6 +1781,8 @@ body.stereo .dispbar{opacity:.55}
   const POST_BLINK_UP_PITCH = 3;        // 度: 目を開き始める時に向けておく上目づかいの角度
   const POST_BLINK_UP_HOLD = 1;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
+  const FORCED_LOOP_GAZE_PITCH = 4;      // 度: 強制ループ(20秒カウントダウン)中、視線を固定する上向きの角度
+  const FORCED_LOOP_GAZE_DIST = 0.35;    // m: 強制ループ中の注視距離（近いほど寄り目になる）
   // action4中: 頭ボーンをアニメの動きに重ねて、右・下方向へ寄せる。さらにその範囲内でランダムな値・間隔で左・上へ揺らぐ。
   // 一度動いた分はaction4が終わっても戻さず維持する（次のaction4でさらに右・下へ積み増していく）
   let hHead = null;                      // { bone, leftLocal, upNegLocal }: 頭ボーンと、オフセット計算用のローカル基準方向
@@ -2051,7 +2053,11 @@ body.stereo .dispbar{opacity:.55}
     const u = g.dur > 0 ? gzClamp((t - g.t0) / g.dur, 0, 1) : 1, sm = u * u * (3 - 2 * u);
     g.yaw = g.fromYaw + (g.toYaw - g.fromYaw) * sm;
     g.pitch = g.fromPitch + (g.toPitch - g.fromPitch) * sm;
-    if (hSmileEyeActive) {   // 笑い目の間は、視線の高さ(ピッチ)を目を開ける時の角度に固定する（左右は通常通り動かす）
+    if (forcedLoopActive) {   // 強制ループ(20秒カウントダウン)中は、視線を上4度・寄り目に固定する
+      g.yaw = g.fromYaw = g.toYaw = 0;
+      g.pitch = g.fromPitch = g.toPitch = FORCED_LOOP_GAZE_PITCH * D2R;
+      g.dist = FORCED_LOOP_GAZE_DIST;   // 距離を近くすることで左右の目を内側へ寄せる（寄り目）
+    } else if (hSmileEyeActive) {   // 笑い目の間は、視線の高さ(ピッチ)を目を開ける時の角度に固定する（左右は通常通り動かす）
       g.pitch = g.fromPitch = g.toPitch = POST_BLINK_UP_PITCH * D2R;
     }
     // 固視微動: ごく小さなジャンプ(マイクロサッカード)＋ゆっくりしたドリフト
@@ -2059,10 +2065,11 @@ body.stereo .dispbar{opacity:.55}
       const a = (0.05 + Math.random() * 0.12) * D2R, th = Math.random() * Math.PI * 2;
       g.muYaw = a * Math.cos(th); g.muPitch = a * Math.sin(th) * 0.7; g.muNext = t + 0.4 + Math.random() * 0.9;
     } else { const kd = Math.exp(-dt / 0.5); g.muYaw *= kd; g.muPitch *= kd; }
-    const drY = 0.06 * D2R * (Math.sin(t * 1.7) + 0.6 * Math.sin(t * 4.3 + 1.1));
-    const drP = hSmileEyeActive ? 0 : 0.05 * D2R * (Math.sin(t * 1.3 + 2) + 0.6 * Math.sin(t * 3.9));
-    const muPitchApplied = hSmileEyeActive ? 0 : g.muPitch;   // 固定中は上下方向の固視微動も止め、高さを完全に固定する
-    const ay = fmYaw + g.yaw + g.muYaw + drY, ap = fmPitch + g.pitch + muPitchApplied + drP, cp = Math.cos(ap);
+    const drY = forcedLoopActive ? 0 : 0.06 * D2R * (Math.sin(t * 1.7) + 0.6 * Math.sin(t * 4.3 + 1.1));
+    const drP = (forcedLoopActive || hSmileEyeActive) ? 0 : 0.05 * D2R * (Math.sin(t * 1.3 + 2) + 0.6 * Math.sin(t * 3.9));
+    const muYawApplied = forcedLoopActive ? 0 : g.muYaw;   // 固定中は左右の固視微動も止め、寄り目の角度を完全に固定する
+    const muPitchApplied = (forcedLoopActive || hSmileEyeActive) ? 0 : g.muPitch;   // 固定中は上下方向の固視微動も止め、高さを完全に固定する
+    const ay = fmYaw + g.yaw + muYawApplied + drY, ap = fmPitch + g.pitch + muPitchApplied + drP, cp = Math.cos(ap);
     // 注視点（距離が近いほど、左右の目が内側へ寄る）
     _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);
     if (common) aimEye(common, _gv.g);

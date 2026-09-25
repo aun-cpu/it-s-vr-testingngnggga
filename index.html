@@ -1321,7 +1321,7 @@ body.stereo .dispbar{opacity:.55}
   // action3が0.3秒以内の間隔で10回以上連続すると、目を開けて（閉じていれば）笑い目モーフを出す。連続が途切れたら終了する
   let action3StreakCount = 0;          // 現在連続している回数（0.3秒以内の間隔が途切れたら1にリセット）
   let action3StreakLastAt = -999;      // 直前にaction3が発動した時刻（秒）。連続判定に使う
-  const ACTION3_STREAK_GAP = 0.3;      // 秒: この間隔以内の発動なら「連続」とみなす
+  const ACTION3_STREAK_GAP = 0.8;      // 秒: この間隔以内の発動なら「連続」とみなす
   const ACTION3_STREAK_THRESHOLD = 10; // 回: この回数以上連続したら笑い目を出す
   let hSmileEyeActive = false;         // 現在「笑い目」状態か（連続が途切れると自動でfalseに戻る）
   let hSmileEyeAmt = 0;                // 現在の笑い目モーフ適用量（0〜1、滑らかにフェードする）

@@ -1718,6 +1718,8 @@ body.stereo .dispbar{opacity:.55}
   const GAZE_CAM_HOLD = [2.0, 4.5];   // 秒: カメラを見続ける長さ
   const GAZE_CAM_MAX_YAW = 35;        // 度: カメラがこの左右角より外なら見ない（首が向いていない時は無理に見ない）
   const GAZE_CAM_MAX_PITCH = 25;      // 度: 同・上下
+  const EYE_PITCH_UP_MAX = 6;         // 度: 目が上を向ける最大角度（これ以上は不自然に見えるため制限）
+  const EYE_PITCH_DOWN_MAX = 18;      // 度: 目が下を向ける最大角度
   const GAZE_CAM_MIN_DIST = 0.3;      // m: これより近いカメラは見ない
   const D2R = Math.PI / 180;
   let hEyes = null;                   // { eyes: [{bone,fLocal,posLocal,parentChainQ,base,applied}], common: 両目 or null }
@@ -1870,6 +1872,7 @@ body.stereo .dispbar{opacity:.55}
       _gv.s.multiplyScalar(1 / camDist);
       camYaw = gzWrap(gzYaw(_gv.s) - fmYaw); camPitch = gzPitch(_gv.s) - fmPitch;
       camOk = Math.abs(camYaw) <= GAZE_CAM_MAX_YAW * D2R && Math.abs(camPitch) <= GAZE_CAM_MAX_PITCH * D2R;
+      camPitch = gzClamp(camPitch, -EYE_PITCH_DOWN_MAX * D2R, EYE_PITCH_UP_MAX * D2R);   // 実際に目へ適用する角度は上下の上限内に収める
     }
     // 視線移動（サッカード）の開始: 移動量が大きいほど少し長くかかる
     const startSac = function (y, p) {
@@ -1881,7 +1884,7 @@ body.stereo .dispbar{opacity:.55}
       const home = Math.random() < 0.4;                       // ときどき正面付近へ戻る
       const k = Math.random() < 0.05 ? 1.4 : 1;               // たまに大きめに見回す（頻度・倍率とも抑制）
       const y = home ? gzRandn() * 1.5 * D2R : gzClamp(gzRandn() * GAZE_WANDER_YAW_SD * k, -16, 16) * D2R;
-      const p = home ? gzRandn() * 1 * D2R : gzClamp(gzRandn() * GAZE_WANDER_PITCH_SD - 1, -9, 8) * D2R;
+      const p = home ? gzRandn() * 1 * D2R : gzClamp(gzRandn() * GAZE_WANDER_PITCH_SD - 1, -EYE_PITCH_DOWN_MAX, EYE_PITCH_UP_MAX) * D2R;
       g.dist = 1.2 + Math.random() * 1.8;
       startSac(y, p);
     };

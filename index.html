@@ -213,29 +213,6 @@ body.stereo .dispbar{opacity:.55}
 }
 .wait .code{font:700 44px/1.2 ui-monospace,Menlo,monospace; letter-spacing:.18em; margin:6px 0}
 /* 注視で選択した直後、20秒間の強制ループ中に画面中央へ出すピンクのカウントダウン */
-/* 目の手動操作パネル（表示側） */
-.eyepanel{
-  z-index:7; position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 10px); width:min(230px,46vw);
-  padding:10px 12px; border-radius:14px; background:rgba(0,0,0,.55);
-  border:1px solid rgba(255,255,255,.22); color:#e8ecf3;
-  font:12px/1.4 ui-monospace,Menlo,monospace;
-}
-.eyepanel.folded{width:auto}
-.eyepanel.folded .eyebody{display:none}
-.eyepanelhead{display:flex; align-items:center; justify-content:space-between; gap:8px}
-.eyepanelcap{color:#c9d1e2}
-.eyebody{margin-top:7px}
-.eyerow{display:flex; align-items:center; gap:6px; margin:5px 0}
-.eyerow label{width:3.5em; color:#c9d1e2; flex:none}
-.eyerow input[type=range]{flex:1; min-width:0; height:28px; accent-color:#ff5fa8}
-.eyeval{width:4.2em; text-align:right; color:#fff}
-.eyebtns{display:flex; gap:5px; margin-top:6px}
-.eyebtns button{flex:1; font:inherit; color:#e8ecf3; background:rgba(255,255,255,.1);
-  border:1px solid rgba(255,255,255,.25); border-radius:8px; padding:6px 4px; cursor:pointer; touch-action:manipulation}
-.eyebtns button:active{background:rgba(255,255,255,.28)}
-.eyecheck{display:flex; align-items:center; gap:6px; margin-top:5px; color:#c9d1e2}
-.eyecheck input{accent-color:#ff5fa8}
 .countdown{
   z-index:6; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
   font:800 72px/1 ui-monospace,Menlo,monospace; color:#ff5fa8;
@@ -243,6 +220,25 @@ body.stereo .dispbar{opacity:.55}
   pointer-events:none; display:none;
 }
 .countdown.show{display:block}
+
+/* 目操作パネル（表示側・追加のみ） */
+#eyeControlPanel{
+  position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+  z-index:8; width:min(250px,72vw); padding:10px 12px;
+  border-radius:12px; background:rgba(0,0,0,.58); color:#fff;
+  border:1px solid rgba(255,255,255,.25); font:12px/1.4 ui-monospace,Menlo,monospace;
+}
+#eyeControlPanel.folded .eyeControlBody{display:none}
+.eyeControlHead{display:flex; align-items:center; justify-content:space-between; gap:8px}
+.eyeControlTitle{color:#e8ecf3}
+.eyeControlRow{display:flex; align-items:center; gap:6px; margin-top:7px}
+.eyeControlRow label{width:34px; color:#c9d1e2}
+.eyeControlRow input[type=range]{flex:1; min-width:0; accent-color:#6b93f0}
+.eyeControlVal{width:42px; text-align:right}
+.eyeControlBtns{display:flex; gap:6px; margin-top:8px}
+.eyeControlBtns button{flex:1; font:inherit; color:#e8ecf3; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25); border-radius:8px; padding:5px; cursor:pointer}
+.eyeControlBtns button.on{background:var(--accent); color:var(--accent-fg)}
 </style>
 </head>
 <body>
@@ -332,19 +328,22 @@ body.stereo .dispbar{opacity:.55}
   <div class="gauge" id="gauge">
     <div class="gaugebar"><div class="gaugefill" id="gaugeFill"></div></div>
   </div>
-  <div class="eyepanel" id="eyePanel">
-    <div class="eyepanelhead">
-      <span class="eyepanelcap">目の手動操作</span>
-      <button type="button" class="foldbtn" id="eyePanelFold" aria-expanded="true"><span class="arr">▼</span></button>
+  <div class="countdown" id="countdown">20</div>
+  <div id="eyeControlPanel">
+    <div class="eyeControlHead">
+      <span class="eyeControlTitle">目の操作</span>
+      <button type="button" class="foldbtn" id="eyeControlFold"><span class="arr">▼</span></button>
     </div>
-    <div class="eyebody">
-      <label class="eyecheck"><input type="checkbox" id="eyeManual" checked> 手動操作を有効</label>
-      <div class="eyerow"><label>左右</label><input type="range" id="eyeYaw" min="-30" max="30" step="1" value="0"><span class="eyeval" id="eyeYawVal">0°</span></div>
-      <div class="eyerow"><label>上下</label><input type="range" id="eyePitch" min="-20" max="20" step="1" value="5"><span class="eyeval" id="eyePitchVal">5°</span></div>
-      <div class="eyebtns"><button type="button" id="eyeCenter">正面</button><button type="button" id="eyeUp">上</button><button type="button" id="eyeDown">下</button></div>
+    <div class="eyeControlBody">
+      <div class="eyeControlBtns">
+        <button type="button" id="eyeManualToggle">手動: OFF</button>
+        <button type="button" id="eyeCenter">正面</button>
+      </div>
+      <div class="eyeControlRow"><label>左右</label><input id="eyeYaw" type="range" min="-10" max="10" step="0.1" value="0"><span class="eyeControlVal" id="eyeYawVal">0.0°</span></div>
+      <div class="eyeControlRow"><label>上下</label><input id="eyePitch" type="range" min="-3" max="3" step="0.1" value="0"><span class="eyeControlVal" id="eyePitchVal">0.0°</span></div>
     </div>
   </div>
-  <div class="countdown" id="countdown">20</div>
+
   <div class="tilt off" id="tilt">
     <div class="tilthead">
       <div class="tiltcap">操作側の角度 <span id="buildTag"></span></div>
@@ -757,22 +756,27 @@ body.stereo .dispbar{opacity:.55}
   }
   bindFold('#hudFold', '#hudwrap');
   bindFold('#tiltFold', '#tilt');
-  bindFold('#eyePanelFold', '#eyePanel');
-
-  // 表示側の目操作パネル
-  function syncEyePanel() {
-    const y = Math.round(hManualGaze.yaw), p = Math.round(hManualGaze.pitch);
-    $('#eyeYaw').value = y; $('#eyePitch').value = p;
-    $('#eyeYawVal').textContent = y + '°'; $('#eyePitchVal').textContent = p + '°';
-    $('#eyeManual').checked = hManualGaze.enabled;
+  bindFold('#eyeControlFold', '#eyeControlPanel');
+  const eyeManualToggle = $('#eyeManualToggle');
+  const eyeYawInput = $('#eyeYaw');
+  const eyePitchInput = $('#eyePitch');
+  const eyeYawVal = $('#eyeYawVal');
+  const eyePitchVal = $('#eyePitchVal');
+  function syncEyeControlUi() {
+    eyeYawInput.value = (hEyeManualYaw / D2R).toFixed(1);
+    eyePitchInput.value = (hEyeManualPitch / D2R).toFixed(1);
+    eyeYawVal.textContent = (hEyeManualYaw / D2R).toFixed(1) + '°';
+    eyePitchVal.textContent = (hEyeManualPitch / D2R).toFixed(1) + '°';
   }
-  $('#eyeManual').addEventListener('change', (e) => { hManualGaze.enabled = e.target.checked; });
-  $('#eyeYaw').addEventListener('input', (e) => { hManualGaze.yaw = parseFloat(e.target.value); syncEyePanel(); });
-  $('#eyePitch').addEventListener('input', (e) => { hManualGaze.pitch = parseFloat(e.target.value); syncEyePanel(); });
-  $('#eyeCenter').addEventListener('click', () => { hManualGaze.yaw = 0; hManualGaze.pitch = 0; syncEyePanel(); });
-  $('#eyeUp').addEventListener('click', () => { hManualGaze.pitch = Math.min(20, hManualGaze.pitch + 5); syncEyePanel(); });
-  $('#eyeDown').addEventListener('click', () => { hManualGaze.pitch = Math.max(-20, hManualGaze.pitch - 5); syncEyePanel(); });
-  syncEyePanel();
+  eyeManualToggle.addEventListener('click', () => {
+    hEyeManualActive = !hEyeManualActive;
+    eyeManualToggle.textContent = '手動: ' + (hEyeManualActive ? 'ON' : 'OFF');
+    eyeManualToggle.classList.toggle('on', hEyeManualActive);
+  });
+  eyeYawInput.addEventListener('input', () => { hEyeManualYaw = parseFloat(eyeYawInput.value) * D2R; syncEyeControlUi(); });
+  eyePitchInput.addEventListener('input', () => { hEyeManualPitch = parseFloat(eyePitchInput.value) * D2R; syncEyeControlUi(); });
+  $('#eyeCenter').addEventListener('click', () => { hEyeManualYaw = 0; hEyeManualPitch = 0; syncEyeControlUi(); });
+  syncEyeControlUi();
 
   let stereo = false;
   function setStereo(v) {
@@ -1823,9 +1827,10 @@ body.stereo .dispbar{opacity:.55}
   let hEyes = null;                   // { eyes: [{bone,fLocal,posLocal,parentChainQ,base,applied}], common: 両目 or null }
   let hModelRef = null;                // hのモデルルート（視線計算で、アニメではなくモデル全体の向きだけを使うため保持）
   let hEyeInfo = '未検出';
+  let hEyeManualActive = false;
+  let hEyeManualYaw = 0;
+  let hEyeManualPitch = 0;
   let hGazeDebugAng = null;   // 直近のaimEyeで計算した「現在の正面」→「狙う方向」の角度(度)。デバッグ表示用
-  // 表示側の目を直接操作する手動視線
-  const hManualGaze = { enabled: true, yaw: 0, pitch: 5 };
   const hGaze = { yaw: 0, pitch: 0, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t0: 0, dur: 0.06,
                   nextAt: 0, dist: 2, mode: 'wander', camUntil: 0, muYaw: 0, muPitch: 0, muNext: 0 };
   // action3/4の瞬き明け演出: 目を開き始める瞬間は上を向いたままにし、少し間を置いてからこちら（カメラ）を見る
@@ -2118,11 +2123,6 @@ body.stereo .dispbar{opacity:.55}
     } else if (hSmileEyeActive) {   // 笑い目の間は、視線の高さ(ピッチ)を目を開ける時の角度に固定する（左右は通常通り動かす）
       g.pitch = g.fromPitch = g.toPitch = POST_BLINK_UP_PITCH * D2R;
     }
-    // 表示側の手動操作がONなら、カウントダウン中も含めてこの値を最終的な視線角にする。
-    if (hManualGaze.enabled) {
-      g.yaw = g.fromYaw = g.toYaw = hManualGaze.yaw * D2R;
-      g.pitch = g.fromPitch = g.toPitch = hManualGaze.pitch * D2R;
-    }
     // 固視微動: ごく小さなジャンプ(マイクロサッカード)＋ゆっくりしたドリフト
     if (t >= g.muNext) {
       const a = (0.05 + Math.random() * 0.12) * D2R, th = Math.random() * Math.PI * 2;
@@ -2133,8 +2133,16 @@ body.stereo .dispbar{opacity:.55}
     const muYawApplied = forcedLoopActive ? 0 : g.muYaw;   // 固定中は左右の固視微動も止め、寄り目の角度を完全に固定する
     const muPitchApplied = (forcedLoopActive || hSmileEyeActive) ? 0 : g.muPitch;   // 固定中は上下方向の固視微動も止め、高さを完全に固定する
     const ay = fmYaw + g.yaw + muYawApplied + drY, ap = fmPitch + g.pitch + muPitchApplied + drP, cp = Math.cos(ap);
-    // 注視点（距離が近いほど、左右の目が内側へ寄る）。
-    _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);
+    // 目操作パネルがONの時だけ、パネル指定値を最終的な視線方向として使用する。
+    if (hEyeManualActive) {
+      const may = fmYaw + hEyeManualYaw * D2R;
+      const map = fmPitch + hEyeManualPitch * D2R;
+      const mcp = Math.cos(map);
+      _gv.g.set(Math.sin(may) * mcp, Math.sin(map), Math.cos(may) * mcp).multiplyScalar(g.dist).add(mid);
+    } else {
+      // 注視点（距離が近いほど、左右の目が内側へ寄る）。
+      _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);
+    }
     // 左右individualの目ボーンがある場合は、そちらだけを個別に狙う。
     // 「両目」ボーンは左右の親であり、両方を同時に狙ってしまうと、左右individual側の計算が
     // （親がbind時の姿勢のままという前提で行われるため）親の回転量ぶんだけズレてしまい、

@@ -1753,8 +1753,9 @@ body.stereo .dispbar{opacity:.55}
     if (!H_GAZE_ENABLED) { hEyeInfo = '無効'; return; }
     model.updateMatrixWorld(true);
     const both = findEyeBone(model, /^(両目|両眼|both_?eyes?|eyes)$/i, /^(両目|両眼)/);
-    const left = findEyeBone(model, /^(左目|左眼|eye_?l|l_?eye|left_?eye)$/i, /^(左目|左眼|left_?eye)/i);
-    const right = findEyeBone(model, /^(右目|右眼|eye_?r|r_?eye|right_?eye)$/i, /^(右目|右眼|right_?eye)/i);
+    // 「目.L」「目.R」（MMD系モデルでよくある命名）にも対応する
+    const left = findEyeBone(model, /^(左目|左眼|eye_?l|l_?eye|left_?eye|目[._]?l)$/i, /^(左目|左眼|left_?eye|目[._]?l)/i);
+    const right = findEyeBone(model, /^(右目|右眼|eye_?r|r_?eye|right_?eye|目[._]?r)$/i, /^(右目|右眼|right_?eye|目[._]?r)/i);
     if (!both && !left && !right) return;
     hModelRef = model;
     const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();

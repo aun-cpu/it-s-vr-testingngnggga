@@ -1860,28 +1860,30 @@ body.stereo .dispbar{opacity:.55}
   // action4が終わってもピーク・表示量とも一切戻さない。次にaction4が起きた時はそこからさらに右・下へ積み増していく。
   function updateHHeadOffset(dt, nowSec) {
     if (!hHead) return;
-    const hold4 = hCurAct === hAct4;
-    if (hold4) {
-      // ピークは1へ向けて滑らかに伸ばすのみ（揺らぎで表示量が減ってもピーク自体は下げない）
-      const k = 1 - Math.exp(-dt / HEAD_OFFSET_EASE_TAU);
-      hHeadPeakAmt += (1 - hHeadPeakAmt) * k;
-      // 揺らぎ: 一定間隔ごとに、0〜ピークの範囲内でランダムな新しい目標地点を選び、ランダムな時間でそこへイージングする
-      if (nowSec >= hHeadWobbleNextAt) {
-        hHeadWobbleFrom = hHeadOffsetAmt;
-        hHeadWobbleTarget = Math.random() * hHeadPeakAmt;   // 右・下に動いた分(ピーク)以内でランダムな左・上寄りの値
-        hHeadWobbleDur = HEAD_WOBBLE_DUR_MIN + Math.random() * (HEAD_WOBBLE_DUR_MAX - HEAD_WOBBLE_DUR_MIN);
-        hHeadWobbleT0 = nowSec;
-        hHeadWobbleNextAt = nowSec + HEAD_WOBBLE_INTERVAL_MIN + Math.random() * (HEAD_WOBBLE_INTERVAL_MAX - HEAD_WOBBLE_INTERVAL_MIN);
-      }
-      const u = hHeadWobbleDur > 0 ? _hSmooth((nowSec - hHeadWobbleT0) / hHeadWobbleDur) : 1;
-      hHeadOffsetAmt = gzClamp(hHeadWobbleFrom + (hHeadWobbleTarget - hHeadWobbleFrom) * u, 0, hHeadPeakAmt);
+    const hold = hCurAct === hAct3 || hCurAct === hAct4;   // action3(通常のジェスチャー発動)・action4(強制ループ等)の再生中
+    if (!hold) return;   // 何もない時（idle等でaction3/4を再生していない間）はボーンに一切触れない。
+                          // ※ここで毎フレーム触れてしまうと、idle側にこのボーンのトラックが無い場合
+                          //   mixerが上書きしてくれず、同じ回転を毎フレーム重ね続けて「ぐるぐる回転」してしまう。
+                          //   触れなければ、最後にaction3/4中に設定した姿勢のままフリーズし、急に戻ることもない。
+    // ピークは1へ向けて滑らかに伸ばすのみ（揺らぎで表示量が減ってもピーク自体は下げない）
+    const k = 1 - Math.exp(-dt / HEAD_OFFSET_EASE_TAU);
+    hHeadPeakAmt += (1 - hHeadPeakAmt) * k;
+    // 揺らぎ: 一定間隔ごとに、0〜ピークの範囲内でランダムな新しい目標地点を選び、ランダムな時間でそこへイージングする
+    // （action3を連続で発動しても、ずっと同じ角度で固まらず少しずつ動き続けるようにするため）
+    if (nowSec >= hHeadWobbleNextAt) {
+      hHeadWobbleFrom = hHeadOffsetAmt;
+      hHeadWobbleTarget = Math.random() * hHeadPeakAmt;   // 右・下に動いた分(ピーク)以内でランダムな左・上寄りの値
+      hHeadWobbleDur = HEAD_WOBBLE_DUR_MIN + Math.random() * (HEAD_WOBBLE_DUR_MAX - HEAD_WOBBLE_DUR_MIN);
+      hHeadWobbleT0 = nowSec;
+      hHeadWobbleNextAt = nowSec + HEAD_WOBBLE_INTERVAL_MIN + Math.random() * (HEAD_WOBBLE_INTERVAL_MAX - HEAD_WOBBLE_INTERVAL_MIN);
     }
-    // hold4がfalse（action4が終わっている）間は、ピーク・表示量とも一切変更しない＝その時点の向きのまま固定される
+    const u = hHeadWobbleDur > 0 ? _hSmooth((nowSec - hHeadWobbleT0) / hHeadWobbleDur) : 1;
+    hHeadOffsetAmt = gzClamp(hHeadWobbleFrom + (hHeadWobbleTarget - hHeadWobbleFrom) * u, 0, hHeadPeakAmt);
     if (Math.abs(hHeadOffsetAmt) <= 0.0008) return;   // ほぼ0ならアニメの動きに一切手を加えない
     _hq.yaw.setFromAxisAngle(hHead.upNegLocal, HEAD_OFFSET_YAW_DEG * D2R * hHeadOffsetAmt);
     _hq.pitch.setFromAxisAngle(hHead.leftLocal, HEAD_OFFSET_PITCH_DEG * D2R * hHeadOffsetAmt);
     _hq.off.copy(_hq.yaw).multiply(_hq.pitch);
-    hHead.bone.quaternion.multiply(_hq.off);   // アニメが設定した向きの上に、ローカルで少しだけ重ねる
+    hHead.bone.quaternion.multiply(_hq.off);   // アニメ(action3/4)が設定した向きの上に、ローカルで少しだけ重ねる
   }
   // 毎フレームmixerがそのボーンを上書きしてしまい、視線(gaze)側の回転が反映されず目が動かなく見える。
   // 該当ボーンを狙うトラックをクリップから取り除き、目の動きは完全にgaze側だけに任せる。

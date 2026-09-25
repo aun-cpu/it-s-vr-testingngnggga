@@ -1275,6 +1275,7 @@ body.stereo .dispbar{opacity:.55}
   const BLINK_CLOSE_TAU = 0.05;      // 秒: action3/4開始時、まばたきモーフが0→1へ閉じる速さ（人のまばたきの閉じ動作くらいの速さ）
   const BLINK_CLOSE_DELAY = 0.05;    // 秒: action3/4が始まってから目を閉じ始めるまでの「間」（即座に閉じると不自然なため）
   let hBlinkHoldSince = 0;           // 直近でhold(action3/4)状態になった時刻（閉じ始めの遅延判定用）
+  let hHoldPrev = false;             // 直前フレームでhold(action3/4)状態だったか（hold終了の瞬間を検出するため）
   // ---- hの「話してる風」の口の動き（あ/い/う/え/おモーフを0〜0.5でランダムに動かす） ----
   const MOUTH_NAMES = ['あ', 'い', 'う', 'え', 'お'];   // 対象にするモーフ名（完全一致）
   let hMouthTargets = null;          // { 'あ': [{mesh, idx}], ... }: hの母音モーフ
@@ -1728,6 +1729,12 @@ body.stereo .dispbar{opacity:.55}
   let hGazeDebugAng = null;   // 直近のaimEyeで計算した「現在の正面」→「狙う方向」の角度(度)。デバッグ表示用
   const hGaze = { yaw: 0, pitch: 0, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t0: 0, dur: 0.06,
                   nextAt: 0, dist: 2, mode: 'wander', camUntil: 0, muYaw: 0, muPitch: 0, muNext: 0 };
+  // action3/4の瞬き明け演出: 目を開き始める瞬間は上を向いたままにし、少し間を置いてからこちら（カメラ）を見る
+  let hBlinkJustReleased = false;        // メインループ側で、hold(action3/4)が終わった瞬間にtrueにする
+  let hPostBlink = null;                 // { phase: 'up' | 'holdUp' | 'toCam', t0 } / null=演出なし（通常の視線ロジック）
+  const POST_BLINK_UP_PITCH = 14;        // 度: 目を開き始める時に向けておく上目づかいの角度
+  const POST_BLINK_UP_HOLD = 0.3;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
+  const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
   const _gq = { p: new THREE.Quaternion(), e: new THREE.Quaternion(), n: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion(), mw: new THREE.Quaternion() };
   const _gv = { pos: new THREE.Vector3(), f: new THREE.Vector3(), d: new THREE.Vector3(), s: new THREE.Vector3(),
                 t: new THREE.Vector3(), g: new THREE.Vector3(), cam: new THREE.Vector3(), mid: new THREE.Vector3(), fm: new THREE.Vector3() };
@@ -1888,8 +1895,27 @@ body.stereo .dispbar{opacity:.55}
       g.dist = 1.2 + Math.random() * 1.8;
       startSac(y, p);
     };
+    if (hBlinkJustReleased) {   // 目を開き始める瞬間: 通常の視線選択より優先して、上向きの演出を始める
+      hBlinkJustReleased = false;
+      hPostBlink = { phase: 'up', t0: t };
+      g.mode = 'wander';
+      g.fromYaw = g.toYaw = g.yaw = 0;
+      g.fromPitch = g.toPitch = g.pitch = POST_BLINK_UP_PITCH * D2R;   // 上を向いた状態へ即座に切り替える（このとき目はまだ閉じている）
+      g.dur = 0; g.t0 = t;
+    }
+    if (hPostBlink && hPostBlink.phase === 'up') {
+      if (t - hPostBlink.t0 >= POST_BLINK_UP_HOLD) {   // 上を向いたまま少し保持（この間に目が開いていく）
+        hPostBlink.phase = 'toCam';
+        if (camOk) { g.mode = 'camera'; g.camUntil = t + gzRand(GAZE_CAM_HOLD); g.dist = camDist; startSac(camYaw, camPitch); }
+        else { g.mode = 'wander'; startSac(0, POST_BLINK_TO_CENTER_PITCH * D2R); }   // カメラが見える範囲になければ、正面を見る
+      }
+    } else if (hPostBlink && hPostBlink.phase === 'toCam') {
+      if (t - g.t0 >= g.dur) hPostBlink = null;   // こちらを見る動きが終わったら、通常の視線ロジックへ戻す
+    }
     if (!g.nextAt) g.nextAt = t + 0.5;
-    if (g.mode === 'camera') {
+    if (hPostBlink) {
+      // 演出中は、下の通常ロジック（wander/カメラのランダム選択）を動かさない
+    } else if (g.mode === 'camera') {
       if (!camOk || t >= g.camUntil) { g.mode = 'wander'; pickWander(); g.nextAt = t + gzRand(GAZE_FIX); }
       else { g.toYaw = camYaw; g.toPitch = camPitch; g.dist = camDist; }   // 見ている間は追い続ける
     } else if (t >= g.nextAt) {
@@ -2525,8 +2551,11 @@ body.stereo .dispbar{opacity:.55}
             bt.mesh.morphTargetInfluences[bt.idx] = 1 - (1 - cur) * closeDecay;
           }
         }
+        hHoldPrev = true;
         hBlinkHeld = true;
-      } else if (hBlinkHeld) {
+      } else {
+        if (hHoldPrev) { hBlinkJustReleased = true; hHoldPrev = false; }   // hold終了の瞬間: 目を開き始める前に、上向きの演出を仕込む
+        if (hBlinkHeld) {
         // 1秒かけて指数的に0へ減衰させる。ほぼ0になったら固定処理を終了する
         const decay = Math.exp(-dt / BLINK_RELEASE_TAU);
         let stillFading = false;
@@ -2537,6 +2566,7 @@ body.stereo .dispbar{opacity:.55}
           bt.mesh.morphTargetInfluences[bt.idx] = stillFading ? v : 0;
         }
         hBlinkHeld = stillFading;   // idle側にまばたきトラックがあれば、完全に0へ戻った後はそちらが優先される
+        }
       }
     }
 

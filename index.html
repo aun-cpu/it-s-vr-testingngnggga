@@ -1714,7 +1714,7 @@ body.stereo .dispbar{opacity:.55}
   // ・ときどきカメラ（見ている人）へ視線を向け、しばらく追ってから外す（近い対象を見る時は左右の目が寄る）
   // ・アニメ(idle/action)が書いた目の向きを基準に、その上へ重ねる（アニメで目を動かしていても壊さない）
   const H_GAZE_ENABLED = true;        // false: 視線処理を止める
-  const EYE_MAX_DEG = 20;             // 度: 目が基準の向きから回れる最大角度
+  const EYE_MAX_DEG = 10;             // 度: 目が基準の向きから回れる最大角度
   const GAZE_WANDER_YAW_SD = 7;       // 度: 自由に見回す時の左右のばらつき（標準偏差）
   const GAZE_WANDER_PITCH_SD = 3.5;   // 度: 同・上下
   const GAZE_FIX = [1.2, 3.5];        // 秒: 次の視線移動までの間隔（この範囲でランダム）
@@ -1722,8 +1722,8 @@ body.stereo .dispbar{opacity:.55}
   const GAZE_CAM_HOLD = [2.0, 4.5];   // 秒: カメラを見続ける長さ
   const GAZE_CAM_MAX_YAW = 35;        // 度: カメラがこの左右角より外なら見ない（首が向いていない時は無理に見ない）
   const GAZE_CAM_MAX_PITCH = 25;      // 度: 同・上下
-  const EYE_PITCH_UP_MAX = 6;         // 度: 目が上を向ける最大角度（これ以上は不自然に見えるため制限）
-  const EYE_PITCH_DOWN_MAX = 18;      // 度: 目が下を向ける最大角度
+  const EYE_PITCH_UP_MAX = 3;         // 度: 目が上を向ける最大角度（これ以上は不自然に見えるため制限）
+  const EYE_PITCH_DOWN_MAX = 3;      // 度: 目が下を向ける最大角度
   const GAZE_CAM_MIN_DIST = 0.3;      // m: これより近いカメラは見ない
   const D2R = Math.PI / 180;
   let hEyes = null;                   // { eyes: [{bone,fLocal,posLocal,parentChainQ,base,applied}], common: 両目 or null }
@@ -1735,7 +1735,7 @@ body.stereo .dispbar{opacity:.55}
   // action3/4の瞬き明け演出: 目を開き始める瞬間は上を向いたままにし、少し間を置いてからこちら（カメラ）を見る
   let hBlinkJustReleased = false;        // メインループ側で、hold(action3/4)が終わった瞬間にtrueにする
   let hPostBlink = null;                 // { phase: 'up' | 'holdUp' | 'toCam', t0 } / null=演出なし（通常の視線ロジック）
-  const POST_BLINK_UP_PITCH = 14;        // 度: 目を開き始める時に向けておく上目づかいの角度
+  const POST_BLINK_UP_PITCH = 3;        // 度: 目を開き始める時に向けておく上目づかいの角度
   const POST_BLINK_UP_HOLD = 0.3;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
   const _gq = { p: new THREE.Quaternion(), e: new THREE.Quaternion(), n: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion(), mw: new THREE.Quaternion() };

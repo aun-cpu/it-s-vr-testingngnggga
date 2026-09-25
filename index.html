@@ -1707,9 +1707,9 @@ body.stereo .dispbar{opacity:.55}
   // ・ときどきカメラ（見ている人）へ視線を向け、しばらく追ってから外す（近い対象を見る時は左右の目が寄る）
   // ・アニメ(idle/action)が書いた目の向きを基準に、その上へ重ねる（アニメで目を動かしていても壊さない）
   const H_GAZE_ENABLED = true;        // false: 視線処理を止める
-  const EYE_MAX_DEG = 30;             // 度: 目がアニメの向きから回れる最大角度
-  const GAZE_WANDER_YAW_SD = 7;       // 度: 自由に見回す時の左右のばらつき（標準偏差）
-  const GAZE_WANDER_PITCH_SD = 3.5;   // 度: 同・上下
+  const EYE_MAX_DEG = 40;             // 度: 目が基準の向きから回れる最大角度
+  const GAZE_WANDER_YAW_SD = 16;      // 度: 自由に見回す時の左右のばらつき（標準偏差）
+  const GAZE_WANDER_PITCH_SD = 8;     // 度: 同・上下
   const GAZE_FIX = [0.35, 1.9];       // 秒: 次の視線移動までの間隔（この範囲でランダム）
   const GAZE_CAM_PROB = 0.35;         // 視線移動のたびにカメラへ向ける確率
   const GAZE_CAM_HOLD = [1.2, 3.2];   // 秒: カメラを見続ける長さ
@@ -1717,12 +1717,13 @@ body.stereo .dispbar{opacity:.55}
   const GAZE_CAM_MAX_PITCH = 25;      // 度: 同・上下
   const GAZE_CAM_MIN_DIST = 0.3;      // m: これより近いカメラは見ない
   const D2R = Math.PI / 180;
-  let hEyes = null;                   // { eyes: [{bone,fLocal,base,applied}], common: 両目 or null }
+  let hEyes = null;                   // { eyes: [{bone,fLocal,posLocal,parentChainQ,base,applied}], common: 両目 or null }
+  let hModelRef = null;                // hのモデルルート（視線計算で、アニメではなくモデル全体の向きだけを使うため保持）
   let hEyeInfo = '未検出';
   let hGazeDebugAng = null;   // 直近のaimEyeで計算した「現在の正面」→「狙う方向」の角度(度)。デバッグ表示用
   const hGaze = { yaw: 0, pitch: 0, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t0: 0, dur: 0.06,
                   nextAt: 0, dist: 2, mode: 'wander', camUntil: 0, muYaw: 0, muPitch: 0, muNext: 0 };
-  const _gq = { p: new THREE.Quaternion(), e: new THREE.Quaternion(), n: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion() };
+  const _gq = { p: new THREE.Quaternion(), e: new THREE.Quaternion(), n: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion(), mw: new THREE.Quaternion() };
   const _gv = { pos: new THREE.Vector3(), f: new THREE.Vector3(), d: new THREE.Vector3(), s: new THREE.Vector3(),
                 t: new THREE.Vector3(), g: new THREE.Vector3(), cam: new THREE.Vector3(), mid: new THREE.Vector3(), fm: new THREE.Vector3() };
   const gzRand = function (r) { return r[0] + Math.random() * (r[1] - r[0]); };
@@ -1748,13 +1749,14 @@ body.stereo .dispbar{opacity:.55}
   }
   // 読込直後(初期姿勢)に、両目/左目/右目のボーンを探して準備する
   function setupHEyes(model) {
-    hEyes = null; hEyeInfo = '目のボーンなし';
+    hEyes = null; hEyeInfo = '目のボーンなし'; hModelRef = null;
     if (!H_GAZE_ENABLED) { hEyeInfo = '無効'; return; }
     model.updateMatrixWorld(true);
     const both = findEyeBone(model, /^(両目|両眼|both_?eyes?|eyes)$/i, /^(両目|両眼)/);
     const left = findEyeBone(model, /^(左目|左眼|eye_?l|l_?eye|left_?eye)$/i, /^(左目|左眼|left_?eye)/i);
     const right = findEyeBone(model, /^(右目|右眼|eye_?r|r_?eye|right_?eye)$/i, /^(右目|右眼|right_?eye)/i);
     if (!both && !left && !right) return;
+    hModelRef = model;
     const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();
     const rel = function (b) {
       const m = new THREE.Matrix4().multiplyMatrices(inv, b.matrixWorld);
@@ -1769,10 +1771,13 @@ body.stereo .dispbar{opacity:.55}
       const f = new THREE.Vector3().crossVectors(lat, new THREE.Vector3(0, 1, 0));
       if (f.lengthSq() > 1e-10) fModel = f.normalize();
     }
-    // 各ボーンについて「初期姿勢で正面を向いている軸」をボーンのローカル座標で覚える（リグの軸の向きに依存しないため）
+    // 各ボーンについて「初期姿勢(bind時)で正面を向いている軸」をボーンのローカル座標で覚える（リグの軸の向きに依存しないため）。
+    // posLocal/parentChainQはbind時点のモデル基準の値を固定で持ち、実行中はアニメの動き(再生中のaction)を一切参照しない。
     const mk = function (b) {
       const r = rel(b);
-      return { bone: b, fLocal: fModel.clone().applyQuaternion(r.q.clone().invert()).normalize(), base: b.quaternion.clone(), applied: null };
+      const pr = rel(b.parent);
+      return { bone: b, fLocal: fModel.clone().applyQuaternion(r.q.clone().invert()).normalize(),
+               posLocal: r.p.clone(), parentChainQ: pr.q.clone(), base: b.quaternion.clone(), applied: null };
     };
     const eyes = [left, right].filter(Boolean).map(mk);
     let common = null, bothNote = '';
@@ -1806,13 +1811,15 @@ body.stereo .dispbar{opacity:.55}
     });
     try { console.log('[h] action内の目トラックを除去:', removed, '件'); } catch (e) {}
   }
-  // アニメが書いた最新の姿勢での、ボーンの位置と正面（自分が前フレームで足した回転は含めない）
+  // 「今この瞬間の顔の正面」を、再生中のアクション/アニメの動きを無視して求める。
+  // 親ボーンの「現在の(アニメで動いた)向き」ではなく、モデル全体の向き × bind時点の親の向き(静的)を使うことで、
+  // アクションのタイミングに合わせて基準がふらつかないようにする。
   function eyeFrame(e, pos, f) {
-    if (!e.applied || e.bone.quaternion.angleTo(e.applied) > 1e-5) e.base.copy(e.bone.quaternion);
-    const par = e.bone.parent;
-    par.updateWorldMatrix(true, false);
-    par.matrixWorld.decompose(_gv.t, _gq.p, _gv.s);
-    pos.copy(e.bone.position).applyMatrix4(par.matrixWorld);
+    if (!hModelRef) return;
+    hModelRef.updateWorldMatrix(true, false);
+    hModelRef.matrixWorld.decompose(_gv.t, _gq.mw, _gv.s);
+    pos.copy(e.posLocal).applyMatrix4(hModelRef.matrixWorld);
+    _gq.p.copy(_gq.mw).multiply(e.parentChainQ);
     _gq.e.copy(_gq.p).multiply(e.base);
     f.copy(e.fLocal).applyQuaternion(_gq.e);
   }
@@ -1869,8 +1876,8 @@ body.stereo .dispbar{opacity:.55}
     const pickWander = function () {
       const home = Math.random() < 0.25;                      // ときどき正面付近へ戻る
       const k = Math.random() < 0.1 ? 2 : 1;                  // たまに大きめに見回す
-      const y = home ? gzRandn() * 1.5 * D2R : gzClamp(gzRandn() * GAZE_WANDER_YAW_SD * k, -16, 16) * D2R;
-      const p = home ? gzRandn() * 1 * D2R : gzClamp(gzRandn() * GAZE_WANDER_PITCH_SD - 1, -9, 7) * D2R;
+      const y = home ? gzRandn() * 1.5 * D2R : gzClamp(gzRandn() * GAZE_WANDER_YAW_SD * k, -34, 34) * D2R;
+      const p = home ? gzRandn() * 1 * D2R : gzClamp(gzRandn() * GAZE_WANDER_PITCH_SD - 1, -18, 16) * D2R;
       g.dist = 1.2 + Math.random() * 1.8;
       startSac(y, p);
     };

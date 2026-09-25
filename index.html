@@ -1783,6 +1783,28 @@ body.stereo .dispbar{opacity:.55}
     hEyes = { eyes: eyes, common: common };
     hEyeInfo = [bothNote, left && left.name, right && right.name].filter(Boolean).join(' / ');
   }
+  // action(idle/2/3/4等)のクリップに、目(両目・左目・右目)ボーンのトラックが含まれていると、
+  // 毎フレームmixerがそのボーンを上書きしてしまい、視線(gaze)側の回転が反映されず目が動かなく見える。
+  // 該当ボーンを狙うトラックをクリップから取り除き、目の動きは完全にgaze側だけに任せる。
+  function stripEyeTracks(model, clips, eyes) {
+    if (!eyes) return;
+    const bones = [];
+    if (eyes.common) bones.push(eyes.common.bone);
+    eyes.eyes.forEach(function (e) { bones.push(e.bone); });
+    if (!bones.length) return;
+    let removed = 0;
+    clips.forEach(function (c) {
+      const before = c.tracks.length;
+      c.tracks = c.tracks.filter(function (tr) {
+        const i = tr.name.lastIndexOf('.');
+        if (i < 0) return true;
+        const node = THREE.PropertyBinding.findNode(model, tr.name.slice(0, i));
+        return bones.indexOf(node) === -1;
+      });
+      removed += before - c.tracks.length;
+    });
+    try { console.log('[h] action内の目トラックを除去:', removed, '件'); } catch (e) {}
+  }
   // アニメが書いた最新の姿勢での、ボーンの位置と正面（自分が前フレームで足した回転は含めない）
   function eyeFrame(e, pos, f) {
     if (!e.applied || e.bone.quaternion.angleTo(e.applied) > 1e-5) e.base.copy(e.bone.quaternion);
@@ -1910,6 +1932,7 @@ body.stereo .dispbar{opacity:.55}
       setupHEyes(model);   // 両目・左目・右目ボーンを探す（アニメの有無に関係なく視線を動かす）
 
       const clips = gltf.animations || [];
+      stripEyeTracks(model, clips, hEyes);   // ★ actionに含まれる目の動きを消し、gazeの回転が上書きされないようにする
       if (clips.length === 0) { hAnim = '  アニメなし'; return; }
       const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
       hMixer = new THREE.AnimationMixer(model);

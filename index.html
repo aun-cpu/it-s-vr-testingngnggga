@@ -1781,8 +1781,9 @@ body.stereo .dispbar{opacity:.55}
   const POST_BLINK_UP_PITCH = 3;        // 度: 目を開き始める時に向けておく上目づかいの角度
   const POST_BLINK_UP_HOLD = 1;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
-  const FORCED_LOOP_GAZE_PITCH = 4;      // 度: 強制ループ(20秒カウントダウン)中、視線を固定する上向きの角度
-  const FORCED_LOOP_GAZE_DIST = 0.35;    // m: 強制ループ中の注視距離（近いほど寄り目になる）
+  const FORCED_LOOP_GAZE_PITCH = 8;      // 度: 強制ループ(20秒カウントダウン)中、視線を固定する上向きの角度
+  const FORCED_LOOP_GAZE_DIST = 0.18;    // m: 強制ループ中の注視距離（近いほど寄り目になる）
+  const FORCED_LOOP_EYE_MAX_DEG = 16;    // 度: 強制ループ中だけ許容する目の最大回転角（通常より広げて寄り目を強く出す）
   // action4中: 頭ボーンをアニメの動きに重ねて、右・下方向へ寄せる。さらにその範囲内でランダムな値・間隔で左・上へ揺らぐ。
   // 一度動いた分はaction4が終わっても戻さず維持する（次のaction4でさらに右・下へ積み増していく）
   let hHead = null;                      // { bone, leftLocal, upNegLocal }: 頭ボーンと、オフセット計算用のローカル基準方向
@@ -1963,8 +1964,8 @@ body.stereo .dispbar{opacity:.55}
     _gq.e.copy(_gq.p).multiply(e.base);
     f.copy(e.fLocal).applyQuaternion(_gq.e);
   }
-  // ボーンを、ワールド座標の点Gへ向ける（最大EYE_MAX_DEGまで）
-  function aimEye(e, G) {
+  // ボーンを、ワールド座標の点Gへ向ける（最大EYE_MAX_DEGまで。maxDegOverride指定時はそちらを使う）
+  function aimEye(e, G, maxDegOverride) {
     eyeFrame(e, _gv.pos, _gv.f);
     _gv.d.subVectors(G, _gv.pos);
     if (_gv.d.lengthSq() < 1e-10) return;
@@ -1976,7 +1977,7 @@ body.stereo .dispbar{opacity:.55}
     // しまう(目が動かない)。すぐ下のEYE_MAX_DEGクランプだけで回転量は十分に制限されるので、
     // この早期returnは無くても安全。
     _gq.r.setFromUnitVectors(_gv.f, _gv.d);
-    const mx = EYE_MAX_DEG * D2R;
+    const mx = (maxDegOverride != null ? maxDegOverride : EYE_MAX_DEG) * D2R;
     if (ang > mx) _gq.r.copy(_gq.id).slerp(_gq.r, mx / ang);
     _gq.n.copy(_gq.r).multiply(_gq.e);                       // 世界での新しい向き
     _gq.p.invert();
@@ -2072,8 +2073,8 @@ body.stereo .dispbar{opacity:.55}
     const ay = fmYaw + g.yaw + muYawApplied + drY, ap = fmPitch + g.pitch + muPitchApplied + drP, cp = Math.cos(ap);
     // 注視点（距離が近いほど、左右の目が内側へ寄る）
     _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);
-    if (common) aimEye(common, _gv.g);
-    for (let i = 0; i < eyes.length; i++) aimEye(eyes[i], _gv.g);
+    if (common) aimEye(common, _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : undefined);
+    for (let i = 0; i < eyes.length; i++) aimEye(eyes[i], _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : undefined);
   }
   function loadH(group, onDone) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }

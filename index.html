@@ -1301,6 +1301,16 @@ body.stereo .dispbar{opacity:.55}
   const HOLD_GROUP_GAP = 0.3;        // 秒: action4がこの間隔以内に再開したら、同じ一塊（まばたきを開かない）とみなす
   let hBlinkReleasePending = false;  // hold終了直後、この猶予の間だけtrue（再開すれば解放をキャンセルする）
   let hBlinkReleasePendingAt = 0;    // 猶予の開始時刻
+  // ---- idle中（action3/4を再生していない、通常の待機状態）の自動まばたき ----
+  let hIdleBlinkPhase = 'wait';      // 'wait'(次のまばたきを待つ) | 'closing'(閉じる) | 'hold'(閉じたまま一瞬止まる) | 'opening'(開く)
+  let hIdleBlinkPhaseT0 = 0;         // 現在のフェーズに入った時刻
+  let hIdleBlinkNextAt = 0;          // 次にまばたきを始める時刻（0はまだ未設定）
+  const IDLE_BLINK_MIN_INTERVAL = 2.5;   // 秒: まばたきの間隔（最短）
+  const IDLE_BLINK_MAX_INTERVAL = 6;     // 秒: まばたきの間隔（最長）
+  const IDLE_BLINK_CLOSE_TAU = 0.04;     // 秒: 閉じる速さ
+  const IDLE_BLINK_CLOSE_DUR = IDLE_BLINK_CLOSE_TAU * 3;   // 秒: 閉じきったとみなすまでの時間
+  const IDLE_BLINK_HOLD = 0.08;          // 秒: 閉じたまま止まる時間
+  const IDLE_BLINK_OPEN_TAU = 0.09;      // 秒: 開く速さ（閉じるよりやや遅く、自然に見えるように）
   // ---- hの「話してる風」の口の動き（あ/い/う/え/おモーフを0〜0.5でランダムに動かす） ----
   const MOUTH_NAMES = ['あ', 'い', 'う', 'え', 'お'];   // 対象にするモーフ名（完全一致）
   let hMouthTargets = null;          // { 'あ': [{mesh, idx}], ... }: hの母音モーフ

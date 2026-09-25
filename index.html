@@ -1736,7 +1736,7 @@ body.stereo .dispbar{opacity:.55}
   let hBlinkJustReleased = false;        // メインループ側で、hold(action3/4)が終わった瞬間にtrueにする
   let hPostBlink = null;                 // { phase: 'up' | 'holdUp' | 'toCam', t0 } / null=演出なし（通常の視線ロジック）
   const POST_BLINK_UP_PITCH = 3;        // 度: 目を開き始める時に向けておく上目づかいの角度
-  const POST_BLINK_UP_HOLD = 0.3;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
+  const POST_BLINK_UP_HOLD = 1;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
   const _gq = { p: new THREE.Quaternion(), e: new THREE.Quaternion(), n: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion(), mw: new THREE.Quaternion() };
   const _gv = { pos: new THREE.Vector3(), f: new THREE.Vector3(), d: new THREE.Vector3(), s: new THREE.Vector3(),

@@ -1276,6 +1276,9 @@ body.stereo .dispbar{opacity:.55}
   const BLINK_CLOSE_DELAY = 0.05;    // 秒: action3/4が始まってから目を閉じ始めるまでの「間」（即座に閉じると不自然なため）
   let hBlinkHoldSince = 0;           // 直近でhold(action3/4)状態になった時刻（閉じ始めの遅延判定用）
   let hHoldPrev = false;             // 直前フレームでhold(action3/4)状態だったか（hold終了の瞬間を検出するため）
+  const HOLD_GROUP_GAP = 0.3;        // 秒: action4がこの間隔以内に再開したら、同じ一塊（まばたきを開かない）とみなす
+  let hBlinkReleasePending = false;  // hold終了直後、この猶予の間だけtrue（再開すれば解放をキャンセルする）
+  let hBlinkReleasePendingAt = 0;    // 猶予の開始時刻
   // ---- hの「話してる風」の口の動き（あ/い/う/え/おモーフを0〜0.5でランダムに動かす） ----
   const MOUTH_NAMES = ['あ', 'い', 'う', 'え', 'お'];   // 対象にするモーフ名（完全一致）
   let hMouthTargets = null;          // { 'あ': [{mesh, idx}], ... }: hの母音モーフ
@@ -2540,6 +2543,7 @@ body.stereo .dispbar{opacity:.55}
     {
       const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
       if (hold) {
+        hBlinkReleasePending = false;   // 猶予中にaction3/4が再開したので、同じ一塊として継続（解放をキャンセル）
         if (!hBlinkHeld) hBlinkHoldSince = now / 1000;   // hold状態に入った瞬間の時刻を記録（閉じ始めの「間」に使う）
         const sinceHold = now / 1000 - hBlinkHoldSince;
         if (sinceHold >= BLINK_CLOSE_DELAY) {
@@ -2554,8 +2558,18 @@ body.stereo .dispbar{opacity:.55}
         hHoldPrev = true;
         hBlinkHeld = true;
       } else {
-        if (hHoldPrev) { hBlinkJustReleased = true; hHoldPrev = false; }   // hold終了の瞬間: 目を開き始める前に、上向きの演出を仕込む
-        if (hBlinkHeld) {
+        if (hHoldPrev) {
+          // hold終了: すぐには開かず、0.3秒だけ様子を見る（この間にaction4が再開したら同じ一塊とみなして開かない）
+          hBlinkReleasePending = true;
+          hBlinkReleasePendingAt = now / 1000;
+          hHoldPrev = false;
+        }
+        if (hBlinkReleasePending) {
+          if (now / 1000 - hBlinkReleasePendingAt >= HOLD_GROUP_GAP) {
+            hBlinkReleasePending = false;
+            hBlinkJustReleased = true;   // 猶予を過ぎても再開しなかった＝本当に終了。ここで初めて目を開き始める演出を始める
+          }
+        } else if (hBlinkHeld) {
         // 1秒かけて指数的に0へ減衰させる。ほぼ0になったら固定処理を終了する
         const decay = Math.exp(-dt / BLINK_RELEASE_TAU);
         let stillFading = false;

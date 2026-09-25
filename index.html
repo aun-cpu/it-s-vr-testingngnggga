@@ -1738,6 +1738,25 @@ body.stereo .dispbar{opacity:.55}
   const POST_BLINK_UP_PITCH = 3;        // 度: 目を開き始める時に向けておく上目づかいの角度
   const POST_BLINK_UP_HOLD = 1;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
+  // action4中: 頭ボーンをアニメの動きに重ねて、右・下方向へ寄せる。さらにその範囲内でランダムな値・間隔で左・上へ揺らぐ。
+  // 一度動いた分はaction4が終わっても戻さず維持する（次のaction4でさらに右・下へ積み増していく）
+  let hHead = null;                      // { bone, leftLocal, upNegLocal }: 頭ボーンと、オフセット計算用のローカル基準方向
+  let hHeadOffsetAmt = 0;                // 現在表示に使うオフセット量 0(なし)〜1(全開)。ピークへ向けて立ち上がりつつ揺らぎで一時的に減る
+  let hHeadPeakAmt = 0;                  // これまでに右・下へ動いた最大量(0〜1)。action4終了後も下げない＝ずっと維持される
+  let hHeadWobbleFrom = 0;               // 揺らぎ: 直前に狙っていた地点（イージング開始値）
+  let hHeadWobbleTarget = 0;             // 揺らぎ: 今向かっている先（0〜hHeadPeakAmtの範囲内でランダム）
+  let hHeadWobbleT0 = 0;                 // 揺らぎ: 現在のイージング開始時刻
+  let hHeadWobbleDur = 0.3;              // 揺らぎ: 現在のイージングにかける時間（秒、ランダム）
+  let hHeadWobbleNextAt = 0;             // 揺らぎ: 次に新しい目標地点を選ぶ時刻
+  const HEAD_OFFSET_YAW_DEG = 1.4;       // 度: 右方向へ寄せる角度（ほんの僅か）
+  const HEAD_OFFSET_PITCH_DEG = 1.1;     // 度: 下方向へ寄せる角度（ほんの僅か）
+  const HEAD_OFFSET_EASE_TAU = 0.35;     // 秒: ピークの立ち上げ（右・下へ向かう）速さ。大きいほどゆっくり
+  const HEAD_WOBBLE_INTERVAL_MIN = 0.25; // 秒: 揺らぎの目標を切り替える間隔（最短）
+  const HEAD_WOBBLE_INTERVAL_MAX = 1.1;  // 秒: 揺らぎの目標を切り替える間隔（最長）
+  const HEAD_WOBBLE_DUR_MIN = 0.15;      // 秒: 1回の揺らぎ移動にかける時間（最短）
+  const HEAD_WOBBLE_DUR_MAX = 0.5;       // 秒: 1回の揺らぎ移動にかける時間（最長）
+  const _hSmooth = function (u) { u = gzClamp(u, 0, 1); return u * u * (3 - 2 * u); };
+  const _hq = { yaw: new THREE.Quaternion(), pitch: new THREE.Quaternion(), off: new THREE.Quaternion() };
   const _gq = { p: new THREE.Quaternion(), e: new THREE.Quaternion(), n: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion(), mw: new THREE.Quaternion() };
   const _gv = { pos: new THREE.Vector3(), f: new THREE.Vector3(), d: new THREE.Vector3(), s: new THREE.Vector3(),
                 t: new THREE.Vector3(), g: new THREE.Vector3(), cam: new THREE.Vector3(), mid: new THREE.Vector3(), fm: new THREE.Vector3() };
@@ -1805,7 +1824,65 @@ body.stereo .dispbar{opacity:.55}
     hEyes = { eyes: eyes, common: common };
     hEyeInfo = [bothNote, left && left.name, right && right.name].filter(Boolean).join(' / ');
   }
-  // action(idle/2/3/4等)のクリップに、目(両目・左目・右目)ボーンのトラックが含まれていると、
+  // 読込直後(初期姿勢)に、頭ボーンを探して「右方向」「下方向」をそのボーンのローカル座標で覚える
+  // （両目ボーンの位置から求めた「モデルの左右」を使うことで、リグの軸の向きに依存せず常に正しく右/下を判定できる）
+  function setupHHead(model) {
+    hHead = null;
+    const bone = findEyeBone(model, /^(頭|head)$/i, /^(頭|head)/i);
+    if (!bone) return;
+    model.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();
+    const rel = function (b) {
+      const m = new THREE.Matrix4().multiplyMatrices(inv, b.matrixWorld);
+      const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+      m.decompose(p, q, sc);
+      return { p: p, q: q };
+    };
+    // モデルの「左方向」＝左目位置−右目位置（見つからない場合は前方向から仮に求める）
+    let leftModel = null;
+    if (hEyes && hEyes.eyes.length === 2) {
+      const a = hEyes.eyes[0].posLocal, b = hEyes.eyes[1].posLocal;   // [left, right] の順で格納されている
+      leftModel = a.clone().sub(b); leftModel.y = 0;
+      if (leftModel.lengthSq() > 1e-10) leftModel.normalize(); else leftModel = null;
+    }
+    if (!leftModel) {
+      // 両目ボーンがない場合のフォールバック: 前方向(+Z仮定)に対して垂直な水平方向を左とみなす
+      leftModel = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)).normalize();
+    }
+    const qBind = rel(bone).q;   // 頭ボーンの、モデル基準での初期姿勢（世界向き）
+    const invBind = qBind.clone().invert();
+    const leftLocal = leftModel.clone().applyQuaternion(invBind).normalize();      // ローカル座標での「モデルの左」
+    const upNegLocal = new THREE.Vector3(0, -1, 0).applyQuaternion(invBind).normalize(); // ローカル座標での「下」＝-(上)
+    hHead = { bone: bone, leftLocal: leftLocal, upNegLocal: upNegLocal };
+  }
+  // action4の間、頭ボーンのアニメ済みの向きに「右・下」オフセットを重ねる。
+  // ピーク(hHeadPeakAmt)へ向けて滑らかに立ち上がりつつ、0〜ピークの範囲内でランダムな値・間隔で左・上側へ揺らぐ。
+  // action4が終わってもピーク・表示量とも一切戻さない。次にaction4が起きた時はそこからさらに右・下へ積み増していく。
+  function updateHHeadOffset(dt, nowSec) {
+    if (!hHead) return;
+    const hold4 = hCurAct === hAct4;
+    if (hold4) {
+      // ピークは1へ向けて滑らかに伸ばすのみ（揺らぎで表示量が減ってもピーク自体は下げない）
+      const k = 1 - Math.exp(-dt / HEAD_OFFSET_EASE_TAU);
+      hHeadPeakAmt += (1 - hHeadPeakAmt) * k;
+      // 揺らぎ: 一定間隔ごとに、0〜ピークの範囲内でランダムな新しい目標地点を選び、ランダムな時間でそこへイージングする
+      if (nowSec >= hHeadWobbleNextAt) {
+        hHeadWobbleFrom = hHeadOffsetAmt;
+        hHeadWobbleTarget = Math.random() * hHeadPeakAmt;   // 右・下に動いた分(ピーク)以内でランダムな左・上寄りの値
+        hHeadWobbleDur = HEAD_WOBBLE_DUR_MIN + Math.random() * (HEAD_WOBBLE_DUR_MAX - HEAD_WOBBLE_DUR_MIN);
+        hHeadWobbleT0 = nowSec;
+        hHeadWobbleNextAt = nowSec + HEAD_WOBBLE_INTERVAL_MIN + Math.random() * (HEAD_WOBBLE_INTERVAL_MAX - HEAD_WOBBLE_INTERVAL_MIN);
+      }
+      const u = hHeadWobbleDur > 0 ? _hSmooth((nowSec - hHeadWobbleT0) / hHeadWobbleDur) : 1;
+      hHeadOffsetAmt = gzClamp(hHeadWobbleFrom + (hHeadWobbleTarget - hHeadWobbleFrom) * u, 0, hHeadPeakAmt);
+    }
+    // hold4がfalse（action4が終わっている）間は、ピーク・表示量とも一切変更しない＝その時点の向きのまま固定される
+    if (Math.abs(hHeadOffsetAmt) <= 0.0008) return;   // ほぼ0ならアニメの動きに一切手を加えない
+    _hq.yaw.setFromAxisAngle(hHead.upNegLocal, HEAD_OFFSET_YAW_DEG * D2R * hHeadOffsetAmt);
+    _hq.pitch.setFromAxisAngle(hHead.leftLocal, HEAD_OFFSET_PITCH_DEG * D2R * hHeadOffsetAmt);
+    _hq.off.copy(_hq.yaw).multiply(_hq.pitch);
+    hHead.bone.quaternion.multiply(_hq.off);   // アニメが設定した向きの上に、ローカルで少しだけ重ねる
+  }
   // 毎フレームmixerがそのボーンを上書きしてしまい、視線(gaze)側の回転が反映されず目が動かなく見える。
   // 該当ボーンを狙うトラックをクリップから取り除き、目の動きは完全にgaze側だけに任せる。
   function stripEyeTracks(model, clips, eyes) {
@@ -1978,6 +2055,7 @@ body.stereo .dispbar{opacity:.55}
       });
 
       setupHEyes(model);   // 両目・左目・右目ボーンを探す（アニメの有無に関係なく視線を動かす）
+      setupHHead(model);   // action4用: 頭ボーンとオフセット計算用の基準方向を探す
 
       const clips = gltf.animations || [];
       stripEyeTracks(model, clips, hEyes);   // ★ actionに含まれる目の動きを消し、gazeの回転が上書きされないようにする
@@ -2536,6 +2614,7 @@ body.stereo .dispbar{opacity:.55}
     }
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
+    updateHHeadOffset(dt, now / 1000);                        // action4中、頭ボーンにほんの僅かな右・下オフセットを重ねる
     updateHGaze(dt, now);                                     // アニメの後に、両目・左目・右目ボーンへ視線を重ねる
     updateSplash(dt);                                         // 水滴エフェクトの飛散・落下・フェードを更新
     updateHearts(dt);                                         // ハートエフェクトの上昇・フェードを更新

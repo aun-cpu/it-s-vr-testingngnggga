@@ -1707,12 +1707,12 @@ body.stereo .dispbar{opacity:.55}
   // ・ときどきカメラ（見ている人）へ視線を向け、しばらく追ってから外す（近い対象を見る時は左右の目が寄る）
   // ・アニメ(idle/action)が書いた目の向きを基準に、その上へ重ねる（アニメで目を動かしていても壊さない）
   const H_GAZE_ENABLED = true;        // false: 視線処理を止める
-  const EYE_MAX_DEG = 40;             // 度: 目が基準の向きから回れる最大角度
-  const GAZE_WANDER_YAW_SD = 16;      // 度: 自由に見回す時の左右のばらつき（標準偏差）
-  const GAZE_WANDER_PITCH_SD = 8;     // 度: 同・上下
-  const GAZE_FIX = [0.35, 1.9];       // 秒: 次の視線移動までの間隔（この範囲でランダム）
+  const EYE_MAX_DEG = 20;             // 度: 目が基準の向きから回れる最大角度
+  const GAZE_WANDER_YAW_SD = 7;       // 度: 自由に見回す時の左右のばらつき（標準偏差）
+  const GAZE_WANDER_PITCH_SD = 3.5;   // 度: 同・上下
+  const GAZE_FIX = [1.2, 3.5];        // 秒: 次の視線移動までの間隔（この範囲でランダム）
   const GAZE_CAM_PROB = 0.35;         // 視線移動のたびにカメラへ向ける確率
-  const GAZE_CAM_HOLD = [1.2, 3.2];   // 秒: カメラを見続ける長さ
+  const GAZE_CAM_HOLD = [2.0, 4.5];   // 秒: カメラを見続ける長さ
   const GAZE_CAM_MAX_YAW = 35;        // 度: カメラがこの左右角より外なら見ない（首が向いていない時は無理に見ない）
   const GAZE_CAM_MAX_PITCH = 25;      // 度: 同・上下
   const GAZE_CAM_MIN_DIST = 0.3;      // m: これより近いカメラは見ない
@@ -1875,10 +1875,10 @@ body.stereo .dispbar{opacity:.55}
       g.dur = Math.min(0.14, 0.04 + 0.0025 * amp); g.t0 = t;
     };
     const pickWander = function () {
-      const home = Math.random() < 0.25;                      // ときどき正面付近へ戻る
-      const k = Math.random() < 0.1 ? 2 : 1;                  // たまに大きめに見回す
-      const y = home ? gzRandn() * 1.5 * D2R : gzClamp(gzRandn() * GAZE_WANDER_YAW_SD * k, -34, 34) * D2R;
-      const p = home ? gzRandn() * 1 * D2R : gzClamp(gzRandn() * GAZE_WANDER_PITCH_SD - 1, -18, 16) * D2R;
+      const home = Math.random() < 0.4;                       // ときどき正面付近へ戻る
+      const k = Math.random() < 0.05 ? 1.4 : 1;               // たまに大きめに見回す（頻度・倍率とも抑制）
+      const y = home ? gzRandn() * 1.5 * D2R : gzClamp(gzRandn() * GAZE_WANDER_YAW_SD * k, -16, 16) * D2R;
+      const p = home ? gzRandn() * 1 * D2R : gzClamp(gzRandn() * GAZE_WANDER_PITCH_SD - 1, -9, 8) * D2R;
       g.dist = 1.2 + Math.random() * 1.8;
       startSac(y, p);
     };
@@ -1896,11 +1896,11 @@ body.stereo .dispbar{opacity:.55}
     g.pitch = g.fromPitch + (g.toPitch - g.fromPitch) * sm;
     // 固視微動: ごく小さなジャンプ(マイクロサッカード)＋ゆっくりしたドリフト
     if (t >= g.muNext) {
-      const a = (0.1 + Math.random() * 0.25) * D2R, th = Math.random() * Math.PI * 2;
-      g.muYaw = a * Math.cos(th); g.muPitch = a * Math.sin(th) * 0.7; g.muNext = t + 0.25 + Math.random() * 0.7;
+      const a = (0.05 + Math.random() * 0.12) * D2R, th = Math.random() * Math.PI * 2;
+      g.muYaw = a * Math.cos(th); g.muPitch = a * Math.sin(th) * 0.7; g.muNext = t + 0.4 + Math.random() * 0.9;
     } else { const kd = Math.exp(-dt / 0.5); g.muYaw *= kd; g.muPitch *= kd; }
-    const drY = 0.12 * D2R * (Math.sin(t * 1.7) + 0.6 * Math.sin(t * 4.3 + 1.1));
-    const drP = 0.10 * D2R * (Math.sin(t * 1.3 + 2) + 0.6 * Math.sin(t * 3.9));
+    const drY = 0.06 * D2R * (Math.sin(t * 1.7) + 0.6 * Math.sin(t * 4.3 + 1.1));
+    const drP = 0.05 * D2R * (Math.sin(t * 1.3 + 2) + 0.6 * Math.sin(t * 3.9));
     const ay = fmYaw + g.yaw + g.muYaw + drY, ap = fmPitch + g.pitch + g.muPitch + drP, cp = Math.cos(ap);
     // 注視点（距離が近いほど、左右の目が内側へ寄る）
     _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);

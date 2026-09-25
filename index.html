@@ -2675,7 +2675,7 @@ body.stereo .dispbar{opacity:.55}
       action3StreakCount = 0;
     }
     {
-      const smileTarget = hSmileEyeActive ? H_SMILE_EYE_TARGET : 0;
+      const smileTarget = forcedLoopActive ? 0.8 : (hSmileEyeActive ? H_SMILE_EYE_TARGET : 0);
       const smileK = 1 - Math.exp(-dt / H_SMILE_EYE_EASE_TAU);
       hSmileEyeAmt += (smileTarget - hSmileEyeAmt) * smileK;
       for (let i = 0; i < hSmileEyeTargets.length; i++) {
@@ -2686,7 +2686,18 @@ body.stereo .dispbar{opacity:.55}
     // action3/4の再生中は、まばたきモーフを1にし続ける。終了後はゆっくり0へ戻す（mixerの更新後に上書きする）
     {
       const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
-      if (hold) {
+      if (forcedLoopActive) {
+        // 20秒の強制ループ（カウントダウン）中は、まばたきモーフを一切出さず目を開けたままにする
+        const openDecay = Math.exp(-dt / BLINK_CLOSE_TAU);
+        for (let i = 0; i < hBlinkTargets.length; i++) {
+          const bt = hBlinkTargets[i];
+          const cur = bt.mesh.morphTargetInfluences[bt.idx];
+          bt.mesh.morphTargetInfluences[bt.idx] = cur * openDecay;
+        }
+        hBlinkHeld = false;
+        hHoldPrev = false;
+        hBlinkReleasePending = false;
+      } else if (hold) {
         hBlinkReleasePending = false;   // 猶予中にaction3/4が再開したので、同じ一塊として継続（解放をキャンセル）
         if (!hBlinkHeld) {
           hBlinkHoldSince = now / 1000;   // hold状態に入った瞬間の時刻を記録（閉じ始めの「間」に使う）

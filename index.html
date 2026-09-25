@@ -1273,9 +1273,29 @@ body.stereo .dispbar{opacity:.55}
   let hBlinkHeld = false;            // action3/4の終了後、まばたきを0へ戻す減衰中はtrue
   const BLINK_RELEASE_TAU = 0.35;    // 秒: action3/4終了後、まばたきモーフが1→0へ戻る速さ（大きいほどゆっくり）
   const BLINK_CLOSE_TAU = 0.05;      // 秒: action3/4開始時、まばたきモーフが0→1へ閉じる速さ（人のまばたきの閉じ動作くらいの速さ）
-  const BLINK_CLOSE_DELAY = 0.05;    // 秒: action3/4が始まってから目を閉じ始めるまでの「間」（即座に閉じると不自然なため）
+  const BLINK_CLOSE_DELAY = 0.05;    // 秒: 「normal」モードで、action3/4が始まってから目を閉じ始めるまでの「間」
   let hBlinkHoldSince = 0;           // 直近でhold(action3/4)状態になった時刻（閉じ始めの遅延判定用）
   let hHoldPrev = false;             // 直前フレームでhold(action3/4)状態だったか（hold終了の瞬間を検出するため）
+  // action3/4のたびに目を閉じる/閉じ方をランダムに変える（毎回必ず完全に閉じると不自然なため）。
+  // hold(action3/4)が始まるたびに以下から1つをランダムに選ぶ:
+  //   none   = 今回は目を閉じない
+  //   normal = 開始直後すぐに完全に閉じる（従来の挙動）
+  //   partial= まず少しだけ閉じて一瞬止まり、そこから完全に閉じる
+  //   mid    = アクションの途中まで待ってから完全に閉じる
+  let hBlinkMode = 'normal';         // このhold中のまばたきモード
+  let hBlinkCloseDelay = BLINK_CLOSE_DELAY;   // 実際に閉じ始めるまでの「間」（モードにより変わる。mid以外はBLINK_CLOSE_DELAY）
+  let hBlinkPartialTarget = 0.45;    // partialモード時、最初に閉じる目標値（0〜1、閉じきらない中間量）
+  let hBlinkPartialPauseDur = 0.2;   // partialモード時、部分閉じの状態で止まる時間（秒）
+  const BLINK_MODE_NONE_PROB = 0.25;      // 「閉じない」を選ぶ確率
+  const BLINK_MODE_PARTIAL_PROB = 0.25;   // 「少し閉じてから完全に閉じる」を選ぶ確率
+  const BLINK_MODE_MID_PROB = 0.25;       // 「途中で閉じる」を選ぶ確率（残りが従来通りの「normal」）
+  const BLINK_PARTIAL_MIN = 0.3;          // partialモードの部分閉じ目標値（最小）
+  const BLINK_PARTIAL_MAX = 0.6;          // partialモードの部分閉じ目標値（最大）
+  const BLINK_PARTIAL_CLOSE_DUR = BLINK_CLOSE_TAU * 3;   // 秒: 部分閉じ目標にほぼ達するまでの目安時間
+  const BLINK_PARTIAL_PAUSE_MIN = 0.1;    // 秒: 部分閉じで止まる時間（最短）
+  const BLINK_PARTIAL_PAUSE_MAX = 0.35;   // 秒: 部分閉じで止まる時間（最長）
+  const BLINK_MID_MIN_FRAC = 0.25;        // midモード: 閉じ始めるタイミング（アクション全体に対する割合、最短側）
+  const BLINK_MID_MAX_FRAC = 0.7;         // midモード: 閉じ始めるタイミング（アクション全体に対する割合、最長側）
   const HOLD_GROUP_GAP = 0.3;        // 秒: action4がこの間隔以内に再開したら、同じ一塊（まばたきを開かない）とみなす
   let hBlinkReleasePending = false;  // hold終了直後、この猶予の間だけtrue（再開すれば解放をキャンセルする）
   let hBlinkReleasePendingAt = 0;    // 猶予の開始時刻
@@ -2625,15 +2645,36 @@ body.stereo .dispbar{opacity:.55}
       const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
       if (hold) {
         hBlinkReleasePending = false;   // 猶予中にaction3/4が再開したので、同じ一塊として継続（解放をキャンセル）
-        if (!hBlinkHeld) hBlinkHoldSince = now / 1000;   // hold状態に入った瞬間の時刻を記録（閉じ始めの「間」に使う）
+        if (!hBlinkHeld) {
+          hBlinkHoldSince = now / 1000;   // hold状態に入った瞬間の時刻を記録（閉じ始めの「間」に使う）
+          // 今回のhold(ひとかたまりのaction3/4)のまばたき方をランダムに1つ選ぶ
+          const r = Math.random();
+          if (r < BLINK_MODE_NONE_PROB) hBlinkMode = 'none';
+          else if (r < BLINK_MODE_NONE_PROB + BLINK_MODE_PARTIAL_PROB) hBlinkMode = 'partial';
+          else if (r < BLINK_MODE_NONE_PROB + BLINK_MODE_PARTIAL_PROB + BLINK_MODE_MID_PROB) hBlinkMode = 'mid';
+          else hBlinkMode = 'normal';
+          hBlinkPartialTarget = BLINK_PARTIAL_MIN + Math.random() * (BLINK_PARTIAL_MAX - BLINK_PARTIAL_MIN);
+          hBlinkPartialPauseDur = BLINK_PARTIAL_PAUSE_MIN + Math.random() * (BLINK_PARTIAL_PAUSE_MAX - BLINK_PARTIAL_PAUSE_MIN);
+          if (hBlinkMode === 'mid') {
+            const dur = (hCurAct && hCurAct.getClip && hCurAct.getClip().duration) || 0.5;
+            hBlinkCloseDelay = dur * (BLINK_MID_MIN_FRAC + Math.random() * (BLINK_MID_MAX_FRAC - BLINK_MID_MIN_FRAC));
+          } else {
+            hBlinkCloseDelay = BLINK_CLOSE_DELAY;
+          }
+        }
         const sinceHold = now / 1000 - hBlinkHoldSince;
-        if (sinceHold >= BLINK_CLOSE_DELAY) {
-          // 「間」を置いたあと、指数的に0→1へなめらかに閉じる（人のまばたきの閉じ動作くらいの速さ）
+        if (hBlinkMode !== 'none' && sinceHold >= hBlinkCloseDelay) {
+          // 「間」を置いたあと、指数的になめらかに目標値へ近づける（人のまばたきの閉じ動作くらいの速さ）
           const closeDecay = Math.exp(-dt / BLINK_CLOSE_TAU);
+          let target = 1;
+          if (hBlinkMode === 'partial') {
+            const tClose = sinceHold - hBlinkCloseDelay;   // 閉じ始めてからの経過時間
+            target = (tClose < BLINK_PARTIAL_CLOSE_DUR + hBlinkPartialPauseDur) ? hBlinkPartialTarget : 1;
+          }
           for (let i = 0; i < hBlinkTargets.length; i++) {
             const bt = hBlinkTargets[i];
             const cur = bt.mesh.morphTargetInfluences[bt.idx];
-            bt.mesh.morphTargetInfluences[bt.idx] = 1 - (1 - cur) * closeDecay;
+            bt.mesh.morphTargetInfluences[bt.idx] = target - (target - cur) * closeDecay;
           }
         }
         hHoldPrev = true;

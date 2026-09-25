@@ -220,25 +220,6 @@ body.stereo .dispbar{opacity:.55}
   pointer-events:none; display:none;
 }
 .countdown.show{display:block}
-
-/* 目操作パネル（表示側・追加のみ） */
-#eyeControlPanel{
-  position:absolute; right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
-  z-index:8; width:min(250px,72vw); padding:10px 12px;
-  border-radius:12px; background:rgba(0,0,0,.58); color:#fff;
-  border:1px solid rgba(255,255,255,.25); font:12px/1.4 ui-monospace,Menlo,monospace;
-}
-#eyeControlPanel.folded .eyeControlBody{display:none}
-.eyeControlHead{display:flex; align-items:center; justify-content:space-between; gap:8px}
-.eyeControlTitle{color:#e8ecf3}
-.eyeControlRow{display:flex; align-items:center; gap:6px; margin-top:7px}
-.eyeControlRow label{width:34px; color:#c9d1e2}
-.eyeControlRow input[type=range]{flex:1; min-width:0; accent-color:#6b93f0}
-.eyeControlVal{width:42px; text-align:right}
-.eyeControlBtns{display:flex; gap:6px; margin-top:8px}
-.eyeControlBtns button{flex:1; font:inherit; color:#e8ecf3; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25); border-radius:8px; padding:5px; cursor:pointer}
-.eyeControlBtns button.on{background:var(--accent); color:var(--accent-fg)}
 </style>
 </head>
 <body>
@@ -329,21 +310,6 @@ body.stereo .dispbar{opacity:.55}
     <div class="gaugebar"><div class="gaugefill" id="gaugeFill"></div></div>
   </div>
   <div class="countdown" id="countdown">20</div>
-  <div id="eyeControlPanel">
-    <div class="eyeControlHead">
-      <span class="eyeControlTitle">目の操作</span>
-      <button type="button" class="foldbtn" id="eyeControlFold"><span class="arr">▼</span></button>
-    </div>
-    <div class="eyeControlBody">
-      <div class="eyeControlBtns">
-        <button type="button" id="eyeManualToggle">手動: OFF</button>
-        <button type="button" id="eyeCenter">正面</button>
-      </div>
-      <div class="eyeControlRow"><label>左右</label><input id="eyeYaw" type="range" min="-10" max="10" step="0.1" value="0"><span class="eyeControlVal" id="eyeYawVal">0.0°</span></div>
-      <div class="eyeControlRow"><label>上下</label><input id="eyePitch" type="range" min="-3" max="3" step="0.1" value="0"><span class="eyeControlVal" id="eyePitchVal">0.0°</span></div>
-    </div>
-  </div>
-
   <div class="tilt off" id="tilt">
     <div class="tilthead">
       <div class="tiltcap">操作側の角度 <span id="buildTag"></span></div>
@@ -756,27 +722,6 @@ body.stereo .dispbar{opacity:.55}
   }
   bindFold('#hudFold', '#hudwrap');
   bindFold('#tiltFold', '#tilt');
-  bindFold('#eyeControlFold', '#eyeControlPanel');
-  const eyeManualToggle = $('#eyeManualToggle');
-  const eyeYawInput = $('#eyeYaw');
-  const eyePitchInput = $('#eyePitch');
-  const eyeYawVal = $('#eyeYawVal');
-  const eyePitchVal = $('#eyePitchVal');
-  function syncEyeControlUi() {
-    eyeYawInput.value = (hEyeManualYaw / D2R).toFixed(1);
-    eyePitchInput.value = (hEyeManualPitch / D2R).toFixed(1);
-    eyeYawVal.textContent = (hEyeManualYaw / D2R).toFixed(1) + '°';
-    eyePitchVal.textContent = (hEyeManualPitch / D2R).toFixed(1) + '°';
-  }
-  eyeManualToggle.addEventListener('click', () => {
-    hEyeManualActive = !hEyeManualActive;
-    eyeManualToggle.textContent = '手動: ' + (hEyeManualActive ? 'ON' : 'OFF');
-    eyeManualToggle.classList.toggle('on', hEyeManualActive);
-  });
-  eyeYawInput.addEventListener('input', () => { hEyeManualYaw = parseFloat(eyeYawInput.value) * D2R; syncEyeControlUi(); });
-  eyePitchInput.addEventListener('input', () => { hEyeManualPitch = parseFloat(eyePitchInput.value) * D2R; syncEyeControlUi(); });
-  $('#eyeCenter').addEventListener('click', () => { hEyeManualYaw = 0; hEyeManualPitch = 0; syncEyeControlUi(); });
-  syncEyeControlUi();
 
   let stereo = false;
   function setStereo(v) {
@@ -1827,9 +1772,6 @@ body.stereo .dispbar{opacity:.55}
   let hEyes = null;                   // { eyes: [{bone,fLocal,posLocal,parentChainQ,base,applied}], common: 両目 or null }
   let hModelRef = null;                // hのモデルルート（視線計算で、アニメではなくモデル全体の向きだけを使うため保持）
   let hEyeInfo = '未検出';
-  let hEyeManualActive = false;
-  let hEyeManualYaw = 0;
-  let hEyeManualPitch = 0;
   let hGazeDebugAng = null;   // 直近のaimEyeで計算した「現在の正面」→「狙う方向」の角度(度)。デバッグ表示用
   const hGaze = { yaw: 0, pitch: 0, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t0: 0, dur: 0.06,
                   nextAt: 0, dist: 2, mode: 'wander', camUntil: 0, muYaw: 0, muPitch: 0, muNext: 0 };
@@ -1891,7 +1833,7 @@ body.stereo .dispbar{opacity:.55}
     if (!H_GAZE_ENABLED) { hEyeInfo = '無効'; return; }
     model.updateMatrixWorld(true);
     const both = findEyeBone(model, /^(両目|両眼|both_?eyes?|eyes)$/i, /^(両目|両眼)/);
-    // MMD標準の「左目」「右目」を優先し、移植元で使われる「目.L」「目.R」も互換対応する
+    // 「目.L」「目.R」（MMD系モデルでよくある命名）にも対応する
     const left = findEyeBone(model, /^(左目|左眼|eye_?l|l_?eye|left_?eye|目[._]?l)$/i, /^(左目|左眼|left_?eye|目[._]?l)/i);
     const right = findEyeBone(model, /^(右目|右眼|eye_?r|r_?eye|right_?eye|目[._]?r)$/i, /^(右目|右眼|right_?eye|目[._]?r)/i);
     if (!both && !left && !right) return;
@@ -2045,10 +1987,6 @@ body.stereo .dispbar{opacity:.55}
   }
   function updateHGaze(dt, nowMs) {
     if (!hEyes || !R || !R.camera) return;
-    // 通常のaction4中は、action4自身の目アニメーションをそのまま使う。
-    // 20秒カウントダウン（forcedLoopActive）中だけ、視線処理を後から適用して
-    // action4の目アニメーションを無視する。
-    if (hCurAct === hAct4 && !forcedLoopActive) return;
     const g = hGaze, t = nowMs / 1000, eyes = hEyes.eyes, common = hEyes.common;
     // 目の中心と、アニメ上の顔の正面
     const mid = _gv.mid, fm = _gv.fm;
@@ -2116,10 +2054,10 @@ body.stereo .dispbar{opacity:.55}
     const u = g.dur > 0 ? gzClamp((t - g.t0) / g.dur, 0, 1) : 1, sm = u * u * (3 - 2 * u);
     g.yaw = g.fromYaw + (g.toYaw - g.fromYaw) * sm;
     g.pitch = g.fromPitch + (g.toPitch - g.fromPitch) * sm;
-    if (forcedLoopActive) {   // 強制ループ(20秒カウントダウン)中は、顔の正面から少し上を見る
-      g.yaw = g.fromYaw = g.toYaw = 0;
+    if (forcedLoopActive) {   // 強制ループ(20秒カウントダウン)中: action3(通常時)と同じ視線移動(wander/カメラ見)はそのまま動かし、
+                               // ピッチ(上下)だけ上寄りに固定して「上寄り目」に見せる（完全固定にはしない＝動きが無くなるのを防ぐ）
       g.pitch = g.fromPitch = g.toPitch = FORCED_LOOP_GAZE_PITCH * D2R;
-      g.dist = FORCED_LOOP_GAZE_DIST;
+      g.dist = FORCED_LOOP_GAZE_DIST;   // 距離を近くすることで左右の目を内側へ寄せる（寄り目）
     } else if (hSmileEyeActive) {   // 笑い目の間は、視線の高さ(ピッチ)を目を開ける時の角度に固定する（左右は通常通り動かす）
       g.pitch = g.fromPitch = g.toPitch = POST_BLINK_UP_PITCH * D2R;
     }
@@ -2128,21 +2066,13 @@ body.stereo .dispbar{opacity:.55}
       const a = (0.05 + Math.random() * 0.12) * D2R, th = Math.random() * Math.PI * 2;
       g.muYaw = a * Math.cos(th); g.muPitch = a * Math.sin(th) * 0.7; g.muNext = t + 0.4 + Math.random() * 0.9;
     } else { const kd = Math.exp(-dt / 0.5); g.muYaw *= kd; g.muPitch *= kd; }
-    const drY = forcedLoopActive ? 0 : 0.06 * D2R * (Math.sin(t * 1.7) + 0.6 * Math.sin(t * 4.3 + 1.1));
+    const drY = 0.06 * D2R * (Math.sin(t * 1.7) + 0.6 * Math.sin(t * 4.3 + 1.1));   // 左右のドリフトはforcedLoop中も動かす（action3と同じ）
     const drP = (forcedLoopActive || hSmileEyeActive) ? 0 : 0.05 * D2R * (Math.sin(t * 1.3 + 2) + 0.6 * Math.sin(t * 3.9));
-    const muYawApplied = forcedLoopActive ? 0 : g.muYaw;   // 固定中は左右の固視微動も止め、寄り目の角度を完全に固定する
+    const muYawApplied = g.muYaw;   // 左右の固視微動はforcedLoop中も動かす（ピッチを固定しても目が生きて見えるように）
     const muPitchApplied = (forcedLoopActive || hSmileEyeActive) ? 0 : g.muPitch;   // 固定中は上下方向の固視微動も止め、高さを完全に固定する
     const ay = fmYaw + g.yaw + muYawApplied + drY, ap = fmPitch + g.pitch + muPitchApplied + drP, cp = Math.cos(ap);
-    // 目操作パネルがONの時だけ、パネル指定値を最終的な視線方向として使用する。
-    if (hEyeManualActive) {
-      const may = fmYaw + hEyeManualYaw * D2R;
-      const map = fmPitch + hEyeManualPitch * D2R;
-      const mcp = Math.cos(map);
-      _gv.g.set(Math.sin(may) * mcp, Math.sin(map), Math.cos(may) * mcp).multiplyScalar(g.dist).add(mid);
-    } else {
-      // 注視点（距離が近いほど、左右の目が内側へ寄る）。
-      _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);
-    }
+    // 注視点（距離が近いほど、左右の目が内側へ寄る）
+    _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);
     // 左右individualの目ボーンがある場合は、そちらだけを個別に狙う。
     // 「両目」ボーンは左右の親であり、両方を同時に狙ってしまうと、左右individual側の計算が
     // （親がbind時の姿勢のままという前提で行われるため）親の回転量ぶんだけズレてしまい、
@@ -2195,9 +2125,7 @@ body.stereo .dispbar{opacity:.55}
       setupHHead(model);   // action4用: 頭ボーンとオフセット計算用の基準方向を探す
 
       const clips = gltf.animations || [];
-      // 目のアニメーションは通常時はそのまま再生する。
-      // カウントダウン中だけ updateHGaze() が action4 の目トラックを上書きする。
-      // （ここで全クリップから目トラックを削除すると、通常のaction4でも目アニメーションが消えてしまう。）
+      stripEyeTracks(model, clips, hEyes);   // ★ actionに含まれる目の動きを消し、gazeの回転が上書きされないようにする
       if (clips.length === 0) { hAnim = '  アニメなし'; return; }
       const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
       hMixer = new THREE.AnimationMixer(model);

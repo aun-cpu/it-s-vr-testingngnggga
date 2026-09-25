@@ -1781,9 +1781,9 @@ body.stereo .dispbar{opacity:.55}
   const POST_BLINK_UP_PITCH = 3;        // 度: 目を開き始める時に向けておく上目づかいの角度
   const POST_BLINK_UP_HOLD = 1;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
-  const FORCED_LOOP_GAZE_PITCH = 8;      // 度: 強制ループ(20秒カウントダウン)中、視線を固定する上向きの角度
-  const FORCED_LOOP_GAZE_DIST = 0.18;    // m: 強制ループ中の注視距離（近いほど寄り目になる）
-  const FORCED_LOOP_EYE_MAX_DEG = 16;    // 度: 強制ループ中だけ許容する目の最大回転角（通常より広げて寄り目を強く出す）
+  const FORCED_LOOP_GAZE_PITCH = 5;      // 度: 強制ループ(20秒カウントダウン)中、視線を固定する上向きの角度（8→5に下げて見上げを弱める）
+  const FORCED_LOOP_GAZE_DIST = 0.3;     // m: 強制ループ中の注視距離（近いほど寄り目になる。0.18→0.3に上げて寄り目を弱める）
+  const FORCED_LOOP_EYE_MAX_DEG = 10;    // 度: 強制ループ中だけ許容する目の最大回転角（16→10に下げて寄り目を弱める）
   // action4中: 頭ボーンをアニメの動きに重ねて、右・下方向へ寄せる。さらにその範囲内でランダムな値・間隔で左・上へ揺らぐ。
   // 一度動いた分はaction4が終わっても戻さず維持する（次のaction4でさらに右・下へ積み増していく）
   let hHead = null;                      // { bone, leftLocal, upNegLocal }: 頭ボーンと、オフセット計算用のローカル基準方向
@@ -2073,8 +2073,16 @@ body.stereo .dispbar{opacity:.55}
     const ay = fmYaw + g.yaw + muYawApplied + drY, ap = fmPitch + g.pitch + muPitchApplied + drP, cp = Math.cos(ap);
     // 注視点（距離が近いほど、左右の目が内側へ寄る）
     _gv.g.set(Math.sin(ay) * cp, Math.sin(ap), Math.cos(ay) * cp).multiplyScalar(g.dist).add(mid);
-    if (common) aimEye(common, _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : undefined);
-    for (let i = 0; i < eyes.length; i++) aimEye(eyes[i], _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : undefined);
+    // 左右individualの目ボーンがある場合は、そちらだけを個別に狙う。
+    // 「両目」ボーンは左右の親であり、両方を同時に狙ってしまうと、左右individual側の計算が
+    // （親がbind時の姿勢のままという前提で行われるため）親の回転量ぶんだけズレてしまい、
+    // 特に強制ループ中のように狙う角度が大きい時ほど、寄り目や見上げの変化が相殺されて
+    // ほとんど動いて見えなくなる。「両目」ボーンを使うのは左右individualが無い場合のみにする。
+    if (eyes.length) {
+      for (let i = 0; i < eyes.length; i++) aimEye(eyes[i], _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : undefined);
+    } else if (common) {
+      aimEye(common, _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : undefined);
+    }
   }
   function loadH(group, onDone) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }

@@ -1719,6 +1719,7 @@ body.stereo .dispbar{opacity:.55}
   const D2R = Math.PI / 180;
   let hEyes = null;                   // { eyes: [{bone,fLocal,base,applied}], common: 両目 or null }
   let hEyeInfo = '未検出';
+  let hGazeDebugAng = null;   // 直近のaimEyeで計算した「現在の正面」→「狙う方向」の角度(度)。デバッグ表示用
   const hGaze = { yaw: 0, pitch: 0, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t0: 0, dur: 0.06,
                   nextAt: 0, dist: 2, mode: 'wander', camUntil: 0, muYaw: 0, muPitch: 0, muNext: 0 };
   const _gq = { p: new THREE.Quaternion(), e: new THREE.Quaternion(), n: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion() };
@@ -1822,7 +1823,11 @@ body.stereo .dispbar{opacity:.55}
     if (_gv.d.lengthSq() < 1e-10) return;
     _gv.d.normalize();
     const ang = _gv.f.angleTo(_gv.d);
-    if (ang > 2.6) return;                                  // ほぼ真後ろは無視
+    hGazeDebugAng = Math.round(ang / D2R);   // デバッグ表示用（この値が常に150°前後なら、正面方向の推定が逆向きの疑いが強い）
+    // ★ 「ほぼ真後ろは無視」ガードを撤去: 顔の正面方向の推定(fLocal)がモデルによっては
+    // 実際と逆向きになり得るため、その場合ここが毎フレーム発動して視線が完全に固まって
+    // しまう(目が動かない)。すぐ下のEYE_MAX_DEGクランプだけで回転量は十分に制限されるので、
+    // この早期returnは無くても安全。
     _gq.r.setFromUnitVectors(_gv.f, _gv.d);
     const mx = EYE_MAX_DEG * D2R;
     if (ang > mx) _gq.r.copy(_gq.id).slerp(_gq.r, mx / ang);
@@ -2763,7 +2768,8 @@ body.stereo .dispbar{opacity:.55}
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         'h.glb: ' + hState + hAnim + '\n' +
-        'h視線: ' + hEyeInfo + (hEyes ? (hGaze.mode === 'camera' ? '（カメラを見ている）' : '（自由に見ている）') : '') + '\n' +
+        'h視線: ' + hEyeInfo + (hEyes ? (hGaze.mode === 'camera' ? '（カメラを見ている）' : '（自由に見ている）') : '') +
+          (hGazeDebugAng != null ? '（角度差' + hGazeDebugAng + '°）' : '') + '\n' +
         'player0.glb: ' + player0State + player0Anim + (P.x !== 0 ? '（カメラ横：表示中）' : '') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + '\n' +

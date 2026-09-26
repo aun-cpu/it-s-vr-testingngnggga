@@ -1865,7 +1865,7 @@ body.stereo .dispbar{opacity:.55}
   // action3/4の瞬き明け演出: 目を開き始める瞬間は上を向いたままにし、少し間を置いてからこちら（カメラ）を見る
   let hBlinkJustReleased = false;        // メインループ側で、hold(action3/4)が終わった瞬間にtrueにする
   let hPostBlink = null;                 // { phase: 'up' | 'holdUp' | 'toCam', t0 } / null=演出なし（通常の視線ロジック）
-  const POST_BLINK_UP_PITCH = 3;        // 度: 目を開き始める時に向けておく上目づかいの角度
+  const POST_BLINK_UP_PITCH = 8;        // 度: 目を開き始める時に向けておく上目づかいの角度
   const POST_BLINK_UP_HOLD = 1;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
   const FORCED_LOOP_GAZE_PITCH = 5;      // 度: 強制ループ(20秒カウントダウン)中、視線を固定する上向きの角度（8→5に下げて見上げを弱める）

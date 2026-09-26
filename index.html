@@ -1868,6 +1868,7 @@ body.stereo .dispbar{opacity:.55}
   const POST_BLINK_UP_PITCH = 8;        // 度: 目を開き始める時に向けておく上目づかいの角度
   const POST_BLINK_UP_HOLD = 1;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
+  const RESUME_GAZE_UP_PITCH = 16;      // 度: 強制ループ終了後、新しいボタンを注視するまで固定する視線の高さ（目を開ける直前の角度とは別に調整）
   const FORCED_LOOP_GAZE_PITCH = 5;      // 度: 強制ループ(20秒カウントダウン)中、視線を固定する上向きの角度（8→5に下げて見上げを弱める）
   const FORCED_LOOP_GAZE_DIST = 0.3;     // m: 強制ループ中の注視距離（近いほど寄り目になる。0.18→0.3に上げて寄り目を弱める）
   const FORCED_LOOP_EYE_MAX_DEG = 10;    // 度: 強制ループ中だけ許容する目の最大回転角（16→10に下げて寄り目を弱める）
@@ -2146,8 +2147,8 @@ body.stereo .dispbar{opacity:.55}
       g.yaw = g.fromYaw = g.toYaw = 0;                          // 中央
       g.pitch = g.fromPitch = g.toPitch = FORCED_LOOP_GAZE_PITCH * D2R;   // やや上側
       g.dist = FORCED_LOOP_GAZE_DIST;   // 距離を近くすることで左右の目を内側へ寄せる（寄り目）
-    } else if (awaitingResume) {   // 強制ループ終了後、新しいボタンを注視するまでは、視線の高さ(ピッチ)を目を開ける直前の角度に固定する（左右は通常通り動かす）
-      g.pitch = g.fromPitch = g.toPitch = POST_BLINK_UP_PITCH * D2R;
+    } else if (awaitingResume) {   // 強制ループ終了後、新しいボタンを注視するまでは、視線の高さ(ピッチ)をこの角度に固定する（左右は通常通り動かす）
+      g.pitch = g.fromPitch = g.toPitch = RESUME_GAZE_UP_PITCH * D2R;
     } else if (hSmileEyeActive) {   // 笑い目の間は、視線の高さ(ピッチ)を目を開ける時の角度に固定する（左右は通常通り動かす）
       g.pitch = g.fromPitch = g.toPitch = POST_BLINK_UP_PITCH * D2R;
     }

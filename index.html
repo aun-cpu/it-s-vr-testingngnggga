@@ -962,6 +962,91 @@ body.stereo .dispbar{opacity:.55}
     startForcedLoop();   // playerの2action(5〜10フレーム目)とhのaction4を、入力に関係なく20秒間ループさせる
   }
 
+  // ---- 強制ループ(20秒カウントダウン)終了後、このボタンを注視するまでhをidleのまま待機させる「新しいボタン」----
+  const RESUME_BUTTON_HEIGHT_OFFSET = 0.35;  // m: hの頭上からの高さ（ハートボタンと同じ）
+  const RESUME_BUTTON_SIZE = 0.22;
+  let resumeButtonGroup = null;
+  let resumeButtonSprite = null;
+  let resumeButtonRingSprite = null;
+  let resumeButtonVisible = false;
+  let resumeGazeOn = false;
+  let resumeGazeDwell = 0;
+  let awaitingResume = false;   // true の間: hはidleのまま・action3は再生しない・視線の高さは目を開ける直前の角度に固定
+  let resumeButtonTexture = null;
+  function getResumeButtonTexture() {
+    if (resumeButtonTexture) return resumeButtonTexture;
+    const cvs = document.createElement('canvas');
+    cvs.width = 256; cvs.height = 256;
+    const ctx = cvs.getContext('2d');
+    ctx.beginPath();
+    ctx.arc(128, 128, 116, 0, Math.PI * 2);
+    ctx.fillStyle = '#5fd88a';
+    ctx.shadowColor = 'rgba(95,216,138,0.9)';
+    ctx.shadowBlur = 26;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(100, 70); ctx.lineTo(100, 186); ctx.lineTo(190, 128); ctx.closePath();   // ▶ 再開アイコン
+    ctx.fill();
+    resumeButtonTexture = new THREE.CanvasTexture(cvs);
+    return resumeButtonTexture;
+  }
+  let resumeRingCanvas = null, resumeRingCtx = null, resumeRingTexture = null;
+  function getResumeButtonRingTexture() {
+    if (resumeRingTexture) return resumeRingTexture;
+    resumeRingCanvas = document.createElement('canvas');
+    resumeRingCanvas.width = 256; resumeRingCanvas.height = 256;
+    resumeRingCtx = resumeRingCanvas.getContext('2d');
+    resumeRingTexture = new THREE.CanvasTexture(resumeRingCanvas);
+    return resumeRingTexture;
+  }
+  function drawResumeButtonRing(progress) {
+    const ctx = resumeRingCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 256, 256);
+    if (progress > 0) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const start = -Math.PI / 2;
+      ctx.arc(128, 128, 110, start, start + Math.PI * 2 * Math.min(1, progress));
+      ctx.stroke();
+    }
+    resumeRingTexture.needsUpdate = true;
+  }
+  function initResumeButton(scene) {
+    resumeButtonGroup = new THREE.Group();
+    resumeButtonGroup.visible = false;
+    const btnMat = new THREE.SpriteMaterial({ map: getResumeButtonTexture(), transparent: true, depthWrite: false });
+    resumeButtonSprite = new THREE.Sprite(btnMat);
+    resumeButtonSprite.scale.setScalar(RESUME_BUTTON_SIZE);
+    resumeButtonGroup.add(resumeButtonSprite);
+    const ringMat = new THREE.SpriteMaterial({ map: getResumeButtonRingTexture(), transparent: true, depthWrite: false, opacity: 0.95 });
+    resumeButtonRingSprite = new THREE.Sprite(ringMat);
+    resumeButtonRingSprite.scale.setScalar(RESUME_BUTTON_SIZE * 1.35);
+    resumeButtonGroup.add(resumeButtonRingSprite);
+    scene.add(resumeButtonGroup);
+  }
+  function updateResumeButtonVisual() {
+    if (!resumeButtonSprite) return;
+    const s = RESUME_BUTTON_SIZE * (1 + 0.12 * (resumeGazeDwell / GAZE_DWELL_SEC));
+    resumeButtonSprite.scale.setScalar(s);
+    drawResumeButtonRing(resumeGazeDwell / GAZE_DWELL_SEC);
+  }
+  function setResumeButtonVisible(v) {
+    if (resumeButtonVisible === v) return;
+    resumeButtonVisible = v;
+    if (resumeButtonGroup) resumeButtonGroup.visible = v;
+    if (!v) { resumeGazeDwell = 0; resumeGazeOn = false; drawResumeButtonRing(0); }
+  }
+  function selectResumeButton() {
+    // 注視で選択：待機状態を解除し、通常のaction3判定・視線ロジックへ戻す
+    setResumeButtonVisible(false);
+    awaitingResume = false;
+  }
+
   // ---- 表示開始時に正面からずらしたカメラを、注視で「今の初期位置」に戻すための白いボタン ----
   const CENTER_BUTTON_SIZE = 0.22;           // m: ボタンの基準サイズ（直径目安）
   const CENTER_BUTTON_POS = { x: 0, y: 3.8, z: 0.2 };   // ワールド座標に固定（元のカメラ位置＝ずらす前の位置）。yは1.4から0.4上げた
@@ -1136,6 +1221,8 @@ body.stereo .dispbar{opacity:.55}
   }
   function endForcedLoop() {
     forcedLoopActive = false;
+    awaitingResume = true;          // 新しいボタンを注視するまで、hはidleのまま待機する
+    setResumeButtonVisible(true);
     if (hAct4) {
       hAct4.setLoop(THREE.LoopOnce, 1);   // 元の「1回だけ再生」設定に戻す
       hAct4.clampWhenFinished = true;
@@ -2059,6 +2146,8 @@ body.stereo .dispbar{opacity:.55}
       g.yaw = g.fromYaw = g.toYaw = 0;                          // 中央
       g.pitch = g.fromPitch = g.toPitch = FORCED_LOOP_GAZE_PITCH * D2R;   // やや上側
       g.dist = FORCED_LOOP_GAZE_DIST;   // 距離を近くすることで左右の目を内側へ寄せる（寄り目）
+    } else if (awaitingResume) {   // 強制ループ終了後、新しいボタンを注視するまでは、視線の高さ(ピッチ)を目を開ける直前の角度に固定する（左右は通常通り動かす）
+      g.pitch = g.fromPitch = g.toPitch = POST_BLINK_UP_PITCH * D2R;
     } else if (hSmileEyeActive) {   // 笑い目の間は、視線の高さ(ピッチ)を目を開ける時の角度に固定する（左右は通常通り動かす）
       g.pitch = g.fromPitch = g.toPitch = POST_BLINK_UP_PITCH * D2R;
     }
@@ -2462,6 +2551,7 @@ body.stereo .dispbar{opacity:.55}
       initHearts(scene);   // hのaction3トリガー時のハート（🩷）エフェクト
       initActionButton(scene);   // ゲージ満タン時にhの上へ出す、視線で注視できるボタン
       initCenterButton(scene);   // 表示開始時にずらした正面を、視線で注視して戻すためのボタン
+      initResumeButton(scene);   // 強制ループ終了後、待機を解除するための新しいボタン
 
       R = {
         renderer: renderer, scene: scene, camera: camera, player: playerGroup, player0: player0Group, h: hGroup, arm: armGroup, plus: plusGroup, bg: bgGroup,
@@ -2922,7 +3012,7 @@ body.stereo .dispbar{opacity:.55}
         }
       };
       const action3IsAbove = tiltRaw >= ACTION3_DEG;
-      if (action3IsAbove && !action3Above && !frontIntro) {   // 導入中はaction3を流さない（hはidleのまま）
+      if (action3IsAbove && !action3Above && !frontIntro && !awaitingResume) {   // 導入中・新しいボタン待機中はaction3を流さない（hはidleのまま）
         if (hAct3) playH(hAct3);
       }
       action3Above = action3IsAbove;
@@ -2987,6 +3077,26 @@ body.stereo .dispbar{opacity:.55}
       updateCenterButtonVisual();
       if (chit && centerGazeDwell >= GAZE_DWELL_SEC) selectCenterButton();
     }
+    // ---- 強制ループ終了後に出す「新しいボタン」の位置更新と、視線での注視判定 ----
+    if (resumeButtonGroup) {
+      resumeButtonGroup.position.set(0, hHeight + RESUME_BUTTON_HEIGHT_OFFSET, 0);
+      if (resumeButtonVisible) {
+        const rx = resumeButtonGroup.position.x - ex, ry = resumeButtonGroup.position.y - ey, rz = resumeButtonGroup.position.z - ez;
+        const rdist = Math.hypot(rx, ry, rz);
+        let rhit = false;
+        if (rdist > 0.001) {
+          const nx = rx / rdist, ny = ry / rdist, nz = rz / rdist;
+          const dot = clamp(T.fwd.x * nx + T.fwd.y * ny + T.fwd.z * nz, -1, 1);
+          const hitAngle = Math.atan2(GAZE_HIT_RADIUS, rdist);
+          rhit = Math.acos(dot) <= hitAngle;
+        }
+        resumeGazeOn = rhit;
+        resumeGazeDwell = rhit ? Math.min(GAZE_DWELL_SEC, resumeGazeDwell + dt) : Math.max(0, resumeGazeDwell - dt * 2);
+        updateResumeButtonVisual();
+        if (rhit && resumeGazeDwell >= GAZE_DWELL_SEC) selectResumeButton();
+      }
+    }
+
     if (centerAfterglow > 0) {   // 余韻のカウントダウン。終わったらカメラ位置を戻す
       centerAfterglow -= dt;
       const agElapsed = CENTER_AFTERGLOW_SEC - centerAfterglow;
@@ -3058,6 +3168,7 @@ body.stereo .dispbar{opacity:.55}
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +
         '正面リセットボタン: ' + (centerButtonVisible ? (centerGazeOn ? '注視中 ' + Math.round(centerGazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +
+        '新しいボタン: ' + (resumeButtonVisible ? (resumeGazeOn ? '注視中 ' + Math.round(resumeGazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視・hはidle待機中）') : '非表示') + '\n' +
         '強制ループ: ' + (forcedLoopActive ? '再生中 残り' + Math.ceil(forcedLoopRemain) + '秒' : '停止中');
     }
   }

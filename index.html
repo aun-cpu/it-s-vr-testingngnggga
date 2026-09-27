@@ -1106,7 +1106,7 @@ body.stereo .dispbar{opacity:.55}
   // player.glbで計算した縮尺・位置合わせをそのまま使って完全に重ねる
   let playerScale = null;
   let playerOffX = 0, playerOffY = 0, playerOffZ = 0;
-  const ANIM_ANGLE_MAX = 2.8;        // 2.8°=最後のフレーム
+  const ANIM_ANGLE_MAX = 0;          // 0°=最後のフレーム
   const ANIM_ANGLE_MIN = -7;         // -7°=最初のフレーム
   const ANIM_ZERO_FRAME = 7;         // 0°になる基準フレーム番号
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
@@ -2081,7 +2081,7 @@ body.stereo .dispbar{opacity:.55}
       };
       player2ActFrame5Time = clamp(frameTimeOf(5), 0, clip.duration);
       player2ActFrame10Time = clamp(frameTimeOf(10), 0, clip.duration);
-      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=先頭 / ' + ANIM_ZERO_FRAME + 'F目=0° / ' + ANIM_ANGLE_MAX + '°=最後）' +
+      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=先頭 / ' + ANIM_ANGLE_MAX + '°=最後）' +
                    (clip0 ? ' ＋導入: ' + clip0.name : ' ／「2action0」なし（導入は行いません）');
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
@@ -2543,12 +2543,9 @@ body.stereo .dispbar{opacity:.55}
         t = 0;
       } else if (tiltRaw >= ANIM_ANGLE_MAX) {
         t = duration;
-      } else if (tiltRaw <= 0) {
-        // ANIM_ANGLE_MIN°→0° を 0秒→anim0Time に対応
-        t = anim0Time * (tiltRaw - ANIM_ANGLE_MIN) / (0 - ANIM_ANGLE_MIN);
       } else {
-        // 0°→ANIM_ANGLE_MAX° を anim0Time→duration に対応
-        t = anim0Time + (duration - anim0Time) * (tiltRaw / ANIM_ANGLE_MAX);
+        // ANIM_ANGLE_MIN°(-7°)→ANIM_ANGLE_MAX°(0°) を 0秒→duration（最初〜最大フレーム）に対応
+        t = duration * (tiltRaw - ANIM_ANGLE_MIN) / (ANIM_ANGLE_MAX - ANIM_ANGLE_MIN);
       }
       playerAct.time = clamp(t, 0, duration);
       mixer.update(0);

@@ -129,7 +129,6 @@ h1{font-size:20px; margin:0 0 8px}
 /* ---------- 表示（VR） ---------- */
 #cv{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
 #seam{position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:#000; display:none; pointer-events:none}
-#fadeBlack{position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; z-index:4}   /* 余韻のあと正面に戻る時の暗転 */
 body.stereo #seam{display:block}
 .hudwrap{
   z-index:5; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
@@ -301,7 +300,6 @@ body.stereo .dispbar{opacity:.55}
 <div id="disp" class="screen dark hidden">
   <canvas id="cv"></canvas>
   <div id="seam"></div>
-  <div id="fadeBlack"></div>
   <div class="hudwrap" id="hudwrap">
     <button type="button" class="foldbtn" id="hudFold" aria-expanded="true"><span class="arr">▼</span>表示確認</button>
     <div class="hud" id="hud"></div>
@@ -619,7 +617,6 @@ body.stereo .dispbar{opacity:.55}
     if (pendingRole !== 'display') playDaySound('1');   // 3日→1a / 5日→1b / 7日→1c（表示側は、正面に戻った時に流す）
     if (pendingRole === 'display') {
       role = 'display'; show('disp'); tryFullscreen(); keepAwake();
-      P.x = START_X_SHIFT;   // カメラ位置自体を左にずらしておく（ボタン注視で元に戻す）
       enableGyro();          // ユーザー操作の中で呼ぶ（iOSの許可ダイアログのため）
       initScene(); startDisplayPeer();
     } else {
@@ -690,8 +687,6 @@ body.stereo .dispbar{opacity:.55}
   /* ================= ジャイロ（表示側） ================= */
   const gyro = { state: 'off', a: 0, b: 0, g: 0, t: 0, startedAt: 0 };
   let recenterPending = true;
-  let startShiftPending = true;   // 表示開始後、最初の1回だけカメラを左にずらして始めるためのフラグ
-  const START_YAW_SHIFT = Math.PI / 2;   // rad: 開始時に向く角度（90°=右＝元のカメラ位置の方向を向く）
 
   function onOrient(e) {
     if (e.alpha === null || e.beta === null || e.gamma === null ||
@@ -738,7 +733,6 @@ body.stereo .dispbar{opacity:.55}
   });
 
   const P = { x: 0, y: 0, z: 0 };   // 視点位置は固定
-  const START_X_SHIFT = -1.8;   // m: 表示開始時にカメラ位置を左へずらす量
   // カメラ位置の補正(m)。基準は目の高さ(地面から1.6m)・ワールド座標（+Zが後ろ向き）
   const CAM_OFFSET = { x: 0, y: -0.2, z: 0.2 };
   let R = null, T = null;
@@ -876,7 +870,7 @@ body.stereo .dispbar{opacity:.55}
   const ACTION_BUTTON_SIZE = 0.22;           // m: ボタンの基準サイズ（直径目安）
   const GAZE_HIT_RADIUS = 0.16;              // m: 視線判定の半径（ボタン中心からの許容距離）
   const GAZE_DWELL_SEC = 1.2;                // 秒: これだけ注視し続けたら選択（決定）とみなす
-  let hHeight = 1.6;                         // h.glbの高さ(m)。読込完了後に実測値へ更新
+  let hHeight = 1.6;                         // part.glbの高さ(m)。読込完了後に実測値へ更新
   let actionButtonGroup = null;              // ボタン本体（アイコン＋注視リング）
   let actionButtonSprite = null;             // ピンクの丸に♡のスプライト
   let actionButtonRingSprite = null;         // 注視の進み具合を示すリング
@@ -962,236 +956,6 @@ body.stereo .dispbar{opacity:.55}
     startForcedLoop();   // playerの2action(5〜10フレーム目)とhのaction4を、入力に関係なく20秒間ループさせる
   }
 
-  // ---- 強制ループ(20秒カウントダウン)終了後、このボタンを注視するまでhをidleのまま待機させる「新しいボタン」----
-  const RESUME_BUTTON_HEIGHT_OFFSET = 0.35;  // m: hの頭上からの高さ（ハートボタンと同じ）
-  const RESUME_BUTTON_SIZE = 0.22;
-  let resumeButtonGroup = null;
-  let resumeButtonSprite = null;
-  let resumeButtonRingSprite = null;
-  let resumeButtonVisible = false;
-  let resumeGazeOn = false;
-  let resumeGazeDwell = 0;
-  let awaitingResume = false;   // true の間: hはidleのまま・action3は再生しない・視線の高さは目を開ける直前の角度に固定
-  let resumeButtonTexture = null;
-  function getResumeButtonTexture() {
-    if (resumeButtonTexture) return resumeButtonTexture;
-    const cvs = document.createElement('canvas');
-    cvs.width = 256; cvs.height = 256;
-    const ctx = cvs.getContext('2d');
-    ctx.beginPath();
-    ctx.arc(128, 128, 116, 0, Math.PI * 2);
-    ctx.fillStyle = '#5fd88a';
-    ctx.shadowColor = 'rgba(95,216,138,0.9)';
-    ctx.shadowBlur = 26;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(100, 70); ctx.lineTo(100, 186); ctx.lineTo(190, 128); ctx.closePath();   // ▶ 再開アイコン
-    ctx.fill();
-    resumeButtonTexture = new THREE.CanvasTexture(cvs);
-    return resumeButtonTexture;
-  }
-  let resumeRingCanvas = null, resumeRingCtx = null, resumeRingTexture = null;
-  function getResumeButtonRingTexture() {
-    if (resumeRingTexture) return resumeRingTexture;
-    resumeRingCanvas = document.createElement('canvas');
-    resumeRingCanvas.width = 256; resumeRingCanvas.height = 256;
-    resumeRingCtx = resumeRingCanvas.getContext('2d');
-    resumeRingTexture = new THREE.CanvasTexture(resumeRingCanvas);
-    return resumeRingTexture;
-  }
-  function drawResumeButtonRing(progress) {
-    const ctx = resumeRingCtx;
-    if (!ctx) return;
-    ctx.clearRect(0, 0, 256, 256);
-    if (progress > 0) {
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 14;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      const start = -Math.PI / 2;
-      ctx.arc(128, 128, 110, start, start + Math.PI * 2 * Math.min(1, progress));
-      ctx.stroke();
-    }
-    resumeRingTexture.needsUpdate = true;
-  }
-  function initResumeButton(scene) {
-    resumeButtonGroup = new THREE.Group();
-    resumeButtonGroup.visible = false;
-    const btnMat = new THREE.SpriteMaterial({ map: getResumeButtonTexture(), transparent: true, depthWrite: false });
-    resumeButtonSprite = new THREE.Sprite(btnMat);
-    resumeButtonSprite.scale.setScalar(RESUME_BUTTON_SIZE);
-    resumeButtonGroup.add(resumeButtonSprite);
-    const ringMat = new THREE.SpriteMaterial({ map: getResumeButtonRingTexture(), transparent: true, depthWrite: false, opacity: 0.95 });
-    resumeButtonRingSprite = new THREE.Sprite(ringMat);
-    resumeButtonRingSprite.scale.setScalar(RESUME_BUTTON_SIZE * 1.35);
-    resumeButtonGroup.add(resumeButtonRingSprite);
-    scene.add(resumeButtonGroup);
-  }
-  function updateResumeButtonVisual() {
-    if (!resumeButtonSprite) return;
-    const s = RESUME_BUTTON_SIZE * (1 + 0.12 * (resumeGazeDwell / GAZE_DWELL_SEC));
-    resumeButtonSprite.scale.setScalar(s);
-    drawResumeButtonRing(resumeGazeDwell / GAZE_DWELL_SEC);
-  }
-  function setResumeButtonVisible(v) {
-    if (resumeButtonVisible === v) return;
-    resumeButtonVisible = v;
-    if (resumeButtonGroup) resumeButtonGroup.visible = v;
-    if (!v) { resumeGazeDwell = 0; resumeGazeOn = false; drawResumeButtonRing(0); }
-  }
-  function selectResumeButton() {
-    // 注視で選択：待機状態を解除し、通常のaction3判定・視線ロジックへ戻す
-    setResumeButtonVisible(false);
-    awaitingResume = false;
-  }
-
-  // ---- 表示開始時に正面からずらしたカメラを、注視で「今の初期位置」に戻すための白いボタン ----
-  const CENTER_BUTTON_SIZE = 0.22;           // m: ボタンの基準サイズ（直径目安）
-  const CENTER_BUTTON_POS = { x: 0, y: 3.8, z: 0.2 };   // ワールド座標に固定（元のカメラ位置＝ずらす前の位置）。yは1.4から0.4上げた
-  const CENTER_GAZE_HIT_RADIUS = 1;   // m: 遠く（5mほど離れた位置）から見るため、判定を広めにする
-  let centerButtonGroup = null;
-  let centerButtonSprite = null;
-  let centerButtonRingSprite = null;
-  let centerButtonVisible = false;
-  let centerGazeOn = false;
-  let centerGazeDwell = 0;
-  let centerButtonTexture = null;
-  function getCenterButtonTexture() {
-    if (centerButtonTexture) return centerButtonTexture;
-    const cvs = document.createElement('canvas');
-    cvs.width = 256; cvs.height = 256;
-    const ctx = cvs.getContext('2d');
-    ctx.beginPath();
-    ctx.arc(128, 128, 116, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.shadowColor = 'rgba(255,255,255,0.85)';
-    ctx.shadowBlur = 24;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#3b6fe0';
-    ctx.lineWidth = 10;
-    ctx.beginPath();
-    ctx.arc(128, 128, 58, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = '#3b6fe0';
-    ctx.beginPath();
-    ctx.arc(128, 128, 18, 0, Math.PI * 2);
-    ctx.fill();
-    centerButtonTexture = new THREE.CanvasTexture(cvs);
-    return centerButtonTexture;
-  }
-  let centerRingCanvas = null, centerRingCtx = null, centerRingTexture = null;
-  function getCenterButtonRingTexture() {
-    if (centerRingTexture) return centerRingTexture;
-    centerRingCanvas = document.createElement('canvas');
-    centerRingCanvas.width = 256; centerRingCanvas.height = 256;
-    centerRingCtx = centerRingCanvas.getContext('2d');
-    centerRingTexture = new THREE.CanvasTexture(centerRingCanvas);
-    return centerRingTexture;
-  }
-  function drawCenterButtonRing(progress) {
-    const ctx = centerRingCtx;
-    if (!ctx) return;
-    ctx.clearRect(0, 0, 256, 256);
-    if (progress > 0) {
-      ctx.strokeStyle = '#3b6fe0';
-      ctx.lineWidth = 14;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      const start = -Math.PI / 2;
-      ctx.arc(128, 128, 110, start, start + Math.PI * 2 * Math.min(1, progress));
-      ctx.stroke();
-    }
-    centerRingTexture.needsUpdate = true;
-  }
-  function initCenterButton(scene) {
-    centerButtonGroup = new THREE.Group();
-    centerButtonGroup.visible = false;
-    centerButtonGroup.position.set(CENTER_BUTTON_POS.x, CENTER_BUTTON_POS.y, CENTER_BUTTON_POS.z);
-    const btnMat = new THREE.SpriteMaterial({ map: getCenterButtonTexture(), transparent: true, depthWrite: false });
-    centerButtonSprite = new THREE.Sprite(btnMat);
-    centerButtonSprite.scale.setScalar(CENTER_BUTTON_SIZE);
-    centerButtonGroup.add(centerButtonSprite);
-    const ringMat = new THREE.SpriteMaterial({ map: getCenterButtonRingTexture(), transparent: true, depthWrite: false, opacity: 0.95 });
-    centerButtonRingSprite = new THREE.Sprite(ringMat);
-    centerButtonRingSprite.scale.setScalar(CENTER_BUTTON_SIZE * 1.35);
-    centerButtonGroup.add(centerButtonRingSprite);
-    scene.add(centerButtonGroup);
-  }
-  function updateCenterButtonVisual() {
-    if (!centerButtonSprite) return;
-    const s = CENTER_BUTTON_SIZE * (1 + 0.12 * (centerGazeDwell / GAZE_DWELL_SEC));
-    centerButtonSprite.scale.setScalar(s);
-    drawCenterButtonRing(centerGazeDwell / GAZE_DWELL_SEC);
-  }
-  function setCenterButtonVisible(v) {
-    if (centerButtonVisible === v) return;
-    centerButtonVisible = v;
-    if (centerButtonGroup) centerButtonGroup.visible = v;
-    if (!v) { centerGazeDwell = 0; centerGazeOn = false; drawCenterButtonRing(0); }
-  }
-  // 注視で選択してから、カメラ位置が戻るまでの余韻（この間は横のまま、hとplayer0のモーションだけ速くなる）
-  const CENTER_AFTERGLOW_SEC = 10;     // 秒: 選択してからカメラ位置が戻るまで
-  const CENTER_AFTERGLOW_SPEED = 1.5;  // 余韻中のplayer0の倍率（最初の1倍速×この値。hは変えない）
-  const CENTER_AFTERGLOW_LATE_SEC = 4; // 余韻が始まってからこの秒数以降は「後半」：hはidle、player0のmotionは PLAYER0_LATE_SPEED 倍から余韻の終わりに向けて減衰して止まる
-  const PLAYER0_LATE_SPEED = 0.3;      // 後半に入った時点のplayer0の再生速度。ここから余韻の終わりに向けて0まで減衰して止まる
-  let centerAfterglow = 0;             // 余韻の残り秒数（0=余韻中ではない）
-  let centerAfterglowLate = false;     // 余韻の後半に入ったか
-  function selectCenterButton() {
-    // 注視で選択：すぐには戻さず、まず余韻の時間を作る（ボタンは消す）。戻す処理は finishCenterSelect
-    setCenterButtonVisible(false);
-    centerAfterglow = CENTER_AFTERGLOW_SEC;
-    if (player0Mixer) player0Mixer.timeScale = CENTER_AFTERGLOW_SPEED;                        // player0のモーションループだけ速くする（hは最初の速度のまま）
-  }
-  // 余韻の後半（CENTER_AFTERGLOW_LATE_SEC秒目以降）に入る：hはidleへ、player0は遅い再生に移る
-  function startAfterglowLate() {
-    centerAfterglowLate = true;
-    endSideLoopH();   // hのaction4ループを終えてidleへ（以降、横の間はaction4を再開しない）
-    if (player0Mixer) player0Mixer.timeScale = PLAYER0_LATE_SPEED;   // player0は今の位置からそのまま遅く続ける（以降の速度は毎フレーム減衰させる）
-  }
-  // 余韻が終わったら、いきなり正面に戻さず、黒い画面を滑らかに挟む（暗転→黒の間に切り替え→明転）
-  const BLACKOUT_OUT_SEC = 0.7;        // 秒: 暗転（画面が黒くなるまで）
-  const BLACKOUT_HOLD_SEC = 0.3;       // 秒: 真っ暗のまま待つ（この間に正面へ切り替える）
-  const BLACKOUT_IN_SEC = 0.9;         // 秒: 明転（黒から正面が見えるまで）
-  let blackPhase = null;               // null=なし / 'out' / 'hold' / 'in'
-  let blackT = 0;
-  let fadeBlackEl = null;
-  function setBlackAlpha(a) {
-    if (!fadeBlackEl) fadeBlackEl = $('#fadeBlack');
-    if (fadeBlackEl) fadeBlackEl.style.opacity = String(a * a * (3 - 2 * a));   // なめらかな立ち上がり・立ち下がり
-  }
-  function startBlackout() {
-    centerAfterglow = 0;
-    blackPhase = 'out';
-    blackT = 0;
-  }
-  function tickBlackout(dt) {
-    if (!blackPhase) return;
-    blackT += dt;
-    if (blackPhase === 'out') {
-      const a = Math.min(1, blackT / BLACKOUT_OUT_SEC);
-      setBlackAlpha(a);
-      if (a >= 1) { finishCenterSelect(); blackPhase = 'hold'; blackT = 0; }   // 真っ暗になった瞬間に正面へ切り替える
-    } else if (blackPhase === 'hold') {
-      setBlackAlpha(1);
-      if (blackT >= BLACKOUT_HOLD_SEC) { blackPhase = 'in'; blackT = 0; }
-    } else {
-      const a = 1 - Math.min(1, blackT / BLACKOUT_IN_SEC);
-      setBlackAlpha(a);
-      if (a <= 0) blackPhase = null;
-    }
-  }
-  function finishCenterSelect() {
-    // 余韻が終わったら、カメラ位置と視点の両方を、今の初期位置（表示開始時の元の位置）へ戻す
-    centerAfterglow = 0;
-    centerAfterglowLate = false;
-    if (player0Mixer) player0Mixer.timeScale = 1;
-    P.x = 0;
-    recenterPending = true;
-  }
-
   // ---- 注視で選択された直後の演出：入力を無視して20秒間、playerの2action(5〜10フレーム目)とhのaction4をループ ----
   const FORCED_LOOP_SEC = 20;          // 秒: 強制ループを続ける時間
   let player2ActFrame5Time = 0;        // 「2action」の5フレーム目の秒数（読込時に算出）
@@ -1221,8 +985,6 @@ body.stereo .dispbar{opacity:.55}
   }
   function endForcedLoop() {
     forcedLoopActive = false;
-    awaitingResume = true;          // 新しいボタンを注視するまで、hはidleのまま待機する
-    setResumeButtonVisible(true);
     if (hAct4) {
       hAct4.setLoop(THREE.LoopOnce, 1);   // 元の「1回だけ再生」設定に戻す
       hAct4.clampWhenFinished = true;
@@ -1257,7 +1019,7 @@ body.stereo .dispbar{opacity:.55}
   }
 
   // ---- 人物モデルの読み込み ----
-  const ASSET_VERSION = 'v2';   // ← glbファイルを更新したら、このバージョン番号を必ず変更する（例: v1→v2）。GitHub PagesのCDNキャッシュ対策。
+  const ASSET_VERSION = 'v1';   // ← glbファイルを更新したら、このバージョン番号を必ず変更する（例: v1→v2）。GitHub PagesのCDNキャッシュ対策。
   const PLAYER_URL = 'player.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
   const PLAYER_HEIGHT = 1.7;         // 身長(m)にそろえて表示。元のサイズのままなら null
   const PLAYER_FACING = Math.PI;     // モデルの向き。glb標準(+Z向き)と反対向き＝-Z（視点の初期方向）を向く
@@ -1275,11 +1037,10 @@ body.stereo .dispbar{opacity:.55}
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
 
-  // ---- 正面に戻った直後の導入: 2action0（player・plusとも）を角度で動かす ----
+  // ---- 表示開始直後の導入: 2action0（player・plusとも）を角度で動かす ----
   // 0°=0フレーム目、INTRO_MAX_DEG°=最終フレーム。最終フレームに達したら、そのまま通常の2action/2actionplusの仕様に戻る。
   const INTRO_MAX_DEG = 7;
-  let frontIntro = false;             // true: 導入の最中（2action0 / plusの導入クリップを使う）
-  let sidePrev = null;                // 直前フレームでカメラが横にあったか（横→正面の切り替わり検知用）
+  let frontIntro = true;              // true: 導入の最中（2action0 / plusの導入クリップを使う）。最初から導入で始める
   let playerAct0 = null;              // player.glb内の「2action0」
   let plusAct0 = null;                // playerplus.glb内の「2action0」
   function syncIntroActs() {
@@ -1291,38 +1052,6 @@ body.stereo .dispbar{opacity:.55}
     if (plusAct0) plusAct0.enabled = q;
     if (plusAct) plusAct.enabled = !q;
   }
-
-  // ---- カメラが横にある間（P.x が0でない間）の演出 ----
-  // playerの位置にplayer0を代わりに表示し、player0は「motion」、hは「action4」を入力に関係なくループ。
-  // playerはカメラの位置に置くだけ（このモード中は角度で動かさない）。
-  const PLAYER0_URL = 'player0.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
-  const PLAYER0_MOTION = 'motion';     // player0のループさせるクリップ名
-  const PLAYER0_LOOP_FADE = 0.2;       // 秒: motionのループの継ぎ目（hのTRIGGER_FADEとは別・player0専用）
-  const PLAYER0_LOCK_ROOT_BONE = true; // motion中に「全ての親のボーン」(最上位ボーン)が動いて原点ごと移動するのを止める（位置を最初のフレームに固定）
-  // 固定する「全ての親」ボーンの名前（MMD系の「全ての親」/ Root など）。見つからなければ、腰・センター系より上にあるボーンだけを固定する
-  const PLAYER0_ROOT_BONE_NAME = /全ての親|全て.?の親|all.?parent|zen.?no.?oya|^root$|^root[_.\-]|[_.\-]root$/i;
-  // 腰・センター系のボーン名（これらは固定しない＝水平に動かす）
-  const PLAYER0_HIPS_BONE_NAME = /センター|ｾﾝﾀｰ|center|centre|グルーブ|groove|腰|hips?|pelvis|waist|下半身|lower.?body/i;
-  const PLAYER0_LOCK_PARENTS = false;  // trueにすると、ボーン以外の親ノード(Armature等)の位置も最初のフレームに固定する
-  let player0State = '未読込';
-  let player0Anim = '';
-  let player0Mixer = null;
-  let player0Act = null;
-  let player0Act2 = null;              // motionループの継ぎ目用の2つ目のインスタンス（最初のポーズを保持しておく）
-  let player0CurAct = null;            // 現在再生中側（player0Act / player0Act2 のどちらか）
-  let player0Dur = 0;                  // motionクリップの長さ（秒）
-  let player0Fading = false;           // 継ぎ目の移行中か
-  let player0FadeT = 0;                // 移行の経過時間（秒）
-  let player0FadeFrom = null;          // 移行元（最後のポーズで静止）
-  let player0FadeTo = null;            // 移行先（最初のポーズで静止→移行完了後に再生再開）
-  const SIDE_LOOP_H_SPEED = 0.8;       // 最初(カメラ横の間)だけ、hのaction4ループの再生速度
-  const SIDE_LOOP_H_DROP = 0.03;       // 最初(カメラ横の間)だけ、hの位置を下げる量（Y）
-  const SIDE_LOOP_H_GROUND = true;     // 最初(カメラ横の間)は、hの一番低い点(足)が地面(y=0)に付くよう毎フレーム高さを合わせる（trueの間は上のDROPは使わない）
-  const SIDE_LOOP_H_GROUND_MARGIN = 0; // m: 足を地面よりさらに上げたい場合の量（+で浮かせる）
-  const SIDE_LOOP_H_GROUND_SMOOTH = 0.12;   // 秒: 高さ合わせの追従の速さ（小さいほど素早く追従）
-  let hFootSets = [];                  // hの足まわりの頂点（接地判定用）
-  let hGroundY = null;                 // 接地のために今かけているhのYオフセット（null=未計算）
-  let sideLoopH = false;               // hのaction4をカメラ横用にループ中か
 
   // ---- bg.glb（背景として置くだけの静的モデル） ----
   const BG_URL = 'bg.glb?' + ASSET_VERSION;           // index.html と同じ場所に置く
@@ -1345,8 +1074,8 @@ body.stereo .dispbar{opacity:.55}
     });
   }
 
-  // ---- h.glb（idleをループ再生するだけの追加モデル） ----
-  const H_URL = 'h.glb?' + ASSET_VERSION;             // index.html と同じ場所に置く
+  // ---- part.glb（idleをループ再生するだけの追加モデル） ----
+  const H_URL = 'part.glb?' + ASSET_VERSION;          // index.html と同じ場所に置く
   const H_HEIGHT = null;              // 身長(m)にそろえて表示。元のサイズのままなら null
   const H_FACING = Math.PI;          // player.glb と同じ向きにそろえる
   let hState = '未読込';
@@ -1771,74 +1500,6 @@ body.stereo .dispbar{opacity:.55}
     o.add(outline);
     hOutlineMeshes.push(outline);
   }
-  // 接地判定用: 読込直後の姿勢で低い位置にある頂点（足〜すね）を、メッシュごとに最大1000個ためておく
-  function buildHFootSets(model, height) {
-    hFootSets = [];
-    model.updateMatrixWorld(true);
-    const limit = (height > 0 ? height : 1.6) * 0.2;
-    const v = new THREE.Vector3();
-    model.traverse(function (o) {
-      if (!o.isSkinnedMesh || o.userData.__outline || !o.skeleton) return;
-      const g = o.geometry, pa = g.attributes.position, sia = g.attributes.skinIndex, swa = g.attributes.skinWeight;
-      if (!pa || !sia || !swa) return;
-      const swMax = swa.normalized ? normalizedMaxOf(swa.array.constructor) : null;
-      const cand = [];
-      for (let i = 0; i < pa.count; i++) {
-        const q = readVec3(pa, i);
-        v.set(q[0], q[1], q[2]).applyMatrix4(o.matrixWorld);
-        if (v.y <= limit) cand.push([i, v.y]);
-      }
-      if (!cand.length) return;
-      cand.sort(function (a, b) { return a[1] - b[1]; });
-      const n = Math.min(1000, cand.length);
-      const fs = { mesh: o, count: n, pos: new Float32Array(n * 3), si: new Float32Array(n * 4), sw: new Float32Array(n * 4) };
-      for (let k = 0; k < n; k++) {
-        const i = cand[k][0];
-        const q = readVec3(pa, i);
-        fs.pos[k * 3] = q[0]; fs.pos[k * 3 + 1] = q[1]; fs.pos[k * 3 + 2] = q[2];
-        fs.si[k * 4] = sia.getX(i); fs.si[k * 4 + 1] = sia.getY(i); fs.si[k * 4 + 2] = sia.getZ(i); fs.si[k * 4 + 3] = sia.getW(i);
-        const w = [swa.getX(i), swa.getY(i), swa.getZ(i), swa.getW(i)];
-        for (let j = 0; j < 4; j++) fs.sw[k * 4 + j] = swMax ? w[j] / swMax : w[j];
-      }
-      hFootSets.push(fs);
-    });
-    try { console.log('[h] 接地用の頂点セット:', hFootSets.map(function (f) { return f.count; })); } catch (e) {}
-  }
-  const _hV4a = new THREE.Vector4(), _hV4b = new THREE.Vector4(), _hV3 = new THREE.Vector3(), _hM4 = new THREE.Matrix4();
-  // 今のポーズでの、足まわりの頂点のワールド最低Y（スキニング後）
-  function hLowestWorldY() {
-    let low = Infinity;
-    for (let f = 0; f < hFootSets.length; f++) {
-      const fs = hFootSets[f], mesh = fs.mesh, sk = mesh.skeleton;
-      sk.update();
-      const be = sk.boneMatrices;
-      for (let i = 0; i < fs.count; i++) {
-        _hV4a.set(fs.pos[i * 3], fs.pos[i * 3 + 1], fs.pos[i * 3 + 2], 1).applyMatrix4(mesh.bindMatrix);
-        let ax = 0, ay = 0, az = 0;
-        for (let j = 0; j < 4; j++) {
-          const w = fs.sw[i * 4 + j];
-          if (!w) continue;
-          _hM4.fromArray(be, fs.si[i * 4 + j] * 16);
-          _hV4b.copy(_hV4a).applyMatrix4(_hM4);
-          ax += _hV4b.x * w; ay += _hV4b.y * w; az += _hV4b.z * w;
-        }
-        _hV3.set(ax, ay, az).applyMatrix4(mesh.bindMatrixInverse).applyMatrix4(mesh.matrixWorld);
-        if (_hV3.y < low) low = _hV3.y;
-      }
-    }
-    return low;
-  }
-  // 一番低い点が地面(y=0)に付くための、hのYオフセット（急な変化をならす）
-  function updateHGround(dt) {
-    const hg = R.h;
-    hg.updateMatrixWorld(true);
-    const cur = hg.position.y;                       // 直前に適用したオフセット（今の姿勢の測定にはこれが含まれる）
-    const low = hLowestWorldY();
-    if (!isFinite(low)) return hGroundY == null ? 0 : hGroundY;
-    const target = -(low - cur) + SIDE_LOOP_H_GROUND_MARGIN;
-    hGroundY = hGroundY == null ? target : cur + (target - cur) * Math.min(1, dt / SIDE_LOOP_H_GROUND_SMOOTH);
-    return hGroundY;
-  }
   // ---- hの視線: 両目・左目・右目ボーンを回して、人間らしい目の動きにする ----
   // ・小さな視線移動(サッカード)を不規則な間隔で起こし、合間にごく小さな揺れ(ドリフト・マイクロサッカード)を足す
   // ・ときどきカメラ（見ている人）へ視線を向け、しばらく追ってから外す（近い対象を見る時は左右の目が寄る）
@@ -1865,14 +1526,12 @@ body.stereo .dispbar{opacity:.55}
   // action3/4の瞬き明け演出: 目を開き始める瞬間は上を向いたままにし、少し間を置いてからこちら（カメラ）を見る
   let hBlinkJustReleased = false;        // メインループ側で、hold(action3/4)が終わった瞬間にtrueにする
   let hPostBlink = null;                 // { phase: 'up' | 'holdUp' | 'toCam', t0 } / null=演出なし（通常の視線ロジック）
-  const POST_BLINK_UP_PITCH = 8;        // 度: 目を開き始める時に向けておく上目づかいの角度
+  const POST_BLINK_UP_PITCH = 3;        // 度: 目を開き始める時に向けておく上目づかいの角度
   const POST_BLINK_UP_HOLD = 1;        // 秒: 上を向いたまま保持する長さ（この間に目が開いていく）
   const POST_BLINK_TO_CENTER_PITCH = 0;  // 度: カメラが見られない場合に代わりに向ける正面のピッチ
-  const RESUME_GAZE_UP_PITCH = 40;      // 度: 強制ループ終了後、新しいボタンを注視するまで固定する視線の高さ（目を開ける直前の角度とは別に調整）
   const FORCED_LOOP_GAZE_PITCH = 5;      // 度: 強制ループ(20秒カウントダウン)中、視線を固定する上向きの角度（8→5に下げて見上げを弱める）
   const FORCED_LOOP_GAZE_DIST = 0.3;     // m: 強制ループ中の注視距離（近いほど寄り目になる。0.18→0.3に上げて寄り目を弱める）
   const FORCED_LOOP_EYE_MAX_DEG = 10;    // 度: 強制ループ中だけ許容する目の最大回転角（16→10に下げて寄り目を弱める）
-  const RESUME_EYE_MAX_DEG = 44;         // 度: 強制ループ終了後の待機中だけ許容する目の最大回転角（RESUME_GAZE_UP_PITCHが通常のEYE_MAX_DEGを超えるため、それより大きく確保）
   // action4中: 頭ボーンをアニメの動きに重ねて、右・下方向へ寄せる。さらにその範囲内でランダムな値・間隔で左・上へ揺らぐ。
   // 一度動いた分はaction4が終わっても戻さず維持する（次のaction4でさらに右・下へ積み増していく）
   let hHead = null;                      // { bone, leftLocal, upNegLocal }: 頭ボーンと、オフセット計算用のローカル基準方向
@@ -2148,8 +1807,6 @@ body.stereo .dispbar{opacity:.55}
       g.yaw = g.fromYaw = g.toYaw = 0;                          // 中央
       g.pitch = g.fromPitch = g.toPitch = FORCED_LOOP_GAZE_PITCH * D2R;   // やや上側
       g.dist = FORCED_LOOP_GAZE_DIST;   // 距離を近くすることで左右の目を内側へ寄せる（寄り目）
-    } else if (awaitingResume) {   // 強制ループ終了後、新しいボタンを注視するまでは、視線の高さ(ピッチ)をこの角度に固定する（左右は通常通り動かす）
-      g.pitch = g.fromPitch = g.toPitch = RESUME_GAZE_UP_PITCH * D2R;
     } else if (hSmileEyeActive) {   // 笑い目の間は、視線の高さ(ピッチ)を目を開ける時の角度に固定する（左右は通常通り動かす）
       g.pitch = g.fromPitch = g.toPitch = POST_BLINK_UP_PITCH * D2R;
     }
@@ -2171,9 +1828,9 @@ body.stereo .dispbar{opacity:.55}
     // 特に強制ループ中のように狙う角度が大きい時ほど、寄り目や見上げの変化が相殺されて
     // ほとんど動いて見えなくなる。「両目」ボーンを使うのは左右individualが無い場合のみにする。
     if (eyes.length) {
-      for (let i = 0; i < eyes.length; i++) aimEye(eyes[i], _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : (awaitingResume ? RESUME_EYE_MAX_DEG : undefined));
+      for (let i = 0; i < eyes.length; i++) aimEye(eyes[i], _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : undefined);
     } else if (common) {
-      aimEye(common, _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : (awaitingResume ? RESUME_EYE_MAX_DEG : undefined));
+      aimEye(common, _gv.g, forcedLoopActive ? FORCED_LOOP_EYE_MAX_DEG : undefined);
     }
   }
   function loadH(group, onDone) {
@@ -2196,7 +1853,6 @@ body.stereo .dispbar{opacity:.55}
       model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o, outlineWorldThickness); } });
       applyHOutline(); applyHProcessing();   // 初期状態（既定は全部ON）を反映
       group.add(model);
-      buildHFootSets(model, finalSize.y);
       hState = '表示中';
 
       // まばたきモーフ・話す動き用の母音モーフ（シェイプキー）を探す
@@ -2262,140 +1918,10 @@ body.stereo .dispbar{opacity:.55}
       })();
       if (onDone) onDone();
     }, undefined, function (err) {
-      hState = '読込失敗（h.glb を index.html と同じ場所に置く）';
+      hState = '読込失敗（part.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
       if (onDone) onDone();
     });
-  }
-  // クリップ内の「全ての親」ボーンの位置トラックを、最初のフレームの値に固定する（腰・センター系のボーンは固定しない）。
-  // 対象: 名前が PLAYER0_ROOT_BONE_NAME に合うボーン。無ければ、最上位ボーンから1本道で下り、腰・センター系(PLAYER0_HIPS_BONE_NAME)に当たる手前までのボーン。
-  // PLAYER0_LOCK_PARENTSがtrueのときは、ボーン以外の親ノード(Armature等)も固定する。
-  // 戻り値: { count: 固定したトラック数, locked: 固定したボーン名, chain: 最上位からのボーン階層, posBones: 位置アニメーションを持つボーン名 }
-  function lockRootMotion(model, clip) {
-    const topBones = [];
-    const allBones = [];
-    model.traverse(function (o) {
-      if (!o.isBone) return;
-      allBones.push(o);
-      if (!(o.parent && o.parent.isBone)) topBones.push(o);
-    });
-    const boneKids = function (b) { return b.children.filter(function (c) { return c.isBone; }); };
-    const chain = [];
-    if (topBones[0]) {   // 診断表示用: 最上位ボーンから、先頭の子をたどった階層
-      let b = topBones[0];
-      for (let n = 0; b && n < 5; n++) { chain.push(b.name); b = boneKids(b)[0]; }
-    }
-    const targets = new Set();
-    if (PLAYER0_LOCK_ROOT_BONE) {
-      allBones.forEach(function (b) { if (PLAYER0_ROOT_BONE_NAME.test(b.name || '')) targets.add(b); });
-      if (targets.size === 0) {
-        topBones.forEach(function (top) {
-          let b = top;
-          while (b && !PLAYER0_HIPS_BONE_NAME.test(b.name || '')) {
-            targets.add(b);
-            const kids = boneKids(b);
-            b = kids.length === 1 ? kids[0] : null;   // 枝分かれしたらそこで終わり（それより下は固定しない）
-          }
-        });
-      }
-    }
-    const info = { count: 0, locked: [], chain: chain, posBones: [] };
-    clip.tracks.forEach(function (track) {
-      const i = track.name.lastIndexOf('.');
-      if (i < 0 || track.name.slice(i + 1) !== 'position') return;
-      const node = THREE.PropertyBinding.findNode(model, track.name.slice(0, i));
-      if (!node || node === model || !node.parent) return;
-      if (node.isBone && info.posBones.length < 6) info.posBones.push(node.name);
-      const isRootBone = node.isBone && targets.has(node);
-      const isParentNode = !node.isBone && node.children.length > 0;
-      if (!(isRootBone || (PLAYER0_LOCK_PARENTS && isParentNode))) return;
-      const v = track.values;
-      for (let k = 3; k < v.length; k += 3) { v[k] = v[0]; v[k + 1] = v[1]; v[k + 2] = v[2]; }
-      info.count++;
-      info.locked.push(node.name);
-    });
-    try { console.log('[player0] bone chain:', chain, 'locked:', info.locked, 'pos bones:', info.posBones); } catch (e) {}
-    return info;
-  }
-  function loadPlayer0(group, onDone) {
-    if (!THREE.GLTFLoader) { player0State = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
-    player0State = '読込中…';
-    new THREE.GLTFLoader().load(PLAYER0_URL, function (gltf) {
-      (function () {
-      const model = gltf.scene;
-      if (playerScale != null) {
-        // playerと同じ縮尺・位置合わせを使い、playerの位置にそのまま重なるようにする
-        model.scale.setScalar(playerScale);
-        model.position.set(playerOffX, playerOffY, playerOffZ);
-      } else {
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
-        if (PLAYER_HEIGHT && size.y > 0) model.scale.multiplyScalar(PLAYER_HEIGHT / size.y);
-        box.setFromObject(model);
-        const c = box.getCenter(new THREE.Vector3());
-        model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
-      }
-      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); } });
-      group.add(model);
-      player0State = '読込済み';
-
-      const clips = gltf.animations || [];
-      if (clips.length === 0) { player0Anim = '  アニメなし'; return; }
-      const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
-      const clip = clips.find(function (c) { return nm(c) === PLAYER0_MOTION; }) ||
-                   clips.find(function (c) { return nm(c).endsWith(PLAYER0_MOTION); });
-      if (!clip) {
-        player0Anim = '  「' + PLAYER0_MOTION + '」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
-        return;
-      }
-      const lockInfo = (PLAYER0_LOCK_ROOT_BONE || PLAYER0_LOCK_PARENTS) ? lockRootMotion(model, clip) : null;
-      player0Mixer = new THREE.AnimationMixer(model);
-      player0Act = player0Mixer.clipAction(clip);
-      // 継ぎ目の移行用の2つ目。clipAction(clip)は同じクリップだと同一のactionを返してしまう（Act2===Act になり、
-      // 最初の継ぎ目でstop()され初期ポーズで固まる）ため、cloneしたクリップ(別uuid)から別のactionを作る
-      player0Act2 = player0Mixer.clipAction(clip.clone());
-      [player0Act, player0Act2].forEach(function (a) {
-        a.setLoop(THREE.LoopRepeat, Infinity);
-        a.clampWhenFinished = false;
-      });
-      player0Act.play();
-      player0CurAct = player0Act;
-      player0Dur = clip.duration || 0;
-      player0Fading = false;
-      player0Anim = '  ' + clip.name + '（ループ）' + (lockInfo ?
-        '\n  固定:' + (lockInfo.locked.length ? lockInfo.locked.join(',') : 'なし') +
-        ' / 階層:' + lockInfo.chain.join('>') +
-        ' / 位置アニメ有:' + (lockInfo.posBones.length ? lockInfo.posBones.join(',') : 'なし') : '');
-      })();
-      if (onDone) onDone();
-    }, undefined, function (err) {
-      player0State = '読込失敗（player0.glb を index.html と同じ場所に置く）';
-      try { console.error(err); } catch (e) {}
-      if (onDone) onDone();
-    });
-  }
-  function startSideLoopH() {
-    if (!hAct4) return;
-    const from = hCurAct || hIdleAct;
-    hCurAct = hAct4;
-    hAct4.setLoop(THREE.LoopRepeat, Infinity);
-    hAct4.clampWhenFinished = false;
-    hAct4.reset().play();
-    hAct4.setEffectiveWeight(1);
-    hAct4.timeScale = SIDE_LOOP_H_SPEED;   // 最初だけ0.8倍速
-    if (from && from !== hAct4) hAct4.crossFadeFrom(from, TRIGGER_FADE, false);
-    sideLoopH = true;
-  }
-  function endSideLoopH() {
-    sideLoopH = false;
-    if (hAct4) hAct4.timeScale = 1;   // 0.8倍速は最初だけ。以降は通常速度
-    if (forcedLoopActive) return;   // 強制ループ中はそちらがhのaction4を引き継ぐ
-    if (hAct4) { hAct4.setLoop(THREE.LoopOnce, 1); hAct4.clampWhenFinished = true; }
-    if (hCurAct === hAct4) {
-      const done = hCurAct; hCurAct = null;
-      armIdleHold(armCurAct);
-      if (hIdleAct) { hIdleAct.reset().play(); hIdleAct.crossFadeFrom(done, TRIGGER_FADE, false); }
-    }
   }
   function loadPlayer(group, onReady) {
     if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; if (onReady) onReady(); return; }
@@ -2440,6 +1966,9 @@ body.stereo .dispbar{opacity:.55}
         playerAct0.play();
         playerAct0.paused = true;
         playerAct0.enabled = false;
+      } else {
+        frontIntro = false;   // 導入クリップが無い場合は導入を行わず、最初の音声をすぐ流す
+        playDaySound('1');
       }
       // 「5フレーム目」の実際の秒数を、トラックのキーフレーム間隔から算出する
       const track0 = clip.tracks && clip.tracks[0];
@@ -2510,7 +2039,7 @@ body.stereo .dispbar{opacity:.55}
       playerGroup.rotation.y = PLAYER_FACING;
       scene.add(playerGroup);
 
-      // h.glb（idleをループ再生。player.glb の隣に据え置き）
+      // part.glb（idleをループ再生。player.glb の隣に据え置き）
       const hGroup = new THREE.Group();
       hGroup.position.set(0, 0, 0);
       hGroup.rotation.y = H_FACING;
@@ -2528,22 +2057,13 @@ body.stereo .dispbar{opacity:.55}
       plusGroup.rotation.y = playerGroup.rotation.y;
       scene.add(plusGroup);
 
-      // player0.glb（カメラが横にある間だけ、playerの位置にplayerの代わりに表示する）
-      const player0Group = new THREE.Group();
-      player0Group.position.set(0, 0, 0);
-      player0Group.rotation.y = PLAYER_FACING;
-      player0Group.visible = false;
-      scene.add(player0Group);
-
       // 読み込みは同時に走らせず、1つずつ順番に行う（端末によっては同時読込でクラッシュするため）
-      // bg → h → player →（playerの縮尺確定後）arm → plus → player0
+      // bg → h → player →（playerの縮尺確定後）arm → plus
       loadBg(bgGroup, function () {
         loadH(hGroup, function () {
           loadPlayer(playerGroup, function () {
             loadArm(armGroup, function () {
-              loadPlus(plusGroup, function () {
-                loadPlayer0(player0Group);
-              });
+              loadPlus(plusGroup);
             });
           });
         });
@@ -2552,11 +2072,9 @@ body.stereo .dispbar{opacity:.55}
       initSplash(scene);   // hのaction3/4トリガー時の水滴エフェクト（初期カメラ正面の固定位置）
       initHearts(scene);   // hのaction3トリガー時のハート（🩷）エフェクト
       initActionButton(scene);   // ゲージ満タン時にhの上へ出す、視線で注視できるボタン
-      initCenterButton(scene);   // 表示開始時にずらした正面を、視線で注視して戻すためのボタン
-      initResumeButton(scene);   // 強制ループ終了後、待機を解除するための新しいボタン
 
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup, player0: player0Group, h: hGroup, arm: armGroup, plus: plusGroup, bg: bgGroup,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup, bg: bgGroup,
         W: 0, H: 0
       };
       T = {
@@ -2674,22 +2192,14 @@ body.stereo .dispbar{opacity:.55}
         // いま向いている方向を「正面（北=赤い塔の方向）」にする
         T.fwd.set(0, 0, -1).applyQuaternion(T.qd);
         yawOffset = Math.atan2(-T.fwd.x, -T.fwd.z);
-        if (P.x !== 0) {   // カメラが横にずれている間は、正面をplayer0の方向（元のカメラ位置の方向＝右＝+X）へ向かせる
-          yawOffset += START_YAW_SHIFT;
-        }
-        if (startShiftPending) {   // センターボタンの表示は表示開始直後の1回だけ
-          startShiftPending = false;
-          setCenterButtonVisible(true);
-        }
         recenterPending = false;
       }
       T.qy.setFromAxisAngle(T.yAxis, -yawOffset);
       T.camQ.copy(T.qy).multiply(T.qd);
     } else {
       if (recenterPending) {
-        dragYaw = (P.x !== 0) ? -START_YAW_SHIFT : 0;   // カメラが横にずれている間は、player0の方向へ向かせる
+        dragYaw = 0;
         dragPitch = 0;
-        if (startShiftPending) { startShiftPending = false; setCenterButtonVisible(true); }
         recenterPending = false;
       }
       T.euler.set(dragPitch, dragYaw, 0, 'YXZ');
@@ -2702,73 +2212,18 @@ body.stereo .dispbar{opacity:.55}
     if (fl > 0.2) { lastFx = T.fwd.x / fl; lastFz = T.fwd.z / fl; }
 
     // ---- 人物モデルのアニメーションと位置（位置は固定。px/py/pzは水滴の位置操作に使う） ----
-    // カメラが横にある間: playerの位置にはplayer0を出し、playerはカメラの位置に置くだけ
-    const sideNow = P.x !== 0;
-    if (sideNow) R.player.position.set(P.x + CAM_OFFSET.x, 0, P.z + CAM_OFFSET.z);
-    else R.player.position.set(0, 0, 0);
-    if (R.player) R.player.rotation.y = sideNow ? START_YAW_SHIFT : PLAYER_FACING;   // カメラが横にずれている間はplayer0の方向を向く
-    if (R.player0) { R.player0.position.set(0, 0, 0); R.player0.visible = sideNow; }
-    if (sideNow) {
-      if (hAct4 && hCurAct !== hAct4 && !centerAfterglowLate) startSideLoopH();   // hはaction4を入力に関係なくループ（余韻の後半はidle）
-    } else if (sideLoopH) {
-      endSideLoopH();
-    }
-    if (player0Mixer && sideNow) {
-      // player0の「motion」ループ：最後のポーズで一旦静止し、動きを混ぜずに重みだけをPLAYER0_LOOP_FADE秒かけて
-      // 最初のポーズ（静止）へ移してから再生を再開する（hのTRIGGER_FADEとは別の、player0専用の継ぎ目処理）
-      if (player0Fading) {
-        player0FadeT += dt;
-        const w = Math.min(1, player0FadeT / PLAYER0_LOOP_FADE);
-        player0FadeFrom.weight = 1 - w;
-        player0FadeTo.weight = w;
-        player0Mixer.update(0);   // 時間は進めず、重みの変化だけを反映（動きは混ぜない）
-        if (w >= 1) {
-          player0FadeFrom.stop();
-          player0FadeTo.paused = false;            // ここから先頭フレームより通常再生を再開
-          player0CurAct = player0FadeTo;
-          player0Fading = false;
-        }
-      } else {
-        player0Mixer.update(dt);
-        if (player0CurAct && player0Dur > 0 && (player0Dur - player0CurAct.time) <= PLAYER0_LOOP_FADE) {
-          const next = (player0CurAct === player0Act) ? player0Act2 : player0Act;
-          player0CurAct.paused = true;             // 最後のポーズで静止
-          next.reset(); next.play(); next.paused = true; next.weight = 0;   // 最初のポーズで静止させておく
-          player0CurAct.weight = 1;
-          player0FadeFrom = player0CurAct;
-          player0FadeTo = next;
-          player0FadeT = 0;
-          player0Fading = true;
-        }
-      }
-    }
-    // 横→正面に戻った瞬間から、導入（2action0 / plusの導入クリップ）を始める
-    if (sidePrev === true && !sideNow) {
-      if (playerAct0 || plusAct0) {
-        frontIntro = true;   // 最初の音声は、導入が終わって2actionに切り替わる瞬間に流す（下のfrontIntro終了判定を参照）
-      } else {
-        playDaySound('1');   // 導入クリップが無い場合は、これまで通り正面に戻った瞬間に流す
-      }
-    }
-    sidePrev = sideNow;
-    if (sideNow || forcedLoopActive) frontIntro = false;   // 横にある間・強制ループ中は導入しない
+    R.player.position.set(0, 0, 0);
+    if (R.player) R.player.rotation.y = PLAYER_FACING;
+    if (forcedLoopActive) frontIntro = false;   // 強制ループ中は導入しない
     syncIntroActs();
-    if (R.h) {   // playerと同じ位置（固定）に追従。最初(カメラ横の間)は足が地面に付くように高さを合わせる
-      let hy = 0;
-      if (sideNow) {
-        hy = (SIDE_LOOP_H_GROUND && hFootSets.length) ? updateHGround(dt) : -SIDE_LOOP_H_DROP;
-      } else {
-        hGroundY = null;
-      }
-      R.h.position.set(0, hy, 0);
-    }
+    if (R.h) R.h.position.set(0, 0, 0);   // playerと同じ位置（固定）に追従
     if (R.plus) {
-      R.plus.visible = !sideNow;   // カメラ横の間はplayerの代わりにplayer0を出すので、playerに重ねるモデルは隠す
+      R.plus.visible = true;
       R.plus.position.copy(R.player.position);   // 常にplayerと同じ位置・向き
       R.plus.rotation.y = R.player.rotation.y;
     }
     if (R.arm) {
-      R.arm.visible = !sideNow;
+      R.arm.visible = true;
       R.arm.position.set(inp.aox, inp.aoy, inp.aoz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）
       R.arm.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
     }
@@ -2946,10 +2401,6 @@ body.stereo .dispbar{opacity:.55}
         action3Above = false;   // 強制ループ中は通常のaction3判定を止める
       }
       updateForcedLoopCountdown();
-    } else if (sideNow) {
-      // ---- カメラが横にある間: playerは角度で動かさず、action3判定も止める ----
-      action3Above = false;
-      updateForcedLoopCountdown();
     } else if (playerAct && tiltLive) {
       updateForcedLoopCountdown();
       const duration = playerAct.getClip().duration;
@@ -3014,7 +2465,7 @@ body.stereo .dispbar{opacity:.55}
         }
       };
       const action3IsAbove = tiltRaw >= ACTION3_DEG;
-      if (action3IsAbove && !action3Above && !frontIntro && !awaitingResume) {   // 導入中・新しいボタン待機中はaction3を流さない（hはidleのまま）
+      if (action3IsAbove && !action3Above && !frontIntro) {   // 導入中はaction3を流さない（hはidleのまま）
         if (hAct3) playH(hAct3);
       }
       action3Above = action3IsAbove;
@@ -3062,54 +2513,6 @@ body.stereo .dispbar{opacity:.55}
         if (hit && gazeDwell >= GAZE_DWELL_SEC) selectActionButton();
       }
     }
-
-    // ---- カメラ位置を左にずらした状態から、元のカメラ位置へ戻すボタンの、視線での注視判定 ----
-    if (centerButtonGroup && centerButtonVisible) {
-      const cx = centerButtonGroup.position.x - ex, cy = centerButtonGroup.position.y - ey, cz = centerButtonGroup.position.z - ez;
-      const cdist = Math.hypot(cx, cy, cz);
-      let chit = false;
-      if (cdist > 0.001) {
-        const nx = cx / cdist, ny = cy / cdist, nz = cz / cdist;
-        const dot = clamp(T.fwd.x * nx + T.fwd.y * ny + T.fwd.z * nz, -1, 1);
-        const hitAngle = Math.atan2(CENTER_GAZE_HIT_RADIUS, cdist);
-        chit = Math.acos(dot) <= hitAngle;
-      }
-      centerGazeOn = chit;
-      centerGazeDwell = chit ? Math.min(GAZE_DWELL_SEC, centerGazeDwell + dt) : Math.max(0, centerGazeDwell - dt * 2);
-      updateCenterButtonVisual();
-      if (chit && centerGazeDwell >= GAZE_DWELL_SEC) selectCenterButton();
-    }
-    // ---- 強制ループ終了後に出す「新しいボタン」の位置更新と、視線での注視判定 ----
-    if (resumeButtonGroup) {
-      resumeButtonGroup.position.set(0, hHeight + RESUME_BUTTON_HEIGHT_OFFSET, 0);
-      if (resumeButtonVisible) {
-        const rx = resumeButtonGroup.position.x - ex, ry = resumeButtonGroup.position.y - ey, rz = resumeButtonGroup.position.z - ez;
-        const rdist = Math.hypot(rx, ry, rz);
-        let rhit = false;
-        if (rdist > 0.001) {
-          const nx = rx / rdist, ny = ry / rdist, nz = rz / rdist;
-          const dot = clamp(T.fwd.x * nx + T.fwd.y * ny + T.fwd.z * nz, -1, 1);
-          const hitAngle = Math.atan2(GAZE_HIT_RADIUS, rdist);
-          rhit = Math.acos(dot) <= hitAngle;
-        }
-        resumeGazeOn = rhit;
-        resumeGazeDwell = rhit ? Math.min(GAZE_DWELL_SEC, resumeGazeDwell + dt) : Math.max(0, resumeGazeDwell - dt * 2);
-        updateResumeButtonVisual();
-        if (rhit && resumeGazeDwell >= GAZE_DWELL_SEC) selectResumeButton();
-      }
-    }
-
-    if (centerAfterglow > 0) {   // 余韻のカウントダウン。終わったらカメラ位置を戻す
-      centerAfterglow -= dt;
-      const agElapsed = CENTER_AFTERGLOW_SEC - centerAfterglow;
-      if (!centerAfterglowLate && agElapsed >= CENTER_AFTERGLOW_LATE_SEC) startAfterglowLate();
-      if (centerAfterglowLate && player0Mixer) {   // 後半: player0の再生速度を、余韻の終わりに向けて0まで直線的に減衰させる
-        const u = clamp((agElapsed - CENTER_AFTERGLOW_LATE_SEC) / Math.max(0.001, CENTER_AFTERGLOW_SEC - CENTER_AFTERGLOW_LATE_SEC), 0, 1);
-        player0Mixer.timeScale = PLAYER0_LATE_SPEED * (1 - u);
-      }
-      if (centerAfterglow <= 0) startBlackout();   // 余韻が終わったら、暗転を挟んでから正面へ戻す
-    }
-    tickBlackout(dt);   // 暗転（余韻のあと正面に戻る時の黒い画面）
 
     if (!stereo) {
       R.renderer.setScissorTest(false);
@@ -3160,17 +2563,14 @@ body.stereo .dispbar{opacity:.55}
         (fresh ? '操作側: 受信中' : (linked ? '操作側: 受信途絶' : '操作側: 待機中')) + '\n' +
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
-        'h.glb: ' + hState + hAnim + '\n' +
+        'part.glb: ' + hState + hAnim + '\n' +
         'h視線: ' + hEyeInfo + (hEyes ? (hGaze.mode === 'camera' ? '（カメラを見ている）' : '（自由に見ている）') : '') +
           (hGazeDebugAng != null ? '（角度差' + hGazeDebugAng + '°）' : '') + '\n' +
-        'player0.glb: ' + player0State + player0Anim + (P.x !== 0 ? '（カメラ横：表示中）' : '') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + '\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +
-        '正面リセットボタン: ' + (centerButtonVisible ? (centerGazeOn ? '注視中 ' + Math.round(centerGazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +
-        '新しいボタン: ' + (resumeButtonVisible ? (resumeGazeOn ? '注視中 ' + Math.round(resumeGazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視・hはidle待機中）') : '非表示') + '\n' +
         '強制ループ: ' + (forcedLoopActive ? '再生中 残り' + Math.ceil(forcedLoopRemain) + '秒' : '停止中');
     }
   }

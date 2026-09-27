@@ -299,10 +299,11 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">回転</span><button type="button" class="pstep" data-k="aor" data-d="-1" data-step="1">−</button><input type="range" id="rng-aor" data-k="aor" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="aor" data-d="1" data-step="1">＋</button><span class="pv" id="val-aor">0.00</span></div>
     </div>
     <div id="posTab-part" class="hidden">
-      <p class="postitle">part.glbの位置調整（player本体との差・m／1単位）</p>
+      <p class="postitle">part.glbの位置・サイズ調整（player本体との差・m）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="hox" data-d="-1" data-step="1">−</button><input type="range" id="rng-hox" data-k="hox" min="-200" max="200" step="1"><button type="button" class="pstep" data-k="hox" data-d="1" data-step="1">＋</button><span class="pv" id="val-hox">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="hoy" data-d="-1" data-step="1">−</button><input type="range" id="rng-hoy" data-k="hoy" min="-200" max="200" step="1"><button type="button" class="pstep" data-k="hoy" data-d="1" data-step="1">＋</button><span class="pv" id="val-hoy">0.00</span></div>
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="hoz" data-d="-1" data-step="1">−</button><input type="range" id="rng-hoz" data-k="hoz" min="-200" max="200" step="1"><button type="button" class="pstep" data-k="hoz" data-d="1" data-step="1">＋</button><span class="pv" id="val-hoz">0.00</span></div>
+      <div class="prow"><span class="pl">サイズ</span><button type="button" class="pstep" data-k="hos" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-hos" data-k="hos" min="0.1" max="3" step="0.01"><button type="button" class="pstep" data-k="hos" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-hos">0.00</span></div>
     </div>
   </div>
 
@@ -350,10 +351,11 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" class="foldbtn" id="dPosFold" aria-expanded="false"><span class="arr">▼</span></button>
     </div>
     <div class="dpos-body" id="dPosBody">
-      <p class="postitle" style="margin:0 0 6px">part.glbの位置調整（player本体との差・m）</p>
+      <p class="postitle" style="margin:0 0 6px">part.glbの位置・サイズ調整（player本体との差・m）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="hox" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hox" data-k="hox" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hox" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hox">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="hoy" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoy" data-k="hoy" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoy">0.00</span></div>
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="hoz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoz" data-k="hoz" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoz">0.00</span></div>
+      <div class="prow"><span class="pl">サイズ</span><button type="button" class="dpstep" data-k="hos" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hos" data-k="hos" min="0.1" max="3" step="0.01"><button type="button" class="dpstep" data-k="hos" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hos">0.00</span></div>
       <button type="button" class="mini" id="dBtnPosReset" style="width:100%; margin-top:4px">この項目をリセット</button>
     </div>
   </div>
@@ -489,7 +491,7 @@ body.stereo .dispbar{opacity:.55}
   const POS_DEFAULT = {
     px: 0, py: -0.6, pz: 0.25,                 // 水滴エフェクトの原点位置
     aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
-    hox: 0, hoy: 0, hoz: 0                     // part.glb: player本体とのズレ（位置m・1単位）
+    hox: 0, hoy: 0, hoz: 0, hos: 1               // part.glb: player本体とのズレ（位置m）・スケール（倍率）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
   const inp = Object.assign({ vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0 }, POS_DEFAULT);
@@ -701,7 +703,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.pstep').forEach((b) => {
     b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz'] };
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos'] };
   let posTab = 'body';
   document.querySelectorAll('#posTabs button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -2113,6 +2115,7 @@ body.stereo .dispbar{opacity:.55}
       // part.glb（idleをループ再生。player.glb の隣に据え置き）
       const hGroup = new THREE.Group();
       hGroup.position.set(inp.hox, inp.hoy, inp.hoz);
+      hGroup.scale.setScalar(inp.hos);
       hGroup.rotation.y = H_FACING;
       scene.add(hGroup);
 
@@ -2287,7 +2290,7 @@ body.stereo .dispbar{opacity:.55}
     if (R.player) R.player.rotation.y = PLAYER_FACING;
     if (forcedLoopActive) frontIntro = false;   // 強制ループ中は導入しない
     syncIntroActs();
-    if (R.h) R.h.position.set(inp.hox, inp.hoy, inp.hoz);   // playerと同じ位置（固定）＋操作側からのズレ調整に追従
+    if (R.h) { R.h.position.set(inp.hox, inp.hoy, inp.hoz); R.h.scale.setScalar(inp.hos); }   // playerと同じ位置（固定）＋操作側からのズレ調整・サイズ調整に追従
     if (R.plus) {
       R.plus.visible = true;
       R.plus.position.copy(R.player.position);   // 常にplayerと同じ位置・向き

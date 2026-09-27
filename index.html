@@ -341,8 +341,8 @@ body.stereo .dispbar{opacity:.55}
     </div>
     <div class="tiltsel"><button type="button" id="tiltManualBtn">手動角度</button><button type="button" id="tiltReset">角度リセット</button></div>
     <div class="tiltmanual hidden" id="tiltManualWrap">
-      <input type="range" id="tiltManualRng" min="-7" max="7" step="0.5" value="0">
-      <div class="tiltmanualval" id="tiltManualValTxt">0°</div>
+      <input type="range" id="tiltManualRng" min="-7" max="0" step="0.5" value="-7">
+      <div class="tiltmanualval" id="tiltManualValTxt">-7°</div>
     </div>
     </div>
   </div>
@@ -2233,7 +2233,7 @@ body.stereo .dispbar{opacity:.55}
   const TILT_SMOOTH_TAU = 0.05;              // 秒: 補間の追従の速さ（小さいほど速く追従）
   // 表示側のスライダーで角度を手動指定するモード（操作側スマホなしでテストできる）
   let tiltManual = false;                    // true: スライダーの値を使う（操作側からの角度は無視）
-  let tiltManualVal = 0;                     // 手動角度（度）
+  let tiltManualVal = -7;                    // 手動角度（度）。既定は先頭フレーム（-7°）
   const tiltManualBtn = $('#tiltManualBtn'), tiltManualWrap = $('#tiltManualWrap'),
         tiltManualRng = $('#tiltManualRng'), tiltManualValTxt = $('#tiltManualValTxt');
   $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; lastTiltKey = ''; });

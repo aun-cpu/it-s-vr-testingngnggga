@@ -1228,11 +1228,11 @@ body.stereo .dispbar{opacity:.55}
     { stiffness: 230, damping: 7.0, impact: 0.55 },   // 2次モード：その上に重なる、やや速い揺り返し
     { stiffness: 620, damping: 13.0, impact: 0.28 },  // 3次モード：さらに細かく速い波打ち。すぐ収まる
   ];
-  const JELLY_IMPACT_SCALE = 0.02;    // 触れた瞬間の勢い（角速度 度/秒）→揺れの初速への変換係数
-  const JELLY_IMPACT_MIN = 0.6;       // 触れた瞬間に最低これだけの初速は与える（勢いが弱くても揺れが分かるように）
-  const JELLY_MAX = 0.42;             // 全モード合計の変位（つぶれ・伸び）の上限
-  const JELLY_ROT_MAX = 9 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
-  const JELLY_BOB_MAX = 0.03;         // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
+  const JELLY_IMPACT_SCALE = 0.015;   // 触れた瞬間の勢い（角速度 度/秒）→揺れの初速への変換係数
+  const JELLY_IMPACT_MIN = 0.35;      // 触れた瞬間に最低これだけの初速は与える（勢いが弱くても揺れが分かるように）
+  const JELLY_MAX = 0.16;             // 全モード合計の変位（つぶれ・伸び）の上限（現実的な範囲に抑える）
+  const JELLY_ROT_MAX = 4 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
+  const JELLY_BOB_MAX = 0.012;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
   let action3Count = 0;                // action3を再生した回数（累計）
   // action3が0.3秒以内の間隔で10回以上連続すると、目を開けて（閉じていれば）笑い目モーフを出す。連続が途切れたら終了する
   let action3StreakCount = 0;          // 現在連続している回数（0.3秒以内の間隔が途切れたら1にリセット）
@@ -2590,9 +2590,10 @@ body.stereo .dispbar{opacity:.55}
       if (action3IsAbove && !action3Above && !frontIntro) {   // 導入中はaction3を流さない（hはidleのまま）
         if (hAct3) playH(hAct3);
         // playerが触れた瞬間：その勢い（角速度）に応じて各振動モードへ同時に初速を与える
+        // （押した方向へまず動いてから跳ね返るように、押した向きと同じ符号の初速にする）
         // → モードごとに周波数・収まる速さが違うため、単純な一往復ではなく波打つように揺れる
         const jellyImpact = clamp(Math.abs(tiltSmoothVel) * JELLY_IMPACT_SCALE, JELLY_IMPACT_MIN, 3);
-        for (let ji = 0; ji < JELLY_MODES.length; ji++) hJellyV[ji] -= jellyImpact * JELLY_MODES[ji].impact * 9;
+        for (let ji = 0; ji < JELLY_MODES.length; ji++) hJellyV[ji] += jellyImpact * JELLY_MODES[ji].impact * 4;
       }
       action3Above = action3IsAbove;
     } else {

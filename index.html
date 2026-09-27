@@ -1218,6 +1218,12 @@ body.stereo .dispbar{opacity:.55}
   const H_NAME4 = 'action4';
   const ACTION3_DEG = 7;              // 度: 基準からこの角度以上動いたら無条件でaction3を再生
   let action3Above = false;           // 直前フレームでACTION3_DEG以上だったか（1回だけ再生するための立ち上がり検知用）
+  // ---- part.glbのゼリー揺れ（playerが触れた勢いに応じてバネ減衰で揺らす）----
+  const JELLY_STIFFNESS = 140;        // バネの強さ（大きいほど速く元の形に戻る）
+  const JELLY_DAMPING = 9;            // 減衰の強さ（大きいほどすぐ揺れが収まる／小さいほど何度も揺れ返す）
+  const JELLY_IMPACT_SCALE = 0.02;    // 触れた瞬間の勢い（角速度 度/秒）→ゼリー変位への変換係数
+  const JELLY_IMPACT_MIN = 0.1;       // 触れた瞬間に最低これだけは揺れる（勢いが弱くても揺れが分かるように）
+  const JELLY_MAX = 0.4;              // ゼリー変位の最大値（つぶれ・伸びすぎの防止）
   let action3Count = 0;                // action3を再生した回数（累計）
   // action3が0.3秒以内の間隔で10回以上連続すると、目を開けて（閉じていれば）笑い目モーフを出す。連続が途切れたら終了する
   let action3StreakCount = 0;          // 現在連続している回数（0.3秒以内の間隔が途切れたら1にリセット）
@@ -2211,6 +2217,10 @@ body.stereo .dispbar{opacity:.55}
   // 受信値の間をなめらかに補間して滑らかに見せる。
   let tiltSmooth = 0;                        // 補間後の角度（2action等の再生位置計算に使う）
   let tiltSmoothReady = false;               // 次に有効な角度が届いたら、補間をその値から始める
+  let tiltSmoothPrev = 0;                    // 前フレームのtiltSmooth（角速度＝触れる勢いの計算用）
+  let tiltSmoothVel = 0;                     // tiltSmoothの変化速度（度/秒）
+  let hJelly = 0;                            // part.glbのゼリー変位（0=通常の形。負=つぶれ／正=伸び）
+  let hJellyVel = 0;                         // ゼリー変位の速度（バネ減衰の運動方程式で使う）
   const TILT_SMOOTH_TAU = 0.05;              // 秒: 補間の追従の速さ（小さいほど速く追従）
   // 表示側のスライダーで角度を手動指定するモード（操作側スマホなしでテストできる）
   let tiltManual = false;                    // true: スライダーの値を使う（操作側からの角度は無視）
@@ -2293,7 +2303,20 @@ body.stereo .dispbar{opacity:.55}
     if (R.player) R.player.rotation.y = PLAYER_FACING;
     if (forcedLoopActive) frontIntro = false;   // 強制ループ中は導入しない
     syncIntroActs();
-    if (R.h) { R.h.position.set(inp.hox, inp.hoy, inp.hoz); R.h.scale.setScalar(inp.hos); R.h.rotation.x = inp.hot * Math.PI / 180; }   // playerと同じ位置（固定）＋操作側からのズレ調整・サイズ調整・傾き調整に追従
+    // ---- part.glbのゼリー揺れ（バネ減衰の運動方程式。毎フレーム自然に元の形へ戻ろうとする）----
+    {
+      const jAccel = -JELLY_STIFFNESS * hJelly - JELLY_DAMPING * hJellyVel;
+      hJellyVel += jAccel * dt;
+      hJelly = clamp(hJelly + hJellyVel * dt, -JELLY_MAX, JELLY_MAX);
+    }
+    if (R.h) {
+      R.h.position.set(inp.hox, inp.hoy, inp.hoz);
+      // 縦(Y)がつぶれる/伸びるのに合わせて横(X,Z)を逆位相にふくらませ、ゼリーのような質感にする
+      const hJellyY = inp.hos * (1 + hJelly);
+      const hJellyXZ = inp.hos * (1 - hJelly * 0.5);
+      R.h.scale.set(hJellyXZ, hJellyY, hJellyXZ);
+      R.h.rotation.x = inp.hot * Math.PI / 180;
+    }   // playerと同じ位置（固定）＋操作側からのズレ調整・サイズ調整・傾き調整に追従（揺れ中はゼリー変位で上書き）
     if (R.plus) {
       R.plus.visible = true;
       R.plus.position.copy(R.player.position);   // 常にplayerと同じ位置・向き
@@ -2459,6 +2482,9 @@ body.stereo .dispbar{opacity:.55}
     } else {
       tiltSmoothReady = false;
     }
+    // 触れる勢い（角速度）＝tiltSmoothの1フレームあたりの変化量。ゼリー揺れの強さの元になる
+    tiltSmoothVel = dt > 0 ? (tiltSmooth - tiltSmoothPrev) / dt : 0;
+    tiltSmoothPrev = tiltSmooth;
     // 2action: 選んだ軸の角度で再生位置を決める。-20°=先頭フレーム／0°=5フレーム目／8°=最終フレーム（区分線形）
     if (forcedLoopActive) {
       // ---- 注視で選択された直後の演出：入力を無視して、5〜10フレーム目とhのaction4を往復ループ ----
@@ -2544,6 +2570,9 @@ body.stereo .dispbar{opacity:.55}
       const action3IsAbove = tiltRaw >= ACTION3_DEG;
       if (action3IsAbove && !action3Above && !frontIntro) {   // 導入中はaction3を流さない（hはidleのまま）
         if (hAct3) playH(hAct3);
+        // playerが触れた瞬間：その勢い（角速度）に応じてpart.glb本体をゼリーのようにつぶれさせる
+        const jellyImpact = clamp(Math.abs(tiltSmoothVel) * JELLY_IMPACT_SCALE, JELLY_IMPACT_MIN, JELLY_MAX);
+        hJellyVel -= jellyImpact * 10;   // 勢いが強いほど大きく・速くつぶれ始める
       }
       action3Above = action3IsAbove;
     } else {

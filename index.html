@@ -493,7 +493,7 @@ body.stereo .dispbar{opacity:.55}
   const POS_DEFAULT = {
     px: 0, py: -0.6, pz: 0.25,                 // 水滴エフェクトの原点位置
     aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
-    hox: 0, hoy: 0, hoz: 0, hos: 1, hot: 0        // part.glb: player本体とのズレ（位置m）・スケール（倍率）・傾き（度）
+    hox: 0.01, hoy: 0.6, hoz: 0.11, hos: 0.7, hot: -17        // part.glb: player本体とのズレ（位置m）・スケール（倍率）・傾き（度）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
   const inp = Object.assign({ vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0 }, POS_DEFAULT);

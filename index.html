@@ -1218,12 +1218,21 @@ body.stereo .dispbar{opacity:.55}
   const H_NAME4 = 'action4';
   const ACTION3_DEG = 7;              // 度: 基準からこの角度以上動いたら無条件でaction3を再生
   let action3Above = false;           // 直前フレームでACTION3_DEG以上だったか（1回だけ再生するための立ち上がり検知用）
-  // ---- part.glbのゼリー揺れ（playerが触れた勢いに応じてバネ減衰で揺らす）----
-  const JELLY_STIFFNESS = 140;        // バネの強さ（大きいほど速く元の形に戻る）
-  const JELLY_DAMPING = 9;            // 減衰の強さ（大きいほどすぐ揺れが収まる／小さいほど何度も揺れ返す）
-  const JELLY_IMPACT_SCALE = 0.02;    // 触れた瞬間の勢い（角速度 度/秒）→ゼリー変位への変換係数
-  const JELLY_IMPACT_MIN = 0.1;       // 触れた瞬間に最低これだけは揺れる（勢いが弱くても揺れが分かるように）
-  const JELLY_MAX = 0.4;              // ゼリー変位の最大値（つぶれ・伸びすぎの防止）
+  // ---- part.glbのゼリー揺れ（playerが触れた勢いに応じて波打つように揺らす）----
+  // 単一のバネだと「ただ一定周期で伸び縮みするだけ」になり物理的に見えないため、
+  // 周波数・減衰の異なる複数の振動モードを重ね合わせる（実際の弾性体が複数の固有振動数で
+  // 同時に揺れるのを簡易的に近似したもの）。低いモードほど大きくゆっくり、高いモードほど
+  // 小さく速く・早く収まる。合成結果が、うねりながら収まっていく波打ちに見える。
+  const JELLY_MODES = [
+    { stiffness: 65,  damping: 3.6, impact: 1.00 },   // 基本モード：体全体がゆっくり大きく揺れる（主揺れ）
+    { stiffness: 230, damping: 7.0, impact: 0.55 },   // 2次モード：その上に重なる、やや速い揺り返し
+    { stiffness: 620, damping: 13.0, impact: 0.28 },  // 3次モード：さらに細かく速い波打ち。すぐ収まる
+  ];
+  const JELLY_IMPACT_SCALE = 0.02;    // 触れた瞬間の勢い（角速度 度/秒）→揺れの初速への変換係数
+  const JELLY_IMPACT_MIN = 0.6;       // 触れた瞬間に最低これだけの初速は与える（勢いが弱くても揺れが分かるように）
+  const JELLY_MAX = 0.42;             // 全モード合計の変位（つぶれ・伸び）の上限
+  const JELLY_ROT_MAX = 9 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
+  const JELLY_BOB_MAX = 0.03;         // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
   let action3Count = 0;                // action3を再生した回数（累計）
   // action3が0.3秒以内の間隔で10回以上連続すると、目を開けて（閉じていれば）笑い目モーフを出す。連続が途切れたら終了する
   let action3StreakCount = 0;          // 現在連続している回数（0.3秒以内の間隔が途切れたら1にリセット）
@@ -2219,8 +2228,8 @@ body.stereo .dispbar{opacity:.55}
   let tiltSmoothReady = false;               // 次に有効な角度が届いたら、補間をその値から始める
   let tiltSmoothPrev = 0;                    // 前フレームのtiltSmooth（角速度＝触れる勢いの計算用）
   let tiltSmoothVel = 0;                     // tiltSmoothの変化速度（度/秒）
-  let hJelly = 0;                            // part.glbのゼリー変位（0=通常の形。負=つぶれ／正=伸び）
-  let hJellyVel = 0;                         // ゼリー変位の速度（バネ減衰の運動方程式で使う）
+  const hJellyX = JELLY_MODES.map(function () { return 0; });   // 各振動モードの変位
+  const hJellyV = JELLY_MODES.map(function () { return 0; });   // 各振動モードの速度
   const TILT_SMOOTH_TAU = 0.05;              // 秒: 補間の追従の速さ（小さいほど速く追従）
   // 表示側のスライダーで角度を手動指定するモード（操作側スマホなしでテストできる）
   let tiltManual = false;                    // true: スライダーの値を使う（操作側からの角度は無視）
@@ -2303,19 +2312,29 @@ body.stereo .dispbar{opacity:.55}
     if (R.player) R.player.rotation.y = PLAYER_FACING;
     if (forcedLoopActive) frontIntro = false;   // 強制ループ中は導入しない
     syncIntroActs();
-    // ---- part.glbのゼリー揺れ（バネ減衰の運動方程式。毎フレーム自然に元の形へ戻ろうとする）----
-    {
-      const jAccel = -JELLY_STIFFNESS * hJelly - JELLY_DAMPING * hJellyVel;
-      hJellyVel += jAccel * dt;
-      hJelly = clamp(hJelly + hJellyVel * dt, -JELLY_MAX, JELLY_MAX);
+    // ---- part.glbのゼリー揺れ：複数の振動モードをそれぞれバネ減衰で積分し、足し合わせる ----
+    // （モードごとに周波数・収まる速さが違うため、単純な一往復ではなく「うねりながら収まる」波打ちになる）
+    let hJellySum = 0;
+    for (let ji = 0; ji < JELLY_MODES.length; ji++) {
+      const jm = JELLY_MODES[ji];
+      const jAccel = -jm.stiffness * hJellyX[ji] - jm.damping * hJellyV[ji];
+      hJellyV[ji] += jAccel * dt;
+      hJellyX[ji] += hJellyV[ji] * dt;
+      hJellySum += hJellyX[ji];
     }
+    hJellySum = clamp(hJellySum, -JELLY_MAX, JELLY_MAX);
     if (R.h) {
-      R.h.position.set(inp.hox, inp.hoy, inp.hoz);
+      // 高次モード（速く細かい揺れ）だけを取り出して、左右への傾き（sway）と上下の沈み込みに使う
+      // → 体全体が均一に伸縮するだけでなく、揺れながら少し傾いたり沈んだりするので波打って見える
+      const hJellyRot = clamp(hJellyX[1] * 1.3 + hJellyX[2] * 1.6, -1, 1) * JELLY_ROT_MAX;
+      const hJellyBob = clamp(-hJellySum, -1, 1) * JELLY_BOB_MAX;
+      R.h.position.set(inp.hox, inp.hoy + hJellyBob, inp.hoz);
       // 縦(Y)がつぶれる/伸びるのに合わせて横(X,Z)を逆位相にふくらませ、ゼリーのような質感にする
-      const hJellyY = inp.hos * (1 + hJelly);
-      const hJellyXZ = inp.hos * (1 - hJelly * 0.5);
+      const hJellyY = inp.hos * (1 + hJellySum);
+      const hJellyXZ = inp.hos * (1 - hJellySum * 0.5);
       R.h.scale.set(hJellyXZ, hJellyY, hJellyXZ);
       R.h.rotation.x = inp.hot * Math.PI / 180;
+      R.h.rotation.z = hJellyRot;
     }   // playerと同じ位置（固定）＋操作側からのズレ調整・サイズ調整・傾き調整に追従（揺れ中はゼリー変位で上書き）
     if (R.plus) {
       R.plus.visible = true;
@@ -2570,9 +2589,10 @@ body.stereo .dispbar{opacity:.55}
       const action3IsAbove = tiltRaw >= ACTION3_DEG;
       if (action3IsAbove && !action3Above && !frontIntro) {   // 導入中はaction3を流さない（hはidleのまま）
         if (hAct3) playH(hAct3);
-        // playerが触れた瞬間：その勢い（角速度）に応じてpart.glb本体をゼリーのようにつぶれさせる
-        const jellyImpact = clamp(Math.abs(tiltSmoothVel) * JELLY_IMPACT_SCALE, JELLY_IMPACT_MIN, JELLY_MAX);
-        hJellyVel -= jellyImpact * 10;   // 勢いが強いほど大きく・速くつぶれ始める
+        // playerが触れた瞬間：その勢い（角速度）に応じて各振動モードへ同時に初速を与える
+        // → モードごとに周波数・収まる速さが違うため、単純な一往復ではなく波打つように揺れる
+        const jellyImpact = clamp(Math.abs(tiltSmoothVel) * JELLY_IMPACT_SCALE, JELLY_IMPACT_MIN, 3);
+        for (let ji = 0; ji < JELLY_MODES.length; ji++) hJellyV[ji] -= jellyImpact * JELLY_MODES[ji].impact * 9;
       }
       action3Above = action3IsAbove;
     } else {

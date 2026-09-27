@@ -2314,20 +2314,23 @@ body.stereo .dispbar{opacity:.55}
     syncIntroActs();
     // ---- part.glbのゼリー揺れ：複数の振動モードをそれぞれバネ減衰で積分し、足し合わせる ----
     // （モードごとに周波数・収まる速さが違うため、単純な一往復ではなく「うねりながら収まる」波打ちになる）
-    let hJellySum = 0;
+    // 上限はtanhで滑らかに抑える（単純にclampすると、勢いが強い時に生の値が上限を超えたまま
+    // 戻ってくるまでの間、表示上の値が上限に張り付いて「一瞬固まる」ように見えてしまうため）
+    const softLimit = function (v, m) { return m * Math.tanh(v / m); };
+    let hJellySumRaw = 0;
     for (let ji = 0; ji < JELLY_MODES.length; ji++) {
       const jm = JELLY_MODES[ji];
       const jAccel = -jm.stiffness * hJellyX[ji] - jm.damping * hJellyV[ji];
       hJellyV[ji] += jAccel * dt;
       hJellyX[ji] += hJellyV[ji] * dt;
-      hJellySum += hJellyX[ji];
+      hJellySumRaw += hJellyX[ji];
     }
-    hJellySum = clamp(hJellySum, -JELLY_MAX, JELLY_MAX);
+    const hJellySum = softLimit(hJellySumRaw, JELLY_MAX);
     if (R.h) {
       // 高次モード（速く細かい揺れ）だけを取り出して、左右への傾き（sway）と上下の沈み込みに使う
       // → 体全体が均一に伸縮するだけでなく、揺れながら少し傾いたり沈んだりするので波打って見える
-      const hJellyRot = clamp(hJellyX[1] * 1.3 + hJellyX[2] * 1.6, -1, 1) * JELLY_ROT_MAX;
-      const hJellyBob = clamp(-hJellySum, -1, 1) * JELLY_BOB_MAX;
+      const hJellyRot = softLimit(hJellyX[1] * 1.3 + hJellyX[2] * 1.6, 1) * JELLY_ROT_MAX;
+      const hJellyBob = softLimit(-hJellySum, 1) * JELLY_BOB_MAX;
       R.h.position.set(inp.hox, inp.hoy + hJellyBob, inp.hoz);
       // 縦(Y)がつぶれる/伸びるのに合わせて横(X,Z)を逆位相にふくらませ、ゼリーのような質感にする
       const hJellyY = inp.hos * (1 + hJellySum);

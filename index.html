@@ -350,27 +350,10 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" class="foldbtn" id="dPosFold" aria-expanded="false"><span class="arr">▼</span></button>
     </div>
     <div class="dpos-body" id="dPosBody">
-      <div class="tiltsel" id="dPosTabs">
-        <button type="button" class="on" data-tab="body">本体</button>
-        <button type="button" data-tab="arm">腕(playerarm)</button>
-        <button type="button" data-tab="part">part.glb</button>
-      </div>
-      <div id="dPosTab-body">
-        <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="px" data-d="-1">−</button><input type="range" id="d-rng-px" data-k="px" min="-200" max="200" step="0.05"><button type="button" class="dpstep" data-k="px" data-d="1">＋</button><span class="pv" id="d-val-px">0.00</span></div>
-        <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="py" data-d="-1">−</button><input type="range" id="d-rng-py" data-k="py" min="-200" max="200" step="0.05"><button type="button" class="dpstep" data-k="py" data-d="1">＋</button><span class="pv" id="d-val-py">0.00</span></div>
-        <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="pz" data-d="-1">−</button><input type="range" id="d-rng-pz" data-k="pz" min="-200" max="200" step="0.05"><button type="button" class="dpstep" data-k="pz" data-d="1">＋</button><span class="pv" id="d-val-pz">0.00</span></div>
-      </div>
-      <div id="dPosTab-arm" class="hidden">
-        <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="aox" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-aox" data-k="aox" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="aox" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-aox">0.00</span></div>
-        <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="aoy" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-aoy" data-k="aoy" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="aoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-aoy">0.00</span></div>
-        <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="aoz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-aoz" data-k="aoz" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="aoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-aoz">0.00</span></div>
-        <div class="prow"><span class="pl">回転</span><button type="button" class="dpstep" data-k="aor" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-aor" data-k="aor" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="aor" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-aor">0.00</span></div>
-      </div>
-      <div id="dPosTab-part" class="hidden">
-        <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="hox" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-hox" data-k="hox" min="-200" max="200" step="1"><button type="button" class="dpstep" data-k="hox" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-hox">0.00</span></div>
-        <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="hoy" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-hoy" data-k="hoy" min="-200" max="200" step="1"><button type="button" class="dpstep" data-k="hoy" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-hoy">0.00</span></div>
-        <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="hoz" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-hoz" data-k="hoz" min="-200" max="200" step="1"><button type="button" class="dpstep" data-k="hoz" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-hoz">0.00</span></div>
-      </div>
+      <p class="postitle" style="margin:0 0 6px">part.glbの位置調整（player本体との差・m）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="hox" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hox" data-k="hox" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hox" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hox">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="hoy" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoy" data-k="hoy" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="hoz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoz" data-k="hoz" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoz">0.00</span></div>
       <button type="button" class="mini" id="dBtnPosReset" style="width:100%; margin-top:4px">この項目をリセット</button>
     </div>
   </div>
@@ -800,16 +783,8 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.dpstep').forEach((b) => {
     b.addEventListener('click', () => setDispPos(b.dataset.k, inp[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  let dPosTab = 'body';
-  document.querySelectorAll('#dPosTabs button').forEach((b) => {
-    b.addEventListener('click', () => {
-      dPosTab = b.dataset.tab;
-      document.querySelectorAll('#dPosTabs button').forEach((x) => x.classList.toggle('on', x === b));
-      for (const t of Object.keys(TAB_KEYS)) $('#dPosTab-' + t).classList.toggle('hidden', t !== dPosTab);
-    });
-  });
   $('#dBtnPosReset').addEventListener('click', () => {
-    for (const k of TAB_KEYS[dPosTab]) inp[k] = POS_DEFAULT[k];
+    for (const k of TAB_KEYS.part) inp[k] = POS_DEFAULT[k];
     syncDispPosUi(); buzz(15);
   });
   syncDispPosUi();

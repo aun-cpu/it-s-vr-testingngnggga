@@ -207,14 +207,18 @@ body.stereo .tilt{display:none}
 .gaugefill{width:100%; height:0%; background:#ff5fa8; box-shadow:0 0 6px #ff5fa8; transition:height .15s linear}
 .dispbar{
   position:absolute; left:50%; transform:translateX(-50%);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; gap:8px; z-index:5;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 10px); display:flex; align-items:center; gap:8px; z-index:5;
 }
+.dispbar-body{display:flex; gap:8px}
+.dispbar.folded .dispbar-body{display:none}
 body.stereo .dispbar{opacity:.55}
 .wait{
   position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center;
   font-size:14px; color:#fff; background:rgba(0,0,0,.6); padding:14px 20px; border-radius:14px; pointer-events:none; line-height:1.7;
   width:min(86vw,420px);
 }
+.wait .tilthead{pointer-events:auto; margin-bottom:4px}
+.wait.folded .wait-body{display:none}
 .wait .code{font:700 44px/1.2 ui-monospace,Menlo,monospace; letter-spacing:.18em; margin:6px 0}
 /* 注視で選択した直後、20秒間の強制ループ中に画面中央へ出すピンクのカウントダウン */
 .countdown{
@@ -371,16 +375,25 @@ body.stereo .dispbar{opacity:.55}
     </div>
   </div>
   <div class="wait" id="wait">
-    <div id="waitMsg">接続を準備中…</div>
-    <div class="code" id="codeText">------</div>
-    <div id="waitSub">もう1台で「操作する」を選び、このコードを入力してください</div>
+    <div class="tilthead">
+      <p class="tiltcap" style="margin:0">接続コード</p>
+      <button type="button" class="foldbtn" id="waitFold" aria-expanded="true"><span class="arr">▼</span></button>
+    </div>
+    <div class="wait-body" id="waitBody">
+      <div id="waitMsg">接続を準備中…</div>
+      <div class="code" id="codeText">------</div>
+      <div id="waitSub">もう1台で「操作する」を選び、このコードを入力してください</div>
+    </div>
   </div>
-  <div class="dispbar">
-    <button class="mini" id="dispBack">← 戻る</button>
-    <button class="mini" id="dispVr">VR分割 切替</button>
-    <button class="mini" id="dispReset">視点リセット</button>
-    <button class="mini" id="dispTalkTest">話す動きテスト: OFF</button>
-    <button class="mini" id="dispGaugeTest">ゲージ 75→150</button>
+  <div class="dispbar" id="dispbar">
+    <button type="button" class="foldbtn" id="dispbarFold" aria-expanded="true"><span class="arr">▼</span></button>
+    <div class="dispbar-body" id="dispbarBody">
+      <button class="mini" id="dispBack">← 戻る</button>
+      <button class="mini" id="dispVr">VR分割 切替</button>
+      <button class="mini" id="dispReset">視点リセット</button>
+      <button class="mini" id="dispTalkTest">話す動きテスト: OFF</button>
+      <button class="mini" id="dispGaugeTest">ゲージ 75→150</button>
+    </div>
   </div>
 </div>
 
@@ -761,6 +774,8 @@ body.stereo .dispbar{opacity:.55}
   bindFold('#hudFold', '#hudwrap');
   bindFold('#tiltFold', '#tilt');
   bindFold('#dPosFold', '#dPos');
+  bindFold('#waitFold', '#wait');
+  bindFold('#dispbarFold', '#dispbar');
 
   /* 表示側の位置調整パネル（inpを直接書き換える。操作側が繋がっている間は
      操作側からの送信で上書きされるため、単独で使う場合の微調整用） */

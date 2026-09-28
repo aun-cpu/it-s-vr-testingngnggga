@@ -1113,8 +1113,10 @@ body.stereo .dispbar{opacity:.55}
   let playerProg = '';
 
   // ---- 表示開始直後の導入: 2action0（player・plusとも）を角度で動かす ----
-  // 0°=0フレーム目、INTRO_MAX_DEG°=最終フレーム。最終フレームに達したら、そのまま通常の2action/2actionplusの仕様に戻る。
-  const INTRO_MAX_DEG = 7;
+  // INTRO_MIN_DEG°(-7°)=0フレーム目、INTRO_MAX_DEG°(0°)=最終フレーム。最終フレームに達したら、そのまま通常の2action/2actionplusの仕様に戻る。
+  const INTRO_MIN_DEG = -7;
+  const INTRO_MAX_DEG = 0;
+  let introArmed = false;             // 一度でもINTRO_MAX_DEG未満になったらtrue（開始時点で既に0°だと導入が即終了してしまうのを防ぐ）
   let frontIntro = true;              // true: 導入の最中（2action0 / plusの導入クリップを使う）。最初から導入で始める
   let playerAct0 = null;              // player.glb内の「2action0」
   let plusAct0 = null;                // playerplus.glb内の「2action0」
@@ -2532,9 +2534,9 @@ body.stereo .dispbar{opacity:.55}
       let t;
       const tiltRaw = tiltSmooth;              // カクツキを抑えるため、補間後の角度で再生位置を決める
       if (frontIntro && playerAct0) {
-        // 導入: 0°=0フレーム目 → INTRO_MAX_DEG°=最終フレーム（範囲外は端のフレームで止める）
+        // 導入: -7°=0フレーム目 → 0°=最終フレーム（範囲外は端のフレームで止める）
         const d0 = playerAct0.getClip().duration;
-        t = d0 * clamp(tiltRaw / INTRO_MAX_DEG, 0, 1);
+        t = d0 * clamp((tiltRaw - INTRO_MIN_DEG) / (INTRO_MAX_DEG - INTRO_MIN_DEG), 0, 1);
         playerAct0.time = t;
         mixer.update(0);
         playerProg = '  導入 ' + t.toFixed(2) + 's / ' + d0.toFixed(2) + 's';
@@ -2609,7 +2611,8 @@ body.stereo .dispbar{opacity:.55}
       plusMixer.update(0);
     }
     // 最終フレーム（INTRO_MAX_DEG°）に達したら導入を終え、次のフレームから通常の2actionの仕様に戻る
-    if (frontIntro && tiltLive && tiltSmooth >= INTRO_MAX_DEG) {
+    if (frontIntro && tiltLive && tiltSmooth < INTRO_MAX_DEG) introArmed = true;
+    if (frontIntro && tiltLive && introArmed && tiltSmooth >= INTRO_MAX_DEG) {
       frontIntro = false;
       playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、2action0→2actionに切り替わるこのタイミングで流す
     }

@@ -1264,9 +1264,9 @@ body.stereo .dispbar{opacity:.55}
   // 同時に揺れるのを簡易的に近似したもの）。低いモードほど大きくゆっくり、高いモードほど
   // 小さく速く・早く収まる。合成結果が、うねりながら収まっていく波打ちに見える。
   const JELLY_MODES = [
-    { stiffness: 65,  damping: 9.0, impact: 1.00 },   // 基本モード：体全体がゆっくり大きく揺れる（主揺れ）
-    { stiffness: 230, damping: 16.0, impact: 0.55 },   // 2次モード：その上に重なる、やや速い揺り返し
-    { stiffness: 620, damping: 28.0, impact: 0.28 },  // 3次モード：さらに細かく速い波打ち。すぐ収まる
+    { stiffness: 65,  damping: 3.6, impact: 1.00 },   // 基本モード：体全体がゆっくり大きく揺れる（主揺れ）
+    { stiffness: 230, damping: 7.0, impact: 0.55 },   // 2次モード：その上に重なる、やや速い揺り返し
+    { stiffness: 620, damping: 13.0, impact: 0.28 },  // 3次モード：さらに細かく速い波打ち。すぐ収まる
   ];
   // ---- 接触の物理演算 ----
   // playerが触れている間だけ、各モードのバネの支点がplayerの押し込みに連動して動く（ばね＋ダンパで接続）。
@@ -1276,9 +1276,9 @@ body.stereo .dispbar{opacity:.55}
   //  ・離れた後 → 潰れていた分が自分の弾性で戻り、速く離れるほど跳ね返りが出る
   const CONTACT_START_DEG = 0;               // 度: この角度からplayerがpartに触れ始める（2actionの0°=5フレーム目）
   const CONTACT_FULL_DEG = ACTION3_DEG;      // 度: ここまで押し込むと最大の潰れ（＝action3が出る角度）
-  const JELLY_SQUASH_MAX = 0.015;             // ゆっくり最大まで押し込んだ時の変形量（静的な押され量）
+  const JELLY_SQUASH_MAX = 0.04;             // ゆっくり最大まで押し込んだ時の変形量（静的な押され量）
   const JELLY_PUSH_DIR = 1;                  // 押された時の変形の向き。+1=Y方向に伸びてXZが縮む／-1=Y方向に潰れてXZが広がる
-  const JELLY_CONTACT_KICK = 1.5;              // 押し込む速さに対する揺れの強さ（大きいほど速い接触で大きく揺れる）
+  const JELLY_CONTACT_KICK = 6;              // 押し込む速さに対する揺れの強さ（大きいほど速い接触で大きく揺れる）
   const JELLY_WEIGHT_SUM = JELLY_MODES.reduce(function (a, m) { return a + m.impact; }, 0);   // 静的な潰れを各モードに配分する重みの合計
   // ---- partとplayerが重ならないようにする衝突の物理演算 ----
   // playerの頂点（スキニング後の実際の形）がpartの内側に入ったら、その分だけpartを押し出す。
@@ -1286,10 +1286,10 @@ body.stereo .dispbar{opacity:.55}
   const PART_COLLIDE_ON = true;
   const PART_COLLIDE_SCALE = 0.85;           // 衝突判定の楕円体の大きさ（partのバウンディングボックスに内接する楕円体に対する倍率）
   const PART_COLLIDE_SAMPLES = 1500;         // 判定に使うplayerの頂点の最大数（多いほど正確だが重い）
-  const PART_COLLIDE_MAX_OFFSET = 0.1;       // m: 押し出しで元の位置からずれてよい最大距離
+  const PART_COLLIDE_MAX_OFFSET = 0.3;       // m: 押し出しで元の位置からずれてよい最大距離
   const PART_COLLIDE_ITER = 3;               // 1フレーム内で重なりを解消する反復回数
-  const PART_SPRING_K = 160;                 // 元の位置へ戻る弾性の強さ
-  const PART_SPRING_C = 28;                   // 動きの減衰（大きいほど早く収まる）
+  const PART_SPRING_K = 120;                 // 元の位置へ戻る弾性の強さ
+  const PART_SPRING_C = 9;                   // 動きの減衰（大きいほど早く収まる）
   let hCollide = null;                       // partの衝突用の大きさ（読込後に設定）
   const partBase = new THREE.Vector3();      // 押し出し前のpartの位置（調整値＋ゼリーの上下動）
   const partOff = new THREE.Vector3();       // 押し出しによるずれ
@@ -1384,9 +1384,9 @@ body.stereo .dispbar{opacity:.55}
   }
   let jellyDepthDeg = 0;                     // 現在の押し込み量（度）。0以下=接触なし
   let jellySPrev = 0;                        // 前フレームの押し込みによる潰れ量（押し込む速さの計算用）
-  const JELLY_MAX = 0.05;             // 全モード合計の変位（つぶれ・伸び）の上限（現実的な範囲に抑える）
-  const JELLY_ROT_MAX = 1 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
-  const JELLY_BOB_MAX = 0.003;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
+  const JELLY_MAX = 0.16;             // 全モード合計の変位（つぶれ・伸び）の上限（現実的な範囲に抑える）
+  const JELLY_ROT_MAX = 4 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
+  const JELLY_BOB_MAX = 0.012;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
   let action3Count = 0;                // action3を再生した回数（累計）
   // action3が0.3秒以内の間隔で10回以上連続すると、目を開けて（閉じていれば）笑い目モーフを出す。連続が途切れたら終了する
   let action3StreakCount = 0;          // 現在連続している回数（0.3秒以内の間隔が途切れたら1にリセット）
@@ -2889,8 +2889,7 @@ body.stereo .dispbar{opacity:.55}
     if (frontIntro && tiltLive && tiltSmooth < INTRO_MAX_DEG) introArmed = true;
     if (frontIntro && tiltLive && introArmed && tiltSmooth >= INTRO_MAX_DEG) {
       frontIntro = false;
-      partFromY = inp.hoy; partFromZ = inp.hoz;   // 切り替え時の位置から目標位置へ動かす
-      partMoveT = 0; partMoving = true; partLocked = true;
+      // 切り替え時にpartの位置を動かす演出はやめた（位置は操作側の値のまま）
       introOffset = INTRO_END_START_DEG - tiltSmooth;   // 切り替わった時点の角度が、2actionの0°になるようにずらす
       playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、2action0→2actionに切り替わるこのタイミングで流す
     }

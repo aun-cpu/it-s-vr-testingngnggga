@@ -1005,11 +1005,11 @@ body.stereo .dispbar{opacity:.55}
   const WET_DRY = 0.002;          // 毎秒少しずつ乾く量（WET_BASE より下には減らない）
   const WET_REACH = 0.15;         // m: 濡れが最大まで広がった時に、筒の線から届く距離
   const WET_DRIP_MIN = 0.3;       // この濡れ量を超えると、口から糸を引いて垂れる
-  const WET_STRANDS = 48;         // partとplayerの間に出せる細い糸の本数（濡れが増えるほど、使える本数が増える）
+  const WET_STRANDS = 24;         // partとplayerの間に出せる細い糸の本数（濡れが増えるほど、使える本数が増える）
   const WET_STRING_MAX = 1.5;     // m: 口とplayerがこれ以上離れていると糸は張らない（HUDの「糸の距離」を見て調整）
   const WET_STRING_FIRST = 0.1;   // 最初の糸が使える濡れ量（0〜1）
   const WET_STRING_STEP = 0.0008;  // 次の糸が使えるようになる濡れ量の間隔
-  const WET_STRING_R = 0.0007;    // m: 糸の基準の太さ（細いほど繊細）
+  const WET_STRING_R = 0.0004;    // m: 糸の基準の太さ（細いほど繊細）
   const WET_ANCHOR_SPREAD = 0.035; // m: player側の糸の付け根が散らばる範囲（筒の入口まわりだけ）
   const WET_MOUTH_SPREAD = 2.5;   // part側の糸の付け根が散らばる範囲（筒の半径の倍率）
   const WET_END_GAP = 0.16;       // m: 糸の両端を、さらに外側へ離す量（大きいほど、糸の両端が遠くなる）
@@ -1020,7 +1020,7 @@ body.stereo .dispbar{opacity:.55}
   const WET_TOUCH_DEG = 6;        // 度: この角度（6°〜7°）まで動いたら確実に接触している。ここまで動いてから戻った（この角度を下回った）瞬間に糸を出す
   let wetTiltDeg = NaN;           // 今の角度（角度データなし・導入中・強制ループ中はNaN）
   const WET_STRING_AMBIENT = 0;   // 素早く動かしていなくても、ときどき張る糸の本数
-  const WET_ALPHA = OOZE_ALPHA;
+  const WET_ALPHA = 0.32;      // 糸の不透明度（小さいほど透明。液体本体のOOZE_ALPHAとは別）
   const WET_RECOIL_MIN = 0.15, WET_RECOIL_MAX = 0.32;   // 秒: ちぎれた糸が縮みきるまで
   const wetStrands = [], wetDrops = [];
   const wetAnchor = new THREE.Vector3();

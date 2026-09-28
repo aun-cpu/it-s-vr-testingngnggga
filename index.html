@@ -1884,9 +1884,9 @@ body.stereo .dispbar{opacity:.55}
   // ※頂点属性は増やさず、メッシュごとのuniformだけを使う（属性数の上限に触れないため）。
   const H_WAVE_ON = true;              // false: 波打ちを止める
   const H_WAVE_AMP_RATIO = 0.02;       // 揺れが最大(JELLY_MAX)の時の波の高さ（partの高さに対する比率）。実際は揺れの大きさに比例して小さくなる
-  const H_WAVE_FREQ = 5;               // partの高さの中に入る波の数（多いほど細かい波）
-  const H_WAVE_SPEED = 12;             // rad/秒: 揺れが最大の勢いの時に波が流れる速さ（勢いに比例）
-  const H_WAVE_SHADE_GAIN = 2.5;       // 陰影の波打ちの強さ（1で幾何学的に正しい傾き。大きいほど波がはっきり見える）
+  const H_WAVE_FREQ = 14;              // partの高さの中に入る波の数（多いほど細かい波）
+  const H_WAVE_SPEED = 40;             // rad/秒: 揺れが最大の勢いの時に波が流れる速さ（勢いに比例）
+  const H_WAVE_SHADE_GAIN = 1;         // 陰影の波打ちの強さ（1で幾何学的に正しい傾き。大きいほど波がはっきり見える）
   let hWaveRef = 1;                    // 波の位相の基準にするpartの高さ(m)。読込時に実測値へ更新
   let hWavePhaseAcc = 0;               // 波の位相（揺れの勢いに応じて進む）
   const hWaveU = {                     // 全メッシュ共通のuniform（毎フレーム更新）

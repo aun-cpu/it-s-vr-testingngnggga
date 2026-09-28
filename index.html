@@ -1276,6 +1276,108 @@ body.stereo .dispbar{opacity:.55}
   const JELLY_PUSH_DIR = 1;                  // 押された時の変形の向き。+1=Y方向に伸びてXZが縮む／-1=Y方向に潰れてXZが広がる
   const JELLY_CONTACT_KICK = 6;              // 押し込む速さに対する揺れの強さ（大きいほど速い接触で大きく揺れる）
   const JELLY_WEIGHT_SUM = JELLY_MODES.reduce(function (a, m) { return a + m.impact; }, 0);   // 静的な潰れを各モードに配分する重みの合計
+  // ---- partとplayerが重ならないようにする衝突の物理演算 ----
+  // playerの頂点（スキニング後の実際の形）がpartの内側に入ったら、その分だけpartを押し出す。
+  // partは弾性で元の位置へ戻ろうとするので、押されて動き、離れると跳ね返って戻る。
+  const PART_COLLIDE_ON = true;
+  const PART_COLLIDE_SCALE = 0.85;           // 衝突判定の楕円体の大きさ（partのバウンディングボックスに内接する楕円体に対する倍率）
+  const PART_COLLIDE_SAMPLES = 1500;         // 判定に使うplayerの頂点の最大数（多いほど正確だが重い）
+  const PART_COLLIDE_MAX_OFFSET = 0.3;       // m: 押し出しで元の位置からずれてよい最大距離
+  const PART_COLLIDE_ITER = 3;               // 1フレーム内で重なりを解消する反復回数
+  const PART_SPRING_K = 120;                 // 元の位置へ戻る弾性の強さ
+  const PART_SPRING_C = 9;                   // 動きの減衰（大きいほど早く収まる）
+  let hCollide = null;                       // partの衝突用の大きさ（読込後に設定）
+  const partBase = new THREE.Vector3();      // 押し出し前のpartの位置（調整値＋ゼリーの上下動）
+  const partOff = new THREE.Vector3();       // 押し出しによるずれ
+  const partVel = new THREE.Vector3();       // ずれの速度
+  let partPushLen = 0;                       // 現在のずれの大きさ（m）
+  let partCollList = null, partCollKey = '', partCollPts = null;
+  const _cp = { v: new THREE.Vector3(), inv: new THREE.Matrix4(), t: new THREE.Vector3(), best: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), prev: new THREE.Vector3() };
+  function collectPartCollideMeshes() {
+    const list = [];
+    [R.player, R.arm].forEach(function (g) {
+      if (!g) return;
+      g.traverse(function (o) {
+        if (!o.isMesh || o.userData.__outline || !o.visible || !o.geometry || !o.geometry.attributes.position) return;
+        if (o.isSkinnedMesh && (typeof o.boneTransform !== 'function' || !o.geometry.attributes.skinIndex || !o.geometry.attributes.skinWeight)) return;
+        list.push(o);
+      });
+    });
+    if (!list.length) return [];
+    const per = Math.max(1, Math.floor(PART_COLLIDE_SAMPLES / list.length));
+    return list.map(function (m) {
+      const n = m.geometry.attributes.position.count;
+      const step = Math.max(1, Math.ceil(n / per));
+      const idx = [];
+      for (let i = 0; i < n; i += step) idx.push(i);
+      return { mesh: m, idx: idx };
+    });
+  }
+  function updatePartCollision(dt) {
+    if (!PART_COLLIDE_ON || !R || !R.h || !hCollide || !(dt > 0)) return;
+    const h = R.h, c = _cp;
+    // 1) 自由な状態：弾性で元の位置へ戻る
+    c.prev.copy(partOff);
+    c.a.copy(partOff).multiplyScalar(-PART_SPRING_K).addScaledVector(partVel, -PART_SPRING_C);
+    partVel.addScaledVector(c.a, dt);
+    partOff.addScaledVector(partVel, dt);
+    // 2) playerの頂点（ボーン変形後）をワールド座標で集める
+    const key = (R.player ? R.player.children.length : 0) + ':' + (R.arm ? R.arm.children.length : 0);
+    if (key !== partCollKey || !partCollList) { partCollKey = key; partCollList = collectPartCollideMeshes(); partCollPts = null; }
+    if (!partCollList.length) { h.position.copy(partBase).add(partOff); return; }
+    if (R.player) R.player.updateMatrixWorld(true);
+    if (R.arm) R.arm.updateMatrixWorld(true);
+    let total = 0;
+    partCollList.forEach(function (e) { total += e.idx.length; });
+    if (!partCollPts || partCollPts.length !== total * 3) partCollPts = new Float32Array(total * 3);
+    let w = 0;
+    partCollList.forEach(function (e) {
+      const m = e.mesh, pos = m.geometry.attributes.position;
+      m.updateMatrixWorld(false);
+      for (let k = 0; k < e.idx.length; k++) {
+        if (m.isSkinnedMesh) m.boneTransform(e.idx[k], c.v); else c.v.fromBufferAttribute(pos, e.idx[k]);
+        c.v.applyMatrix4(m.matrixWorld);
+        partCollPts[w++] = c.v.x; partCollPts[w++] = c.v.y; partCollPts[w++] = c.v.z;
+      }
+    });
+    // 3) 重なりを解消：partの楕円体の内側に入った頂点のうち一番深いものを、表面まで押し出す（数回反復）
+    const rx = hCollide.rx * PART_COLLIDE_SCALE, ry = hCollide.ry * PART_COLLIDE_SCALE, rz = hCollide.rz * PART_COLLIDE_SCALE;
+    let touched = false;
+    for (let it = 0; it < PART_COLLIDE_ITER; it++) {
+      h.position.copy(partBase).add(partOff);
+      h.updateMatrix();
+      if (h.parent) h.matrixWorld.multiplyMatrices(h.parent.matrixWorld, h.matrix); else h.matrixWorld.copy(h.matrix);
+      c.inv.copy(h.matrixWorld).invert();
+      let bestLen = 0;
+      for (let i = 0; i < total; i++) {
+        c.v.set(partCollPts[i * 3], partCollPts[i * 3 + 1], partCollPts[i * 3 + 2]);
+        const px = c.v.x, py = c.v.y, pz = c.v.z;
+        c.v.applyMatrix4(c.inv);
+        let qx = (c.v.x - hCollide.cx) / rx, qy = (c.v.y - hCollide.cy) / ry, qz = (c.v.z - hCollide.cz) / rz;
+        const d2 = qx * qx + qy * qy + qz * qz;
+        if (d2 >= 1) continue;
+        let d = Math.sqrt(d2);
+        if (d < 1e-4) { qx = 0; qy = 0; qz = 1e-4; d = 1e-4; }
+        // 頂点から見て、中心と反対側にある表面の点（ローカル→ワールド）
+        c.s.set(hCollide.cx + qx / d * rx, hCollide.cy + qy / d * ry, hCollide.cz + qz / d * rz).applyMatrix4(h.matrixWorld);
+        c.t.set(px - c.s.x, py - c.s.y, pz - c.s.z);   // partを動かす向き（頂点が表面に乗るまで）
+        const len = c.t.length();
+        if (len > bestLen) { bestLen = len; c.best.copy(c.t); }
+      }
+      if (bestLen < 1e-4) break;
+      if (bestLen > 0.1) c.best.multiplyScalar(0.1 / bestLen);   // 1回の押し出しの上限（急にワープしないように）
+      partOff.add(c.best);
+      touched = true;
+    }
+    if (partOff.length() > PART_COLLIDE_MAX_OFFSET) partOff.setLength(PART_COLLIDE_MAX_OFFSET);
+    // 4) 押されて動いた分を速度にする（離れた後に、その勢いで跳ね返る）
+    if (touched) {
+      partVel.copy(partOff).sub(c.prev).divideScalar(dt);
+      if (partVel.length() > 5) partVel.setLength(5);
+    }
+    partPushLen = partOff.length();
+    h.position.copy(partBase).add(partOff);
+  }
   let jellyDepthDeg = 0;                     // 現在の押し込み量（度）。0以下=接触なし
   let jellySPrev = 0;                        // 前フレームの押し込みによる潰れ量（押し込む速さの計算用）
   const JELLY_MAX = 0.16;             // 全モード合計の変位（つぶれ・伸び）の上限（現実的な範囲に抑える）
@@ -1985,6 +2087,8 @@ body.stereo .dispbar{opacity:.55}
       const c = box.getCenter(new THREE.Vector3());
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
       if (finalSize.y > 0) hHeight = finalSize.y;   // 実測の高さをボタンの位置合わせに使う
+      // playerとの衝突判定用：partの大きさ（グループ内の座標。中心は足元中央から高さの半分の位置）
+      if (finalSize.x > 0 && finalSize.y > 0 && finalSize.z > 0) hCollide = { cx: 0, cy: finalSize.y / 2, cz: 0, rx: finalSize.x / 2, ry: finalSize.y / 2, rz: finalSize.z / 2 };
       // 輪郭線の狙いの太さ（スケール適用後のワールド単位で共通の値にする）。
       // メッシュごとのノードscaleの違いはaddOutline側でgetWorldScale()を使って吸収する。
       const outlineWorldThickness = finalSize.y > 0 ? finalSize.y * H_OUTLINE_RATIO : H_OUTLINE_RATIO;
@@ -2390,7 +2494,8 @@ body.stereo .dispbar{opacity:.55}
       // → 体全体が均一に伸縮するだけでなく、揺れながら少し傾いたり沈んだりするので波打って見える
       const hJellyRot = softLimit(hJellyX[1] * 1.3 + hJellyX[2] * 1.6, 1) * JELLY_ROT_MAX;
       const hJellyBob = softLimit(-hJellySum, 1) * JELLY_BOB_MAX;
-      R.h.position.set(inp.hox, inp.hoy + hJellyBob, inp.hoz);
+      partBase.set(inp.hox, inp.hoy + hJellyBob, inp.hoz);
+      R.h.position.copy(partBase).add(partOff);
       // 縦(Y)がつぶれる/伸びるのに合わせて横(X,Z)を逆位相にふくらませ、ゼリーのような質感にする
       const hJellyY = inp.hos * (1 + hJellySum);
       const hJellyXZ = inp.hos * (1 - hJellySum * 0.5);
@@ -2687,6 +2792,8 @@ body.stereo .dispbar{opacity:.55}
       playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、2action0→2actionに切り替わるこのタイミングで流す
     }
 
+    updatePartCollision(dt);   // playerの今のポーズに合わせて、partがplayerと重ならないよう押し出す
+
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;
     if (W !== R.W || H !== R.H) { R.W = W; R.H = H; R.renderer.setSize(W, H, false); }
@@ -2763,7 +2870,7 @@ body.stereo .dispbar{opacity:.55}
         (fresh ? '操作側: 受信中' : (linked ? '操作側: 受信途絶' : '操作側: 待機中')) + '\n' +
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
-        'part.glb: ' + hState + hAnim + '\n' +
+        'part.glb: ' + hState + hAnim + (partPushLen > 0.0005 ? '  押し出し ' + (partPushLen * 100).toFixed(1) + 'cm' : '') + '\n' +
         'h視線: ' + hEyeInfo + (hEyes ? (hGaze.mode === 'camera' ? '（カメラを見ている）' : '（自由に見ている）') : '') +
           (hGazeDebugAng != null ? '（角度差' + hGazeDebugAng + '°）' : '') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +

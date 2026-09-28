@@ -980,13 +980,13 @@ body.stereo .dispbar{opacity:.55}
   const OOZE_RADIAL_MIN = 0.03;       // m: 先端が筒の中心線からこの距離以内なら「筒に近い」（筒の半径が小さくても効くように）
   const OOZE_PUMP_SPEED = 0.04;       // m/s: 入っている間、これ以上の速さで奥へ動くたびに追加でにじむ
   const OOZE_COOLDOWN = 0.7;          // 秒: 追加でにじむ間隔の目安
-  const OOZE_BURST = 2;               // 入れた瞬間に出す数
+  const OOZE_BURST = 1;               // 入れた瞬間に出す数
   const OOZE_MAX = 6;                 // 同時に出る数の上限（「少し」あふれる量）
   const OOZE_SIZE = 0.009;            // m: 基準の大きさ
   const OOZE_LIFE = 5.0;              // 秒: にじんでから消えるまで
   const OOZE_AXIAL_MIN = -0.15, OOZE_AXIAL_MAX = 0.2;   // 出る位置（筒の中心から軸方向。筒の長さに対する割合。0=ちょうど真ん中）
   const OOZE_ANGLE_CENTER = -90;      // 度: 筒の周りのどこから出るか（-90=真下側）
-  const OOZE_ANGLE_SPREAD = 140;      // 度: 上の角度を中心にしたばらつき幅
+  const OOZE_ANGLE_SPREAD = 70;      // 度: 上の角度を中心にしたばらつき幅
   const OOZE_DRIP_DELAY = 0.5;        // 秒: にじんでから垂れ始めるまで（±ばらつき）
   const OOZE_DRIP_SPEED = 0.018;      // m/s: 垂れ始めの速さ（粘りがあるのでとてもゆっくり）
   const OOZE_DRIP_ACCEL = 0.03;       // m/s^2: 垂れながら少しずつ速くなる量
@@ -996,6 +996,73 @@ body.stereo .dispbar{opacity:.55}
   const OOZE_GRAVITY = 1.4;           // m/s^2: ちぎれた雫が落ちる加速
   const OOZE_SEE_THROUGH = false;     // true にすると、partなどの後ろに隠れても常に手前に表示する
   const oozes = [];
+  // ---- 濡れ表現：筒の口に液体が少し見え、動かすほどpart / plus / plus2 の筒まわりの表面がだんだん濡れていく ----
+  const WET_ON = true;
+  const WET_BASE = 0.14;          // 最初から口に少し見えている液体の量（0〜1）
+  const WET_GAIN = 1.6;           // 筒の近くでplus2の先端が動いた距離(m)あたりに増える濡れ量
+  const WET_SEEP = 0.015;         // 筒に入っている間、毎秒じわっと増える量
+  const WET_DRY = 0.002;          // 毎秒少しずつ乾く量（WET_BASE より下には減らない）
+  const WET_REACH = 0.15;         // m: 濡れが最大まで広がった時に、筒の線から届く距離
+  const WET_DRIP_MIN = 0.3;       // この濡れ量を超えると、口から糸を引いて垂れる
+  const WETU = { P: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, K: { value: WET_BASE }, R: { value: WET_REACH }, env: { value: null } };
+  let wetK = WET_BASE, wetSide = 1, wetPrimed = false, wetRing = null;
+  const WET_VDECL = 'varying vec3 vWetP;\nvarying vec3 vWetQ;\n';
+  const WET_VPOS = '\nvWetP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWetQ = (modelMatrix * vec4(position, 1.0)).xyz;\n';
+  const WET_FDECL = [
+    'varying vec3 vWetP;', 'varying vec3 vWetQ;', 'uniform vec3 uWP[3];', 'uniform float uWK;', 'uniform float uWR;', 'uniform sampler2D uWEnv;',
+    'float wtH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }',
+    'float wtN(vec3 x) {',
+    '  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);',
+    '  return mix(mix(mix(wtH(i), wtH(i + vec3(1,0,0)), f.x), mix(wtH(i + vec3(0,1,0)), wtH(i + vec3(1,1,0)), f.x), f.y),',
+    '             mix(mix(wtH(i + vec3(0,0,1)), wtH(i + vec3(1,0,1)), f.x), mix(wtH(i + vec3(0,1,1)), wtH(i + vec3(1,1,1)), f.x), f.y), f.z);',
+    '}',
+    'float wtSeg(vec3 p, vec3 a, vec3 b) { vec3 ab = b - a; float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1.0e-8), 0.0, 1.0); return length(p - (a + ab * t)); }',
+    'float wtWet(vec3 p, vec3 q) {',   // 口→筒の入口→筒の奥 の線からの距離で決め、縁はノイズで不規則にする
+    '  float d = min(wtSeg(p, uWP[0], uWP[1]), wtSeg(p, uWP[1], uWP[2]));',
+    '  float n = wtN(q * 45.0) * 0.65 + wtN(q * 130.0) * 0.35;',
+    '  float reach = uWR * (0.12 + 0.88 * uWK);',
+    '  float w = 1.0 - smoothstep(reach * 0.25, reach, d + (n - 0.5) * reach * 0.6);',
+    '  return w * smoothstep(0.02, 0.2, uWK);',
+    '}'].join('\n') + '\n';
+  const WET_COLOR = [
+    'float wtW = wtWet(vWetP, vWetQ);',
+    'diffuseColor.rgb *= 1.0 - 0.28 * wtW;',
+    'diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.08, 1.0, 0.82), 0.5 * wtW);'].join('\n') + '\n';
+  const WET_ROUGH = 'roughnessFactor = mix(roughnessFactor, 0.05, clamp(wtW * 1.4, 0.0, 1.0));\n';
+  const WET_NORMAL = [   // 濡れた所に小さな水玉状の凹凸（光を散らして"ぬれ感"を出す）
+    '{',
+    '  float wtB = wtW * (smoothstep(0.55, 0.85, wtN(vWetQ * 220.0)) * 0.0012 + wtN(vWetQ * 90.0) * 0.0006);',
+    '  vec3 wtP = -vViewPosition; vec3 wtDx = dFdx(wtP), wtDy = dFdy(wtP);',
+    '  vec3 wtR1 = cross(wtDy, normal), wtR2 = cross(normal, wtDx); float wtDet = dot(wtDx, wtR1);',
+    '  vec3 wtG = sign(wtDet) * (dFdx(wtB) * wtR1 + dFdy(wtB) * wtR2);',
+    '  normal = normalize(abs(wtDet) * normal - wtG);',
+    '}'].join('\n') + '\n';
+  const WET_END = [   // 縁のテカりと、疑似的な映り込み
+    '{',
+    '  vec3 wtV = normalize(vViewPosition); float wtNV = clamp(abs(dot(normal, wtV)), 0.0, 1.0);',
+    '  float wtFr = 0.04 + 0.96 * pow(1.0 - wtNV, 5.0);',
+    '  vec3 wtRv = reflect(-wtV, normal);',
+    '  vec3 wtE = texture2D(uWEnv, wtRv.xy * 0.5 + 0.5).rgb;',
+    '  gl_FragColor.rgb += wtE * wtW * (0.10 + 0.9 * wtFr) * 0.55;',
+    '}'].join('\n') + '\n';
+  function wetInject(m) {   // 材質へ濡れを上乗せする（既存の onBeforeCompile の後に重ねる）
+    if (!WET_ON || !m || m.userData.__wet) return;
+    m.userData.__wet = true;
+    const prev = m.onBeforeCompile;
+    m.customProgramCacheKey = function () { return 'wet|' + (prev ? prev.toString() : ''); };
+    m.onBeforeCompile = function (sh) {
+      if (prev) prev.call(this, sh);
+      sh.uniforms.uWP = WETU.P; sh.uniforms.uWK = WETU.K; sh.uniforms.uWR = WETU.R; sh.uniforms.uWEnv = WETU.env;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WET_VDECL).replace('#include <project_vertex>', '#include <project_vertex>' + WET_VPOS);
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + WET_FDECL)
+        .replace('#include <color_fragment>', '#include <color_fragment>\n' + WET_COLOR)
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + WET_ROUGH)
+        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_NORMAL)
+        .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' + WET_END);
+    };
+    m.needsUpdate = true;
+  }
+  function wetMatsOf(o) { if (o.isMesh && o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(wetInject); }
   let oozeGuideOn = true;             // 液体の位置ガイド（黄=液体が出る範囲と中心、ピンク=筒。軸: 赤=X右 緑=Y上 青=Z手前）
   let oozeGuide = null;
   const oozeDbg = { ratio: 0, radialMM: 0, inside: false, near: false, has: false };
@@ -1050,6 +1117,11 @@ body.stereo .dispbar{opacity:.55}
   function initOoze(scene) {
     oozeGroup = new THREE.Group();
     oozeEnv = ozEnvTexture();
+    WETU.env.value = oozeEnv;
+    wetRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.2, 14, 40), new THREE.MeshStandardMaterial({ color: OOZE_COLOR, emissive: 0x2a2208, roughness: 0.06, metalness: 0.25, envMap: oozeEnv, envMapIntensity: 1.4,
+                                                                                                       transparent: true, opacity: 0, depthWrite: true, depthTest: !OOZE_SEE_THROUGH }));
+    wetRing.visible = false; wetRing.frustumCulled = false;
+    oozeGroup.add(wetRing);
     const sph = new THREE.SphereGeometry(1, 20, 14);   // 単位球。大きさはスケールで反映
     const mkMat = function () {   // つやつやで、ほぼ不透明なぬれた質感
       return new THREE.MeshStandardMaterial({ color: OOZE_COLOR, emissive: 0x2a2208, roughness: 0.06, metalness: 0.25, envMap: oozeEnv, envMapIntensity: 1.4,
@@ -1140,8 +1212,8 @@ body.stereo .dispbar{opacity:.55}
     e.w.set(0, Math.cos(tt), Math.sin(tt));    // 軸に垂直な「上」方向
     const ang = (OOZE_ANGLE_CENTER + (Math.random() - 0.5) * OOZE_ANGLE_SPREAD) * Math.PI / 180;
     o.n.set(0, 0, 0).addScaledVector(e.x, Math.cos(ang)).addScaledVector(e.w, Math.sin(ang));   // 筒の外向き
-    const a = (OOZE_AXIAL_MIN + Math.random() * (OOZE_AXIAL_MAX - OOZE_AXIAL_MIN)) * full;
-    o.off.set(0, 0, 0).addScaledVector(e.d, a).addScaledVector(o.n, Math.max(0.002, inp.lqr) * 1.05);   // 液体用の筒の中心からの相対位置（筒・partに追従）
+    const a = wetSide * full / 2;   // 口のふちから垂れる
+    o.off.set(0, 0, 0).addScaledVector(e.d, a).addScaledVector(o.n, Math.max(0.002, inp.lqr) * 0.95);   // 液体用の筒の中心からの相対位置（筒・partに追従）
     o.size = OOZE_SIZE * (0.8 + Math.random() * 0.5);
     o.age = 0; o.life = OOZE_LIFE * (0.85 + Math.random() * 0.3);
     o.phase = 0; o.wob = Math.random() * 6.28; o.rt = 0; o.len = 0;
@@ -1153,7 +1225,7 @@ body.stereo .dispbar{opacity:.55}
     o.la.set(0, 0, 0).addScaledVector(e.t, (Math.random() - 0.5) * 1.6).addScaledVector(e.a, (Math.random() - 0.5) * 1.2);
     o.lb.set(0, 0, 0).addScaledVector(e.t, (Math.random() - 0.5) * 1.6).addScaledVector(e.a, (Math.random() - 0.5) * 1.2);
     o.on = true;
-    o.base.visible = o.lumpA.visible = o.lumpB.visible = true;
+    o.base.visible = o.lumpA.visible = o.lumpB.visible = false;   // 丸いだまりは出さない
     o.drip.visible = false; o.drop.visible = false;
   }
   function updateOoze(dt) {
@@ -1168,6 +1240,7 @@ body.stereo .dispbar{opacity:.55}
       peMeasure(plus2Rod);
       e.d.set(0, -Math.sin(tt), Math.cos(tt));
       e.a.subVectors(_pe.p[0], tp);
+      wetSide = e.a.dot(e.d) >= 0 ? 1 : -1;   // 液体の口は、plus2の根元側の端
       e.u.copy(e.d).multiplyScalar(e.a.dot(e.d) >= 0 ? -1 : 1);   // 根元側から筒へ向かう向き（updatePlusRodと同じ）
       e.b.subVectors(_pe.tip, tp);
       const axial = e.b.dot(e.u);
@@ -1177,19 +1250,40 @@ body.stereo .dispbar{opacity:.55}
       const near = radial <= Math.max(OOZE_RADIAL_MIN, inp.tbr * OOZE_RADIAL_MAX);   // 筒が細くても、最低でもOOZE_RADIAL_MIN(m)までは「近い」とみなす
       const inside = near && (oozeInside ? ratio > OOZE_EXIT_RATIO : ratio >= OOZE_ENTER_RATIO);
       const speed = (depth - oozePrevDepth) / dt;
+      if (near && wetPrimed) wetK = Math.min(1, wetK + Math.min(0.04, Math.abs(speed) * dt * WET_GAIN + (inside ? WET_SEEP * dt : 0)));   // 動かすほど濡れる
+      wetPrimed = true;
       oozeCool -= dt;
       if (inside && !oozeInside) {
-        for (let i = 0; i < OOZE_BURST; i++) emitOoze();
+        if (wetK >= WET_DRIP_MIN) for (let i = 0; i < OOZE_BURST; i++) emitOoze();
         oozeCool = OOZE_COOLDOWN * (0.7 + Math.random() * 0.6);
       } else if (inside && speed > OOZE_PUMP_SPEED && oozeCool <= 0) {
-        emitOoze();
+        if (wetK >= WET_DRIP_MIN) emitOoze();
         oozeCool = OOZE_COOLDOWN * (0.7 + Math.random() * 0.6);
       }
       oozeSeep -= dt;
       if (inside && !oozeInside) oozeSeep = OOZE_SEEP_INTERVAL * (0.6 + Math.random() * 0.6);
-      else if (inside && oozeSeep <= 0) { emitOoze(); oozeSeep = OOZE_SEEP_INTERVAL * (0.7 + Math.random() * 0.6); }   // 入れている間は、ゆっくり湧き出し続ける
+      else if (inside && oozeSeep <= 0) { if (wetK >= WET_DRIP_MIN) emitOoze(); oozeSeep = OOZE_SEEP_INTERVAL * (0.7 + Math.random() * 0.6); }   // 入れている間は、ゆっくり湧き出し続ける
       oozeInside = inside; oozePrevDepth = depth;
       oozeDbg.ratio = ratio; oozeDbg.radialMM = radial * 1000; oozeDbg.inside = inside; oozeDbg.near = near; oozeDbg.has = true;
+    }
+    // ---- 濡れ：液体の口・筒まわりの表面（part / plus / plus2）----
+    if (WET_ON) {
+      const fullT = Math.max(0.002, inp.tbl), tt2 = inp.tbt * Math.PI / 180, LL = Math.max(0.002, inp.lql), rr = Math.max(0.004, inp.lqr), lt2 = inp.lqt * Math.PI / 180;
+      if (dt > 0) wetK = Math.max(WET_BASE, wetK - WET_DRY * dt);
+      e.d.set(0, -Math.sin(tt2), Math.cos(tt2));
+      WETU.P.value[0].copy(lp);                                                     // 液体の口
+      WETU.P.value[1].copy(tp).addScaledVector(e.d, wetSide * fullT / 2);           // 筒の入口
+      WETU.P.value[2].copy(tp).addScaledVector(e.d, -wetSide * fullT / 2);          // 筒の奥
+      WETU.K.value = wetK;
+      if (wetRing) {   // 口のふちに、ぷっくり盛り上がった液体（濡れ量に応じて見え始め、太くなる）
+        const lv = clamp((wetK - 0.02) / 0.2, 0, 1);
+        wetRing.visible = lv > 0.01;
+        wetRing.material.opacity = 0.92 * lv;
+        e.d.set(0, -Math.sin(lt2), Math.cos(lt2));
+        wetRing.position.copy(lp).addScaledVector(e.d, wetSide * LL / 2);
+        wetRing.quaternion.setFromUnitVectors(e.z, e.d);
+        wetRing.scale.set(rr * 0.95, rr * 0.95, rr * (0.5 + 1.0 * wetK));
+      }
     }
     // ---- にじみ（だまり）→ 垂れて糸を引く → ちぎれて落ちる → また垂れる ----
     const ease = function (k) { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
@@ -1223,7 +1317,7 @@ body.stereo .dispbar{opacity:.55}
         o.len += (OOZE_DRIP_SPEED + OOZE_DRIP_ACCEL * o.gt) * dt;
         if (o.len >= OOZE_STRING_MAX) {
           o.len = OOZE_STRING_MAX; o.phase = 1; o.rt = 0;
-          const rbT = sz * 0.6;
+          const rbT = sz * 0.35;
           o.dr.on = true; o.dr.t = 0; o.dr.v = OOZE_DRIP_SPEED * 2; o.dr.r = rbT;
           o.dr.pos.copy(e.a); o.dr.pos.y -= (OOZE_STRING_MAX + sz * 0.25 - rbT);
         }
@@ -1236,7 +1330,7 @@ body.stereo .dispbar{opacity:.55}
       if (o.len > sz * 0.08) {
         const stretch = clamp(o.len / OOZE_STRING_MAX, 0, 1);
         const bulbK = o.phase === 1 ? clamp(1 - o.rt / 0.25, 0, 1) : 1;   // ちぎれた後は先のふくらみが無くなる
-        ozShapeDrip(o.dripGeo, o.len + sz * 0.25, sz, stretch, bulbK);
+        ozShapeDrip(o.dripGeo, o.len + sz * 0.25, sz * 0.6, stretch, bulbK);
         o.drip.position.copy(e.a);
         o.drip.visible = true;
       } else o.drip.visible = false;
@@ -1831,6 +1925,7 @@ body.stereo .dispbar{opacity:.55}
         };
         o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
         applyGloss(o);
+        wetMatsOf(o);
       });
       group.add(model);
       plusState = '表示中';
@@ -1916,6 +2011,7 @@ body.stereo .dispbar{opacity:.55}
         o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
         applyGloss(o);
         applySkinLook(o);
+        wetMatsOf(o);
       });
       group.add(model);
       plus2State = '表示中';
@@ -2531,6 +2627,7 @@ body.stereo .dispbar{opacity:.55}
         const prevHook = t.onBeforeCompile;
         t.onBeforeCompile = function (sh) { if (prevHook) prevHook(sh); sh.fragmentShader = skinFragment(sh.fragmentShader); };
       }
+      if (skin) wetInject(t);   // partの表面も濡れる
       hToonMats.push({ mat: t, origColor: origColor, litColor: litColor, origTransparent: origTransparent, origOpacity: origOpacity });
       return t;
     });

@@ -1613,48 +1613,57 @@ body.stereo .dispbar{opacity:.55}
       if (onDone) onDone();
     });
   }
-  // ---- plus / plus2 の突起（ボーン pe1〜pe4）を、若干しなる棒として扱い、常に向きが筒の中に収まるようにする ----
-  // アニメで動かした後のポーズを出発点に、先端が筒の中心線上の「筒の内側」に入るよう pe1→pe4 に曲がりを分担させる（CCD法）。
+  // ---- plus / plus2 の突起（ボーン pe → pe1〜pe4）を、若干しなる棒として扱い、常に向きが筒の中に収まるようにする ----
+  // 「pe」が一番の根元で、pe1→pe2→pe3→pe4 と連続してつながる。（「pe」が無いモデルでは pe1〜pe4 だけで同じ処理をする）
+  // アニメで動かした後のポーズを出発点に、先端が筒の中心線上の「筒の内側」に入るよう根元から先端へ曲がりを分担させる（CCD法）。
   // 根元ほど大きく、先端側ほど小さく曲がるので、1本の棒がしなったように見える。先端側のボーンは筒の軸方向へ強く揃えるので、
   // 突起が筒の中をまっすぐ進んでいるように見える。plus と plus2 はまったく同じ処理を通す。
   const PE_ROD_ON = true;
+  const PE_ROOT_RE = /^pe$/i;                     // 一番の根元のボーン名（pe）
   const PE_BONE_RE = /^pe[_.]?([1-4])$/i;         // ボーン名（pe1〜pe4）
-  const PE_WEIGHTS = [0.30, 0.30, 0.25, 0.15];    // 各ボーンの曲がり分担（pe1〜pe4）
+  const PE_WEIGHTS_5 = [0.20, 0.25, 0.25, 0.20, 0.10];   // 曲がりの分担（pe, pe1, pe2, pe3, pe4）
+  const PE_WEIGHTS_4 = [0.30, 0.30, 0.25, 0.15];         // 曲がりの分担（peが無い場合：pe1〜pe4）
+  const PE_ALIGN_5 = [0, 0, 0.25, 0.7, 0.9];             // 筒の軸方向へ向ける強さ（pe, pe1, pe2, pe3, pe4）
+  const PE_ALIGN_4 = [0, 0.25, 0.7, 0.9];                // 同（peが無い場合：pe1〜pe4）
   const PE_MAX_BEND_DEG = 60;                     // 各ボーンがアニメの向きから曲がってよい最大角度（度）
   const PE_ITER = 6;                              // 曲げ計算の反復回数
   const PE_SMOOTH_SEC = 0.03;                     // 目標点への追従の遅れ（秒）。大きいほど遅れてしなる。0で遅れなし
   const PE_TIP_RADIAL = 0.15;                     // 先端が筒の中心線から離れてよい範囲（筒の半径に対する割合。0=中心線上）
   const PE_DEPTH_MIN_RATIO = 0.4;                 // 先端が最低でも入る深さ（筒の長さに対する割合。筒の入口から測る）
   const PE_END_MARGIN = 0.01;                     // m: 筒の奥の端より手前に先端を止める余裕
-  const PE_ALIGN = [0, 0.25, 0.7, 0.9];           // 筒の軸方向へ向ける強さ（pe1〜pe4）
-  const PE_JOINT_PULL = 0.7;                      // 筒の中に入った関節（pe2〜pe4の付け根）を、筒の中心線へ寄せる強さ。斜めから入っても、中に入った部分が筒に沿う
-  let plusRod = null, plus2Rod = null;            // {bones, rest, ts(目標点の平滑値), tsReady, bend}
+  const PE_JOINT_PULL = 0.7;                      // 筒の中に入った関節を、筒の中心線へ寄せる強さ。斜めから入っても、中に入った部分が筒に沿う
+  let plusRod = null, plus2Rod = null;            // {bones, w, align, rest, ts(目標点の平滑値), tsReady, bend}
   let plusRodInfo = '', plus2RodInfo = '';
-  const _pe = { p: [0, 1, 2, 3].map(function () { return new THREE.Vector3(); }), tip: new THREE.Vector3(),
+  const _pe = { p: [0, 1, 2, 3, 4].map(function () { return new THREE.Vector3(); }), tip: new THREE.Vector3(),
                 a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), d: new THREE.Vector3(), u: new THREE.Vector3(), tgt: new THREE.Vector3(), t2: new THREE.Vector3(), t3: new THREE.Vector3(),
                 q: new THREE.Quaternion(), dq: new THREE.Quaternion(), wq: new THREE.Quaternion(), pq: new THREE.Quaternion(), ident: new THREE.Quaternion() };
-  function peMakeRod(model) {   // モデルからボーン pe1〜pe4 を探す。{rod, info}を返す
+  function peMakeRod(model) {   // モデルからボーン pe（根元）と pe1〜pe4 を探す。{rod, info}を返す
     const found = [null, null, null, null];
+    let root = null;
     model.traverse(function (o) {
       if (!o.isBone) return;
-      const m = PE_BONE_RE.exec(o.name || '');
+      const nmv = o.name || '';
+      if (PE_ROOT_RE.test(nmv)) { root = o; return; }
+      const m = PE_BONE_RE.exec(nmv);
       if (m) found[parseInt(m[1], 10) - 1] = o;
     });
     if (found.every(function (b) { return !!b; })) {
-      return { rod: { bones: found, rest: found.map(function (b) { return b.quaternion.clone(); }), ts: new THREE.Vector3(), tsReady: false, bend: 0 },
-               info: '  ／突起ボーン pe1〜pe4: しなる棒として筒に追従' };
+      const bones = root ? [root].concat(found) : found;
+      return { rod: { bones: bones, w: root ? PE_WEIGHTS_5 : PE_WEIGHTS_4, align: root ? PE_ALIGN_5 : PE_ALIGN_4,
+                      rest: bones.map(function (b) { return b.quaternion.clone(); }), ts: new THREE.Vector3(), tsReady: false, bend: 0 },
+               info: root ? '  ／突起ボーン pe＋pe1〜pe4: しなる棒として筒に追従' : '  ／突起ボーン pe1〜pe4: しなる棒として筒に追従（根元の「pe」は見つかりません）' };
     }
     return { rod: null, info: '  ／突起ボーン pe1〜pe4: 見つかりません（' + found.map(function (b, i) { return b ? '' : 'pe' + (i + 1); }).filter(Boolean).join(',') + '）' };
   }
   function peReset(rod) {   // アニメ更新の前に、ボーンを元の向きに戻す（アニメが動かさないボーンに、前フレームの曲がりが残らないように）
     if (!rod) return;
-    for (let i = 0; i < 4; i++) rod.bones[i].quaternion.copy(rod.rest[i]);
+    for (let i = 0; i < rod.bones.length; i++) rod.bones[i].quaternion.copy(rod.rest[i]);
   }
-  function peMeasure(rod) {   // 各ボーンの位置と、突起の先端位置（pe4の先に、pe3→pe4と同じ長さの区間があるとみなす）
-    const e = _pe, bones = rod.bones;
-    for (let i = 0; i < 4; i++) bones[i].getWorldPosition(e.p[i]);
-    e.tip.copy(bones[3].position);
-    bones[3].localToWorld(e.tip);
+  function peMeasure(rod) {   // 各ボーンの位置と、突起の先端位置（最後のボーンの先に、その1つ前→最後と同じ長さの区間があるとみなす）
+    const e = _pe, bones = rod.bones, n = bones.length;
+    for (let i = 0; i < n; i++) bones[i].getWorldPosition(e.p[i]);
+    e.tip.copy(bones[n - 1].position);
+    bones[n - 1].localToWorld(e.tip);
   }
   function peRotate(b, dq) {   // ワールド座標の回転dqを、ボーンbに追加する
     const e = _pe;
@@ -1679,7 +1688,7 @@ body.stereo .dispbar{opacity:.55}
     e.b.subVectors(rod.ts, e.p[i]);
     if (e.a.lengthSq() < 1e-10 || e.b.lengthSq() < 1e-10) return;
     e.dq.setFromUnitVectors(e.a.normalize(), e.b.normalize());
-    peBend(rod, i, e.dq, PE_WEIGHTS[i], used, maxB);
+    peBend(rod, i, e.dq, rod.w[i], used, maxB);
   }
   function peReachJoint(rod, i, j, target, frac, used, maxB) {   // ボーンiを回して、関節j（付け根の位置p[j]）を目標点へ近づける
     const e = _pe;
@@ -1691,23 +1700,23 @@ body.stereo .dispbar{opacity:.55}
     peBend(rod, i, e.dq, frac, used, maxB);
   }
   function peAlign(rod, i, used, maxB) {   // ボーンiの向き（次のボーンへの向き）を、筒の挿入方向uへ揃える
-    if (!(PE_ALIGN[i] > 0)) return;
-    const e = _pe;
+    if (!(rod.align[i] > 0)) return;
+    const e = _pe, n = rod.bones.length;
     peMeasure(rod);
-    if (i < 3) e.a.subVectors(e.p[i + 1], e.p[i]); else e.a.subVectors(e.tip, e.p[3]);
+    if (i < n - 1) e.a.subVectors(e.p[i + 1], e.p[i]); else e.a.subVectors(e.tip, e.p[n - 1]);
     if (e.a.lengthSq() < 1e-10) return;
     e.dq.setFromUnitVectors(e.a.normalize(), e.u);
-    peBend(rod, i, e.dq, PE_ALIGN[i], used, maxB);
+    peBend(rod, i, e.dq, rod.align[i], used, maxB);
   }
   function updatePlusRod(rod, group, dt) {
     if (!PE_ROD_ON || !rod || !group || !R || !R.tube) return;
-    const e = _pe;
+    const e = _pe, n = rod.bones.length;
     group.updateMatrixWorld(true);
     // 筒（ワールド）：中心・軸方向（Z方向をX軸まわりにtbt°傾けたもの）
     const tt = inp.tbt * Math.PI / 180;
     e.c.copy(R.tube.position);
     e.d.set(0, -Math.sin(tt), Math.cos(tt));
-    // 1) 挿入方向u：根元(pe1)側から筒へ向かう向き。入口は筒の根元側の端、奥は反対側の端
+    // 1) 挿入方向u：根元側から筒へ向かう向き。入口は筒の根元側の端、奥は反対側の端
     peMeasure(rod);
     e.a.subVectors(e.p[0], e.c);
     e.u.copy(e.d).multiplyScalar(e.a.dot(e.d) >= 0 ? -1 : 1);
@@ -1725,16 +1734,16 @@ body.stereo .dispbar{opacity:.55}
     // 3) 目標点はゆっくり追従させる（棒がしなって遅れてついてくる）。筒の内側同士の補間なので常に筒の内側
     if (!rod.tsReady || !(dt > 0) || PE_SMOOTH_SEC <= 0) { rod.ts.copy(e.tgt); rod.tsReady = true; }
     else rod.ts.lerp(e.tgt, 1 - Math.exp(-dt / PE_SMOOTH_SEC));
-    // 4) 「先端を目標へ」→「先端側を筒の軸へ揃える」を繰り返し、最後に根元側で先端の位置を整える
-    const used = [0, 0, 0, 0], maxB = PE_MAX_BEND_DEG * Math.PI / 180;
+    // 4) 「先端を目標へ」→「筒の中の関節を中心線へ」→「先端側を筒の軸へ揃える」を繰り返し、最後に根元側で先端の位置を整える
+    const used = new Array(n).fill(0), maxB = PE_MAX_BEND_DEG * Math.PI / 180;
     for (let it = 0; it < PE_ITER; it++) {
-      for (let i = 0; i < 4; i++) peReach(rod, i, used, maxB);
+      for (let i = 0; i < n; i++) peReach(rod, i, used, maxB);
       // 筒の入口を越えて中に入った関節は、筒の中心線へ寄せる（入口付近はなめらかに効かせる）。斜めから入っても、中に入った部分が筒に沿う
-      for (let j = 3; j >= 1; j--) {
+      for (let j = n - 1; j >= 1; j--) {
         peMeasure(rod);
         e.t3.subVectors(e.p[j], e.c);
         const aj = e.t3.dot(e.u);
-        e.a.subVectors(e.tip, e.p[3]);
+        e.a.subVectors(e.tip, e.p[n - 1]);
         const soft = Math.max(0.005, e.a.length() * 0.5);
         const x = clamp((aj - (-full / 2 - soft)) / (2 * soft), 0, 1);
         const f = x * x * (3 - 2 * x);
@@ -1744,13 +1753,14 @@ body.stereo .dispbar{opacity:.55}
         if (jl > rMax) e.t3.multiplyScalar(rMax / jl);
         e.t2.copy(e.c).addScaledVector(e.u, aj).add(e.t3);      // その関節を中心線へ寄せた点
         let sumW = 0;
-        for (let i = 0; i < j; i++) sumW += PE_WEIGHTS[i];
-        for (let i = j - 1; i >= 0; i--) peReachJoint(rod, i, j, e.t2, PE_JOINT_PULL * f * PE_WEIGHTS[i] / sumW, used, maxB);
+        for (let i = 0; i < j; i++) sumW += rod.w[i];
+        for (let i = j - 1; i >= 0; i--) peReachJoint(rod, i, j, e.t2, PE_JOINT_PULL * f * rod.w[i] / sumW, used, maxB);
       }
-      for (let i = 3; i >= 1; i--) peAlign(rod, i, used, maxB);
+      for (let i = n - 1; i >= 1; i--) peAlign(rod, i, used, maxB);
     }
     peReach(rod, 0, used, maxB); peReach(rod, 1, used, maxB);
-    rod.bend = (used[0] + used[1] + used[2] + used[3]) * 180 / Math.PI;
+    rod.bend = 0;
+    for (let i = 0; i < n; i++) rod.bend += used[i] * 180 / Math.PI;
     group.updateMatrixWorld(true);
   }
   // ---- playerarm.glb（playerと同じ読み込み。hのaction2/3/4と同じタイミングで 2action2/3/4 を再生） ----

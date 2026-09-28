@@ -1877,66 +1877,89 @@ body.stereo .dispbar{opacity:.55}
     tex.needsUpdate = true;
     return tex;
   }
-  // ---- partの表面そのものが「〜〜〜」と波打つ表現（頂点シェーダーで、表面を法線方向へ進行波状に出し入れする） ----
-  // ゼリー揺れ（hJellyX/hJellyV）と同じ強弱・タイミングで動く：波の高さは揺れの変位そのもの（伸び=＋、縮み=−）に比例し、
-  // 波が流れる速さは揺れの勢いに比例する。揺れが収まれば波も止まって平らに戻る。
-  // 変形はスキニングの前（元の形の上）で行うので、動きや向きに関係なく表面に乗ったまま波打つ。輪郭線・陰影（法線）も同じ波で動かす。
-  // ※頂点属性は増やさず、メッシュごとのuniformだけを使う（属性数の上限に触れないため）。
-  const H_WAVE_ON = true;              // false: 波打ちを止める
-  const H_WAVE_AMP_RATIO = 0.02;       // 揺れが最大(JELLY_MAX)の時の波の高さ（partの高さに対する比率）。実際は揺れの大きさに比例して小さくなる
-  const H_WAVE_FREQ = 14;              // partの高さの中に入る波の数（多いほど細かい波）
-  const H_WAVE_SPEED = 40;             // rad/秒: 揺れが最大の勢いの時に波が流れる速さ（勢いに比例）
-  const H_WAVE_SHADE_GAIN = 1;         // 陰影の波打ちの強さ（1で幾何学的に正しい傾き。大きいほど波がはっきり見える）
-  let hWaveRef = 1;                    // 波の位相の基準にするpartの高さ(m)。読込時に実測値へ更新
-  let hWavePhaseAcc = 0;               // 波の位相（揺れの勢いに応じて進む）
-  const hWaveU = {                     // 全メッシュ共通のuniform（毎フレーム更新）
-    phase: { value: 0 }, amp: { value: 0 }, freq: { value: H_WAVE_FREQ }, slope: { value: 0 }
+  // ---- partの左右分割の細かい揺れ ----
+  // part全体がゼリー揺れと同じタイミングで細かく震えるが、右半分と左半分で揺れの方向・周期が少しだけ違う。
+  // 頂点シェーダーで、頂点の左右位置（x）に応じて「左の揺れ」から「右の揺れ」へなめらかに切り替えて動かす
+  // （境目で裂けないよう、中央付近は連続的に混ぜる。上ほど大きく揺れ、足元はあまり動かない）。
+  // ※頂点属性は増やさず、メッシュごとのuniformだけを使う。
+  const H_SPLIT_ON = true;             // false: 左右分割の細かい揺れを止める
+  const H_SPLIT_MODES = [              // 細かい揺れの成分（ゼリー本体より高い周波数）
+    { stiffness: 1100, damping: 10, impact: 1.00 },
+    { stiffness: 2600, damping: 18, impact: 0.55 }
+  ];
+  const H_SPLIT_KICK = 20;             // 押し込み・離れる速さに対する揺れの強さ（ゼリーの揺れのきっかけと同じ入力）
+  const H_SPLIT_MAX = 0.012;           // 揺れの最大変位（partの高さに対する比率）
+  const H_SPLIT_R_STIFF = 1.08;        // 右半分の揺れの硬さ（左より少し速く揺れて、周期をずらす）
+  const H_SPLIT_GAIN = [1.0, 0.85];    // [左, 右] の強さ
+  const H_SPLIT_DIR_L = [-0.30, 1, 0.12];   // 左半分の揺れの向き（モデル空間 x=左右, y=上下, z=前後）
+  const H_SPLIT_DIR_R = [0.30, 1, -0.12];   // 右半分の揺れの向き（左と少しだけ違う）
+  const H_SPLIT_BLEND = 0.2;           // 左右が切り替わる幅（partの幅に対する比率。中央のこの範囲でなめらかに混ぜる）
+  let hSplitRef = 1;                   // partの高さ(m)。読込時に実測値へ更新
+  const hSplitX = [[0, 0], [0, 0]];    // [左/右][モード] の変位
+  const hSplitV = [[0, 0], [0, 0]];    // [左/右][モード] の速度
+  const hSplitU = {                    // 全メッシュ共通のuniform（毎フレーム更新）
+    left: { value: null }, right: { value: null }, w: { value: 0.05 }   // left/right は読込時にVector3を入れる
   };
-  const HWAVE_DECL =
-    'uniform vec4 uWaveRow;\n' +     // xyz,w: メッシュのローカル座標 → 足元を0・高さを1としたときの高さ（の一次式）
-    'uniform float uWaveU;\n' +      // メッシュのローカル長さ → モデル空間(m)の逆倍率
-    'uniform vec3 uWaveUp;\n' +      // メッシュのローカル座標での「上」方向
-    'uniform float uWavePhase;\nuniform float uWaveAmp;\nuniform float uWaveFreq;\nuniform float uWaveSlope;\n';
-  const HWAVE_PHASE = 'float wph = (dot(uWaveRow.xyz, position) + uWaveRow.w) * uWaveFreq * 6.2831853 - uWavePhase;\n';
-  const HWAVE_NORMAL_CODE = '{\n' + HWAVE_PHASE + '  objectNormal = normalize(objectNormal - uWaveUp * (cos(wph) * uWaveSlope));\n}\n';
-  const HWAVE_POS_CODE = '{\n' + HWAVE_PHASE + '  transformed += normalize(normal) * (sin(wph) * uWaveAmp * uWaveU);\n}\n';
-  // メッシュごとの情報（読込直後の静止姿勢での位置から作る。uniformの入れ物ごと持たせる）
-  function makeHWaveInfo(o) {
-    const info = { row: { value: new THREE.Vector4(0, 0, 0, 0) }, u: { value: 0 }, up: { value: new THREE.Vector3(0, 1, 0) } };
-    if (!(hWaveRef > 0)) return info;
+  const HSPLIT_DECL =
+    'uniform vec4 uSplitRowX;\nuniform vec4 uSplitRowY;\nuniform mat3 uSplitM;\n' +   // メッシュごと：ローカル→モデル空間のx・高さ、モデル空間の向き→ローカルの向き
+    'uniform vec3 uSplitL;\nuniform vec3 uSplitR;\nuniform float uSplitW;\n';
+  const HSPLIT_POS_CODE =
+    '{\n' +
+    '  float sxm = dot(uSplitRowX.xyz, position) + uSplitRowX.w;\n' +
+    '  float sym = clamp(dot(uSplitRowY.xyz, position) + uSplitRowY.w, 0.0, 1.0);\n' +
+    '  float ssd = smoothstep(-uSplitW, uSplitW, sxm);\n' +
+    '  vec3 sdm = mix(uSplitL, uSplitR, ssd) * (0.25 + 0.75 * sym);\n' +
+    '  transformed += uSplitM * sdm;\n' +
+    '}\n';
+  // メッシュごとの情報（読込直後の静止姿勢での位置から作る）
+  function makeHSplitInfo(o) {
+    const info = { rowX: { value: new THREE.Vector4(0, 0, 0, 0) }, rowY: { value: new THREE.Vector4(0, 0, 0, 0) }, m: { value: new THREE.Matrix3() } };
+    if (!(hSplitRef > 0)) return info;
     o.updateWorldMatrix(true, false);
     const e = o.matrixWorld.elements;
-    info.row.value.set(e[1] / hWaveRef, e[5] / hWaveRef, e[9] / hWaveRef, e[13] / hWaveRef);   // ワールド(モデル空間)のyを、ローカル座標から出す式
-    o.getWorldScale(_outlineWorldScale);
-    // ミラーされたノード（軸ごとに符号が違う）でも打ち消し合わないよう、絶対値の平均を使う
-    const sc = (Math.abs(_outlineWorldScale.x) + Math.abs(_outlineWorldScale.y) + Math.abs(_outlineWorldScale.z)) / 3 || 1;
-    info.u.value = 1 / sc;
-    info.up.value.set(0, 1, 0).transformDirection(new THREE.Matrix4().copy(o.matrixWorld).invert());
+    info.rowX.value.set(e[0], e[4], e[8], e[12]);                                                  // モデル空間のx(m)をローカル座標から出す式
+    info.rowY.value.set(e[1] / hSplitRef, e[5] / hSplitRef, e[9] / hSplitRef, e[13] / hSplitRef);   // 同、高さ（足元0・頭の先1）
+    const q = new THREE.Matrix4().copy(o.matrixWorld).invert().elements;                           // モデル空間の向き → ローカルの向き
+    info.m.value.set(q[0], q[4], q[8], q[1], q[5], q[9], q[2], q[6], q[10]);
     return info;
   }
-  // トゥーン材質用（頂点位置＋法線） / 輪郭線用（頂点位置のみ）
-  function makeHWaveHook(info, withNormal) {
+  function makeHSplitHook(info) {
     return function (shader) {
-      shader.uniforms.uWavePhase = hWaveU.phase;
-      shader.uniforms.uWaveAmp = hWaveU.amp;
-      shader.uniforms.uWaveFreq = hWaveU.freq;
-      shader.uniforms.uWaveSlope = hWaveU.slope;
-      shader.uniforms.uWaveRow = info.row;
-      shader.uniforms.uWaveU = info.u;
-      shader.uniforms.uWaveUp = info.up;
-      let v = shader.vertexShader.replace('#include <common>', '#include <common>\n' + HWAVE_DECL);
-      if (withNormal) v = v.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n' + HWAVE_NORMAL_CODE);
-      shader.vertexShader = v.replace('#include <begin_vertex>', '#include <begin_vertex>\n' + HWAVE_POS_CODE);
+      shader.uniforms.uSplitL = hSplitU.left;
+      shader.uniforms.uSplitR = hSplitU.right;
+      shader.uniforms.uSplitW = hSplitU.w;
+      shader.uniforms.uSplitRowX = info.rowX;
+      shader.uniforms.uSplitRowY = info.rowY;
+      shader.uniforms.uSplitM = info.m;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\n' + HSPLIT_DECL)
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + HSPLIT_POS_CODE);
     };
   }
-  // 毎フレーム: ゼリー揺れの状態から、波の高さ（符号つき）と流れる速さを決める
-  //  norm  : 揺れの合計変位を最大値で割ったもの（-1〜1）。波の高さ＝揺れの伸び縮みと同じタイミング・同じ強弱で増減する
-  //  energy: 揺れの勢い（速度成分の大きさ、0〜1）。波が流れる速さになる（じっと押している間は流れない）
-  function updateHWave(dt, norm, energy) {
-    hWavePhaseAcc = (hWavePhaseAcc + H_WAVE_SPEED * energy * dt) % (Math.PI * 2);
-    hWaveU.phase.value = hWavePhaseAcc;
-    hWaveU.amp.value = hHeight * H_WAVE_AMP_RATIO * norm;
-    hWaveU.slope.value = H_WAVE_AMP_RATIO * H_WAVE_FREQ * Math.PI * 2 * H_WAVE_SHADE_GAIN * norm;
+  // 毎フレーム: ゼリー揺れのきっかけ(押し込む/離れる速さ)を左右それぞれの細かい揺れに与え、変位をuniformへ渡す
+  function updateHSplit(dt, kickVel, softLimitFn) {
+    if (!hSplitU.left.value || !hSplitU.right.value) return;   // partの読込前は何もしない
+    const ext = H_SPLIT_KICK * kickVel;
+    const nSub = Math.max(1, Math.min(8, Math.ceil(dt * 240)));   // 硬いバネなので細かく刻んで安定させる
+    const h = dt / nSub;
+    const sums = [0, 0];
+    for (let side = 0; side < 2; side++) {
+      for (let m = 0; m < H_SPLIT_MODES.length; m++) {
+        const md = H_SPLIT_MODES[m];
+        const k = md.stiffness * (side ? H_SPLIT_R_STIFF : 1);
+        let x = hSplitX[side][m], v = hSplitV[side][m];
+        for (let i = 0; i < nSub; i++) {
+          v += (-k * x - md.damping * v + ext * H_SPLIT_GAIN[side] * md.impact) * h;
+          x += v * h;
+        }
+        hSplitX[side][m] = x; hSplitV[side][m] = v;
+        sums[side] += x;
+      }
+    }
+    const dl = softLimitFn(sums[0], H_SPLIT_MAX) * hSplitRef;
+    const dr = softLimitFn(sums[1], H_SPLIT_MAX) * hSplitRef;
+    hSplitU.left.value.set(H_SPLIT_DIR_L[0] * dl, H_SPLIT_DIR_L[1] * dl, H_SPLIT_DIR_L[2] * dl);
+    hSplitU.right.value.set(H_SPLIT_DIR_R[0] * dr, H_SPLIT_DIR_R[1] * dr, H_SPLIT_DIR_R[2] * dr);
   }
   const hToonMats = [];   // {mat, origColor, litColor, origTransparent, origOpacity}: 各材質の元の状態とオン/オフを切り替えるための情報
   function applyToon(o) {
@@ -1965,7 +1988,7 @@ body.stereo .dispbar{opacity:.55}
       const litColor = origColor.clone().lerp(new THREE.Color(0xffffff), lightenAmt);   // 色を薄く（白に近づける）
       if (o.isSkinnedMesh) t.skinning = true;
       if (o.morphTargetInfluences && o.morphTargetInfluences.length) t.morphTargets = true;
-      if (H_WAVE_ON) { try { t.onBeforeCompile = makeHWaveHook(makeHWaveInfo(o), true); } catch (err) { console.warn('[wave] 材質への波打ちの設定に失敗', err); } }   // 表面の波打ち
+      if (H_SPLIT_ON) { try { t.onBeforeCompile = makeHSplitHook(makeHSplitInfo(o)); } catch (err) { console.warn('[split] 材質への左右分割の揺れの設定に失敗', err); } }   // 左右分割の細かい揺れ
       hToonMats.push({ mat: t, origColor: origColor, litColor: litColor, origTransparent: origTransparent, origOpacity: origOpacity });
       return t;
     });
@@ -2046,14 +2069,14 @@ body.stereo .dispbar{opacity:.55}
     out.computeBoundingSphere();
     return out;
   }
-  // 輪郭線の材質。波打ちのuniformがメッシュごとに違うので、波打ちが有効な間はメッシュごとに材質を作る
+  // 輪郭線の材質。左右分割の揺れのuniformがメッシュごとに違うので、有効な間はメッシュごとに材質を作る
   function hOutlineMatFor(o) {
-    if (!H_WAVE_ON) return hOutlineMat;
+    if (!H_SPLIT_ON) return hOutlineMat;
     try {
       const om = hOutlineMat.clone();
-      om.onBeforeCompile = makeHWaveHook(makeHWaveInfo(o), false);
+      om.onBeforeCompile = makeHSplitHook(makeHSplitInfo(o));
       return om;
-    } catch (err) { console.warn('[wave] 輪郭線への波打ちの設定に失敗', err); return hOutlineMat; }
+    } catch (err) { console.warn('[split] 輪郭線への左右分割の揺れの設定に失敗', err); return hOutlineMat; }
   }
   function addOutline(o, worldThickness) {
     if (!o.isMesh) return;
@@ -2446,8 +2469,10 @@ body.stereo .dispbar{opacity:.55}
       // 輪郭線の狙いの太さ（スケール適用後のワールド単位で共通の値にする）。
       // メッシュごとのノードscaleの違いはaddOutline側でgetWorldScale()を使って吸収する。
       const outlineWorldThickness = finalSize.y > 0 ? finalSize.y * H_OUTLINE_RATIO : H_OUTLINE_RATIO;
-      // 表面の波打ち: 波の位相の基準（partの高さ）を決め、行列を確定させてから各メッシュの情報を作る
-      hWaveRef = finalSize.y > 0 ? finalSize.y : 1;
+      // 左右分割の細かい揺れ: 高さと左右の切り替え幅の基準を決め、行列を確定させてから各メッシュの情報を作る
+      hSplitRef = finalSize.y > 0 ? finalSize.y : 1;
+      if (!hSplitU.left.value) { hSplitU.left.value = new THREE.Vector3(); hSplitU.right.value = new THREE.Vector3(); }
+      hSplitU.w.value = Math.max(0.005, (finalSize.x > 0 ? finalSize.x : 0.5) * H_SPLIT_BLEND);
       model.updateMatrixWorld(true);
       model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o, outlineWorldThickness); } });
       applyHOutline(); applyHProcessing();   // 初期状態（既定は全部ON）を反映
@@ -2898,11 +2923,7 @@ body.stereo .dispbar{opacity:.55}
     }
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
-    if (H_WAVE_ON) {   // partの表面の波打ち：ゼリー揺れと同じ強弱・タイミングで動かす
-      let hWaveKick = 0;
-      for (let wi = 0; wi < JELLY_MODES.length; wi++) hWaveKick += Math.abs(hJellyV[wi]) / Math.sqrt(JELLY_MODES[wi].stiffness);
-      updateHWave(dt, clamp(hJellySum / JELLY_MAX, -1, 1), clamp(softLimit(hWaveKick, JELLY_MAX) / JELLY_MAX, 0, 1));
-    }
+    if (H_SPLIT_ON) updateHSplit(dt, jellySVel, softLimit);   // 左右分割の細かい揺れ（ゼリー揺れと同じきっかけで動く）
     updateHHeadOffset(dt, now / 1000);                        // action4中、頭ボーンにほんの僅かな右・下オフセットを重ねる
     updateHGaze(dt, now);                                     // アニメの後に、両目・左目・右目ボーンへ視線を重ねる
     updateSplash(dt);                                         // 水滴エフェクトの飛散・落下・フェードを更新

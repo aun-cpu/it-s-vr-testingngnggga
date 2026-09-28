@@ -2129,7 +2129,7 @@ body.stereo .dispbar{opacity:.55}
       };
       player2ActFrame5Time = clamp(frameTimeOf(5), 0, clip.duration);
       player2ActFrame10Time = clamp(frameTimeOf(10), 0, clip.duration);
-      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=0フレーム目 / ' + ANIM_ANGLE_MAX + '°=5フレーム目）' +
+      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=0フレーム目 / ' + ANIM_ANGLE_MAX + '°=5フレーム目 / ' + ACTION3_DEG + '°=10フレーム目）' +
                    (clip0 ? ' ＋導入: ' + clip0.name : ' ／「2action0」なし（導入は行いません）');
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
@@ -2600,14 +2600,16 @@ body.stereo .dispbar{opacity:.55}
         mixer.update(0);
         playerProg = '  導入 ' + t.toFixed(2) + 's / ' + d0.toFixed(2) + 's';
       } else {
-      // 2action: ANIM_ANGLE_MIN°(-7°)=0フレーム目 → ANIM_ANGLE_MAX°(0°)=5フレーム目（範囲外は端のフレームで止める）
+      // 2action: -7°=0フレーム目 → 0°=5フレーム目 → ACTION3_DEG°(7°)=10フレーム目（範囲外は端のフレームで止める）
+      // 0°を5フレーム目に保ったまま、0°より先（押し込み）も7°まで動き続ける
       const tEnd = player2ActFrame5Time > 0 ? Math.min(player2ActFrame5Time, duration) : duration;
+      const tPress = player2ActFrame10Time > tEnd ? Math.min(player2ActFrame10Time, duration) : duration;   // 7°で到達するフレーム（10フレーム目）
       if (tiltRaw <= ANIM_ANGLE_MIN) {
         t = 0;
-      } else if (tiltRaw >= ANIM_ANGLE_MAX) {
-        t = tEnd;
-      } else {
+      } else if (tiltRaw <= ANIM_ANGLE_MAX) {
         t = tEnd * (tiltRaw - ANIM_ANGLE_MIN) / (ANIM_ANGLE_MAX - ANIM_ANGLE_MIN);
+      } else {
+        t = tEnd + (tPress - tEnd) * clamp((tiltRaw - ANIM_ANGLE_MAX) / (ACTION3_DEG - ANIM_ANGLE_MAX), 0, 1);
       }
       playerAct.time = clamp(t, 0, duration);
       mixer.update(0);

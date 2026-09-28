@@ -408,6 +408,13 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">長さ</span><button type="button" class="dpstep" data-k="tbl" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-tbl" data-k="tbl" min="0.02" max="1" step="0.01"><button type="button" class="dpstep" data-k="tbl" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-tbl">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="tbt" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-tbt" data-k="tbt" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="tbt" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-tbt">0.00</span></div>
       <button type="button" class="mini" id="dBtnTubeReset" style="width:100%; margin-top:4px">筒をリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">揺れの球の位置・大きさ（変更中は球を表示）</p>
+      <div class="prow"><span class="pl">間隔</span><button type="button" class="dpstep" data-sk="sep" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-sep" data-sk="sep" min="0" max="1.5" step="0.01" value="0.5"><button type="button" class="dpstep" data-sk="sep" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-sep">0.50</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-sk="oy" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-oy" data-sk="oy" min="-1" max="1" step="0.01" value="0"><button type="button" class="dpstep" data-sk="oy" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-oy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-sk="oz" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-oz" data-sk="oz" min="-1" max="1" step="0.01" value="0"><button type="button" class="dpstep" data-sk="oz" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-oz">0.00</span></div>
+      <div class="prow"><span class="pl">大きさ</span><button type="button" class="dpstep" data-sk="rad" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-rad" data-sk="rad" min="0.2" max="2.5" step="0.01" value="1"><button type="button" class="dpstep" data-sk="rad" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-rad">1.00</span></div>
+      <div class="prow"><span class="pl">中心の範囲</span><button type="button" class="dpstep" data-sk="core" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-core" data-sk="core" min="0.05" max="0.9" step="0.01" value="0.3"><button type="button" class="dpstep" data-sk="core" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-core">0.30</span></div>
+      <button type="button" class="mini" id="dBtnSphReset" style="width:100%; margin-top:4px">球をリセット</button>
     </div>
   </div>
   <div class="dispbar" id="dispbar">
@@ -431,7 +438,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921h-hglb-2sph';
+  const BUILD = '0921h-hglb-2sph-adj';
   const $ = (s) => document.querySelector(s);
   const screens = { days: $('#days'), select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -830,7 +837,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('#dPosBody input[type=range]').forEach((r) => {
     r.addEventListener('input', (e) => setDispPos(r.dataset.k, parseFloat(e.target.value)));
   });
-  document.querySelectorAll('.dpstep').forEach((b) => {
+  document.querySelectorAll('.dpstep:not([data-sk])').forEach((b) => {
     b.addEventListener('click', () => setDispPos(b.dataset.k, inp[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
   $('#dBtnPosReset').addEventListener('click', () => {
@@ -850,6 +857,15 @@ body.stereo .dispbar{opacity:.55}
   }
   $('#dispVr').addEventListener('click', () => setStereo(!stereo));
   $('#dispReset').addEventListener('click', () => { recenterPending = true; });
+  function setSph(k, v, show) {
+    const r = $('#sph-rng-' + k);
+    sphP[k] = clamp(Math.round(v * 1000) / 1000, parseFloat(r.min), parseFloat(r.max));
+    r.value = sphP[k]; $('#sph-val-' + k).textContent = sphP[k].toFixed(2);
+    if (show) window.toggleHSpheres(true);
+  }
+  document.querySelectorAll('input[data-sk]').forEach((r) => r.addEventListener('input', () => setSph(r.dataset.sk, parseFloat(r.value), true)));
+  document.querySelectorAll('button[data-sk]').forEach((b) => b.addEventListener('click', () => setSph(b.dataset.sk, sphP[b.dataset.sk] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step), true)));
+  $('#dBtnSphReset').addEventListener('click', () => { for (const k in SPH_DEFAULT) setSph(k, SPH_DEFAULT[k], false); buzz(15); });
   $('#dispSph').addEventListener('click', () => window.toggleHSpheres(!hSphDebugOn));
   $('#dispTalkTest').addEventListener('click', () => {
     talkOn = !talkOn;
@@ -1914,6 +1930,9 @@ body.stereo .dispbar{opacity:.55}
   const H_BONE_R0 = 0.03, H_BONE_R1 = 0.09;   // 骨からの距離（partの高さに対する比率）: R0以内は骨（動かない）→ R1以上は肉（全部動く）
   let hSplitRef = 1;                   // partの高さ(m)。読込時に実測値へ更新
   let hSplitBoneCount = 0;             // 骨として使っている線分の数
+  const SPH_DEFAULT = { sep: 0.5, oy: 0, oz: 0, rad: 1, core: H_SPH_CORE };   // 表示側で調整する球の位置・大きさ
+  const sphP = Object.assign({}, SPH_DEFAULT);   // sep=左右の間隔(半幅比) oy/oz=上下/前後のずれ(partの半高/半奥行き比) rad=大きさの倍率 core=100%伝わる内側の割合
+  let hSphBaseR = 0.3;                 // 倍率1の時の球の影響半径（読込時に算出）
   let hSphReady = false;               // 球を置き終えたか（part読込後にtrue）
   let hSphDebugOn = false;             // 球の可視化（ワイヤーフレーム）
   const hSph = [0, 1].map(function () {   // [0]=左 [1]=右。c=静止位置 d/v=変位/速度 dd=表示用の変位（上限をかけたもの）
@@ -2017,6 +2036,13 @@ body.stereo .dispbar{opacity:.55}
   // 毎フレーム: 2つの球をバネで動かし、表示用の変位・伸びをuniformへ渡す
   function updateHSpheres(dt, kickVel, softLimitFn) {
     if (!(dt > 0) || !hSphReady) return;
+    if (hCollide) {   // 表示側のスライダーの値を、球の位置・大きさ・内側の割合へ反映
+      const sx = hCollide.rx * sphP.sep, cy = hCollide.cy + hCollide.ry * sphP.oy, cz = hCollide.cz + hCollide.rz * sphP.oz;
+      hSph[0].c.set(hCollide.cx - sx, cy, cz);
+      hSph[1].c.set(hCollide.cx + sx, cy, cz);
+      hSplitU.sphR.value = Math.max(0.005, hSphBaseR * sphP.rad);
+      hSplitU.sphCore.value = sphP.core;
+    }
     const s = _sp, Rr = hSplitU.sphR.value, kd = [H_SPH_KICK_DIR_L, H_SPH_KICK_DIR_R];
     // ③ 慣性: part全体が押し出されて動いた加速度（ワールド）をモデル空間へ直し、逆向きの力として球に与える
     s.f.set(0, 0, 0);
@@ -2578,7 +2604,8 @@ body.stereo .dispbar{opacity:.55}
         const sx = hCollide.rx * H_SPH_SEP;
         hSph[0].c.set(hCollide.cx - sx, hCollide.cy, hCollide.cz);
         hSph[1].c.set(hCollide.cx + sx, hCollide.cy, hCollide.cz);
-        hSplitU.sphR.value = Math.max(hCollide.rx * (1 - H_SPH_SEP), hCollide.ry, hCollide.rz) * H_SPH_RADIUS;
+        hSphBaseR = Math.max(hCollide.rx * (1 - H_SPH_SEP), hCollide.ry, hCollide.rz) * H_SPH_RADIUS;
+        hSplitU.sphR.value = hSphBaseR;
         hSphReady = true;
       }
       model.updateMatrixWorld(true);

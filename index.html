@@ -1106,8 +1106,8 @@ body.stereo .dispbar{opacity:.55}
   // player.glbで計算した縮尺・位置合わせをそのまま使って完全に重ねる
   let playerScale = null;
   let playerOffX = 0, playerOffY = 0, playerOffZ = 0;
-  const ANIM_ANGLE_MAX = 0;          // 0°=最後のフレーム
-  const ANIM_ANGLE_MIN = -7;         // -7°=最初のフレーム
+  const ANIM_ANGLE_MAX = 0;          // 0°=5フレーム目
+  const ANIM_ANGLE_MIN = -7;         // -7°=0フレーム目
   const ANIM_ZERO_FRAME = 7;         // 0°になる基準フレーム番号
   let anim0Time = 0;                 // ANIM_ZERO_FRAME（=0°）に対応する再生時間(秒)。読込時に算出
   let playerProg = '';
@@ -1116,7 +1116,13 @@ body.stereo .dispbar{opacity:.55}
   // INTRO_MIN_DEG°(-7°)=0フレーム目、INTRO_MAX_DEG°(0°)=最終フレーム。最終フレームに達したら、そのまま通常の2action/2actionplusの仕様に戻る。
   const INTRO_MIN_DEG = -7;
   const INTRO_MAX_DEG = 0;
-  const INTRO_END_START_DEG = -3;     // 導入→通常の2actionに切り替わった瞬間に、2actionのこの角度(-3°)の位置から始める
+  const INTRO_END_START_DEG = 0;      // 導入→通常の2actionに切り替わった瞬間に、2actionのこの角度(0°=5フレーム目)の位置から始める
+  // 2actionに切り替わるタイミングで、part.glbの位置(y,z)を滑らかに目標位置へ動かす
+  const PART_AFTER_Y = 0.55, PART_AFTER_Z = 0.15;   // 切り替え後のpartの位置（m）
+  const PART_MOVE_SEC = 1.0;          // 秒: 推移にかける時間
+  let partMoving = false, partMoveT = 0;
+  let partShiftY = 0, partShiftZ = 0; // 切り替え時の位置からの推移量（現在の位置に加算して使う）
+  let partMoveDY = 0, partMoveDZ = 0; // 推移の最終量（目標位置 − 切り替え時の位置）
   let introOffset = 0;                // 切り替え時に決まる角度のずれ（切り替え後は「現在の角度+これ」を2action・action3判定の角度として使う）
   let introArmed = false;             // 一度でもINTRO_MAX_DEG未満になったらtrue（開始時点で既に0°だと導入が即終了してしまうのを防ぐ）
   let frontIntro = true;              // true: 導入の最中（2action0 / plusの導入クリップを使う）。最初から導入で始める
@@ -2085,7 +2091,7 @@ body.stereo .dispbar{opacity:.55}
       };
       player2ActFrame5Time = clamp(frameTimeOf(5), 0, clip.duration);
       player2ActFrame10Time = clamp(frameTimeOf(10), 0, clip.duration);
-      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=先頭 / ' + ANIM_ANGLE_MAX + '°=最後）' +
+      playerAnim = '  アクション: ' + clip.name + '（角度連動 ' + ANIM_ANGLE_MIN + '°=0フレーム目 / ' + ANIM_ANGLE_MAX + '°=5フレーム目）' +
                    (clip0 ? ' ＋導入: ' + clip0.name : ' ／「2action0」なし（導入は行いません）');
     }, undefined, function (err) {
       playerState = '読込失敗（player.glb を index.html と同じ場所に置く）';
@@ -2335,7 +2341,7 @@ body.stereo .dispbar{opacity:.55}
       // → 体全体が均一に伸縮するだけでなく、揺れながら少し傾いたり沈んだりするので波打って見える
       const hJellyRot = softLimit(hJellyX[1] * 1.3 + hJellyX[2] * 1.6, 1) * JELLY_ROT_MAX;
       const hJellyBob = softLimit(-hJellySum, 1) * JELLY_BOB_MAX;
-      R.h.position.set(inp.hox, inp.hoy + hJellyBob, inp.hoz);
+      R.h.position.set(inp.hox, inp.hoy + partShiftY + hJellyBob, inp.hoz + partShiftZ);
       // 縦(Y)がつぶれる/伸びるのに合わせて横(X,Z)を逆位相にふくらませ、ゼリーのような質感にする
       const hJellyY = inp.hos * (1 + hJellySum);
       const hJellyXZ = inp.hos * (1 - hJellySum * 0.5);
@@ -2543,13 +2549,14 @@ body.stereo .dispbar{opacity:.55}
         mixer.update(0);
         playerProg = '  導入 ' + t.toFixed(2) + 's / ' + d0.toFixed(2) + 's';
       } else {
+      // 2action: ANIM_ANGLE_MIN°(-7°)=0フレーム目 → ANIM_ANGLE_MAX°(0°)=5フレーム目（範囲外は端のフレームで止める）
+      const tEnd = player2ActFrame5Time > 0 ? Math.min(player2ActFrame5Time, duration) : duration;
       if (tiltRaw <= ANIM_ANGLE_MIN) {
         t = 0;
       } else if (tiltRaw >= ANIM_ANGLE_MAX) {
-        t = duration;
+        t = tEnd;
       } else {
-        // ANIM_ANGLE_MIN°(-7°)→ANIM_ANGLE_MAX°(0°) を 0秒→duration（最初〜最大フレーム）に対応
-        t = duration * (tiltRaw - ANIM_ANGLE_MIN) / (ANIM_ANGLE_MAX - ANIM_ANGLE_MIN);
+        t = tEnd * (tiltRaw - ANIM_ANGLE_MIN) / (ANIM_ANGLE_MAX - ANIM_ANGLE_MIN);
       }
       playerAct.time = clamp(t, 0, duration);
       mixer.update(0);
@@ -2613,10 +2620,19 @@ body.stereo .dispbar{opacity:.55}
       plusMixer.update(0);
     }
     // 最終フレーム（INTRO_MAX_DEG°）に達したら導入を終え、次のフレームから通常の2actionの仕様に戻る
+    if (partMoving) {
+      partMoveT += dt;
+      const k = clamp(partMoveT / PART_MOVE_SEC, 0, 1);
+      const e = k * k * (3 - 2 * k);   // smoothstep（ゆっくり動き出してゆっくり止まる）
+      partShiftY = partMoveDY * e; partShiftZ = partMoveDZ * e;
+      if (k >= 1) partMoving = false;
+    }
     if (frontIntro && tiltLive && tiltSmooth < INTRO_MAX_DEG) introArmed = true;
     if (frontIntro && tiltLive && introArmed && tiltSmooth >= INTRO_MAX_DEG) {
       frontIntro = false;
-      introOffset = INTRO_END_START_DEG - tiltSmooth;   // 切り替わった時点の角度が、2actionの-3°になるようにずらす
+      partMoveDY = PART_AFTER_Y - inp.hoy; partMoveDZ = PART_AFTER_Z - inp.hoz;   // 切り替え時の位置から目標位置までの量
+      partMoveT = 0; partMoving = true;
+      introOffset = INTRO_END_START_DEG - tiltSmooth;   // 切り替わった時点の角度が、2actionの0°になるようにずらす
       playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、2action0→2actionに切り替わるこのタイミングで流す
     }
 

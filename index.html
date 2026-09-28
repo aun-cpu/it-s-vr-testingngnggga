@@ -534,7 +534,7 @@ body.stereo .dispbar{opacity:.55}
     px: 0, py: -0.6, pz: 0.25,                 // 水滴エフェクトの原点位置
     aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
     hox: 0.01, hoy: 0.6, hoz: 0.11, hos: 0.7, hot: -17,       // part.glb: player本体とのズレ（位置m）・スケール（倍率）・傾き（度）
-    tbx: 0, tby: 0.27, tbz: 0.07, tbr: 0.025, tbl: 0.15, tbt: -2    // 筒: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度、X軸まわり）
+    tbx: 0, tby: 0.28, tbz: 0.07, tbr: 0.025, tbl: 0.2, tbt: 3.0    // 筒: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度、X軸まわり）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
   const inp = Object.assign({ vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0 }, POS_DEFAULT);
@@ -2578,6 +2578,7 @@ body.stereo .dispbar{opacity:.55}
       );
       tubeMesh.rotation.x = Math.PI / 2;   // 筒の軸をZ方向（前後）に向ける
       tubeMesh.frustumCulled = false;
+      tubeMesh.visible = false;   // 筒は見えなくする（位置・向きは突起の計算や衝突判定にそのまま使う）
       tubeGroup.add(tubeMesh);
       scene.add(tubeGroup);
 

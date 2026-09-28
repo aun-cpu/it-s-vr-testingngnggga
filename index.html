@@ -1010,8 +1010,8 @@ body.stereo .dispbar{opacity:.55}
   const WET_STRING_FIRST = 0.1;   // 最初の糸が使える濡れ量（0〜1）
   const WET_STRING_STEP = 0.012;  // 次の糸が使えるようになる濡れ量の間隔
   const WET_STRING_R = 0.0003;    // m: 糸の基準の太さ（細いほど繊細）
-  const WET_ANCHOR_SPREAD = 0.012; // m: player側の糸の付け根が散らばる範囲（筒の入口まわりだけ）
-  const WET_MOUTH_SPREAD = 1.1;   // part側の糸の付け根が散らばる範囲（筒の半径の倍率）
+  const WET_ANCHOR_SPREAD = 0.035; // m: player側の糸の付け根が散らばる範囲（筒の入口まわりだけ）
+  const WET_MOUTH_SPREAD = 2.5;   // part側の糸の付け根が散らばる範囲（筒の半径の倍率）
   const WET_END_GAP = 0.16;       // m: 糸の両端を、さらに外側へ離す量（大きいほど、糸の両端が遠くなる）
   const WET_FLASH = 1.2;          // 張ってから消えるまでに、糸が自分で伸びる割合（0.8=約1.8倍まで）
   const WET_STRING_LIFE = [0.25, 0.6];   // 秒: 糸が張ってから、伸びきってちぎれるまで（一瞬）
@@ -1340,7 +1340,7 @@ body.stereo .dispbar{opacity:.55}
       const near = radial <= Math.max(OOZE_RADIAL_MIN, inp.tbr * OOZE_RADIAL_MAX);   // 筒が細くても、最低でもOOZE_RADIAL_MIN(m)までは「近い」とみなす
       const inside = near && (oozeInside ? ratio > OOZE_EXIT_RATIO : ratio >= OOZE_ENTER_RATIO);
       const speed = (depth - oozePrevDepth) / dt;
-      { const cap = Math.max(0.006, inp.tbr * 1.2), kk = radial > cap ? cap / radial : 1;   // player側のつなぎ目：plus2先端の、筒の軸上（入口より外側）に寄せる
+      { const cap = Math.max(0.015, inp.tbr * 2.5), kk = radial > cap ? cap / radial : 1;   // player側のつなぎ目：plus2先端の、筒の軸上（入口より外側）に寄せる
         wetAnchor.copy(tp).addScaledVector(e.u, Math.min(axial, -full / 2)).addScaledVector(e.b, kk); wetAnchorOk = true; }
       if (near && wetPrimed) wetK = Math.min(1, wetK + Math.min(0.04, Math.abs(speed) * dt * WET_GAIN + (inside ? WET_SEEP * dt : 0)));   // 動かすほど濡れる
       wetPrimed = true;

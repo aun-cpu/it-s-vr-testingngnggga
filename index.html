@@ -559,7 +559,10 @@ body.stereo .dispbar{opacity:.55}
     inp.ce = d.ce ? 1 : 0;
     if (Array.isArray(d.cq) && d.cq.length === 4 && d.cq.every((v) => typeof v === 'number' && isFinite(v))) inp.cq = d.cq;
     inp.csa = int(d.csa);
-    for (const k of POS_KEYS) inp[k] = posv(d[k], inp[k]);
+    for (const k of POS_KEYS) {
+      if (partLocked && (k === 'hoy' || k === 'hoz')) continue;   // 2action切り替え後のpartの位置(y,z)は操作側の値で上書きしない
+      inp[k] = posv(d[k], inp[k]);
+    }
   }
 
   // ---- 操作側 ----
@@ -1144,8 +1147,8 @@ body.stereo .dispbar{opacity:.55}
   const PART_AFTER_Y = 0.55, PART_AFTER_Z = 0.13;   // 切り替え後のpartの位置（m）
   const PART_MOVE_SEC = 1.0;          // 秒: 推移にかける時間
   let partMoving = false, partMoveT = 0;
-  let partShiftY = 0, partShiftZ = 0; // 切り替え時の位置からの推移量（現在の位置に加算して使う）
-  let partMoveDY = 0, partMoveDZ = 0; // 推移の最終量（目標位置 − 切り替え時の位置）
+  let partFromY = 0, partFromZ = 0;   // 推移を始めた時点のpartの位置
+  let partLocked = false;             // 切り替え後はtrue（操作側から届くhoy/hozで、推移後の値が上書きされないようにする）
   let introOffset = 0;                // 切り替え時に決まる角度のずれ（切り替え後は「現在の角度+これ」を2action・action3判定の角度として使う）
   let introArmed = false;             // 一度でもINTRO_MAX_DEG未満になったらtrue（開始時点で既に0°だと導入が即終了してしまうのを防ぐ）
   let frontIntro = true;              // true: 導入の最中（2action0 / plusの導入クリップを使う）。最初から導入で始める
@@ -2364,7 +2367,7 @@ body.stereo .dispbar{opacity:.55}
       // → 体全体が均一に伸縮するだけでなく、揺れながら少し傾いたり沈んだりするので波打って見える
       const hJellyRot = softLimit(hJellyX[1] * 1.3 + hJellyX[2] * 1.6, 1) * JELLY_ROT_MAX;
       const hJellyBob = softLimit(-hJellySum, 1) * JELLY_BOB_MAX;
-      R.h.position.set(inp.hox, inp.hoy + partShiftY + hJellyBob, inp.hoz + partShiftZ);
+      R.h.position.set(inp.hox, inp.hoy + hJellyBob, inp.hoz);
       // 縦(Y)がつぶれる/伸びるのに合わせて横(X,Z)を逆位相にふくらませ、ゼリーのような質感にする
       const hJellyY = inp.hos * (1 + hJellySum);
       const hJellyXZ = inp.hos * (1 - hJellySum * 0.5);
@@ -2647,14 +2650,17 @@ body.stereo .dispbar{opacity:.55}
       partMoveT += dt;
       const k = clamp(partMoveT / PART_MOVE_SEC, 0, 1);
       const e = k * k * (3 - 2 * k);   // smoothstep（ゆっくり動き出してゆっくり止まる）
-      partShiftY = partMoveDY * e; partShiftZ = partMoveDZ * e;
+      // inp.hoy / inp.hoz そのものを目標値へ動かす（位置調整パネルの数字も同じ値になる）
+      inp.hoy = k >= 1 ? PART_AFTER_Y : partFromY + (PART_AFTER_Y - partFromY) * e;
+      inp.hoz = k >= 1 ? PART_AFTER_Z : partFromZ + (PART_AFTER_Z - partFromZ) * e;
+      syncDispPosUi();
       if (k >= 1) partMoving = false;
     }
     if (frontIntro && tiltLive && tiltSmooth < INTRO_MAX_DEG) introArmed = true;
     if (frontIntro && tiltLive && introArmed && tiltSmooth >= INTRO_MAX_DEG) {
       frontIntro = false;
-      partMoveDY = PART_AFTER_Y - inp.hoy; partMoveDZ = PART_AFTER_Z - inp.hoz;   // 切り替え時の位置から目標位置までの量
-      partMoveT = 0; partMoving = true;
+      partFromY = inp.hoy; partFromZ = inp.hoz;   // 切り替え時の位置から目標位置へ動かす
+      partMoveT = 0; partMoving = true; partLocked = true;
       introOffset = INTRO_END_START_DEG - tiltSmooth;   // 切り替わった時点の角度が、2actionの0°になるようにずらす
       playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、2action0→2actionに切り替わるこのタイミングで流す
     }

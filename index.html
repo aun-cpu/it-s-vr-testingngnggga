@@ -302,6 +302,7 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" data-tab="arm">腕(playerarm)</button>
       <button type="button" data-tab="part">part.glb</button>
       <button type="button" data-tab="tube">筒</button>
+      <button type="button" data-tab="lq">液体筒</button>
     </div>
     <div id="posTab-body">
       <p class="postitle">水滴の位置（表示側の視点からの座標・m）</p>
@@ -332,10 +333,16 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">半径</span><button type="button" class="pstep" data-k="tbr" data-d="-1" data-step="0.005">−</button><input type="range" id="rng-tbr" data-k="tbr" min="0.005" max="0.3" step="0.005"><button type="button" class="pstep" data-k="tbr" data-d="1" data-step="0.005">＋</button><span class="pv" id="val-tbr">0.00</span></div>
       <div class="prow"><span class="pl">長さ</span><button type="button" class="pstep" data-k="tbl" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-tbl" data-k="tbl" min="0.02" max="1" step="0.01"><button type="button" class="pstep" data-k="tbl" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-tbl">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="pstep" data-k="tbt" data-d="-1" data-step="1">−</button><input type="range" id="rng-tbt" data-k="tbt" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="tbt" data-d="1" data-step="1">＋</button><span class="pv" id="val-tbt">0.00</span></div>
-      <div class="prow"><span class="pl">液体 X</span><button type="button" class="pstep" data-k="tbox" data-d="-1" data-step="0.005">−</button><input type="range" id="rng-tbox" data-k="tbox" min="-0.5" max="0.5" step="0.005"><button type="button" class="pstep" data-k="tbox" data-d="1" data-step="0.005">＋</button><span class="pv" id="val-tbox">0.00</span></div>
-      <div class="prow"><span class="pl">液体 Y</span><button type="button" class="pstep" data-k="tboy" data-d="-1" data-step="0.005">−</button><input type="range" id="rng-tboy" data-k="tboy" min="-0.5" max="0.5" step="0.005"><button type="button" class="pstep" data-k="tboy" data-d="1" data-step="0.005">＋</button><span class="pv" id="val-tboy">0.00</span></div>
-      <div class="prow"><span class="pl">液体 Z</span><button type="button" class="pstep" data-k="tboz" data-d="-1" data-step="0.005">−</button><input type="range" id="rng-tboz" data-k="tboz" min="-0.5" max="0.5" step="0.005"><button type="button" class="pstep" data-k="tboz" data-d="1" data-step="0.005">＋</button><span class="pv" id="val-tboz">0.00</span></div>
-      <div class="prow"><span class="pl">液体 大きさ</span><button type="button" class="pstep" data-k="tbos" data-d="-1" data-step="0.1">−</button><input type="range" id="rng-tbos" data-k="tbos" min="0.3" max="6" step="0.1"><button type="button" class="pstep" data-k="tbos" data-d="1" data-step="0.1">＋</button><span class="pv" id="val-tbos">0.00</span></div>
+    </div>
+    <div id="posTab-lq" class="hidden">
+      <p class="postitle">液体用の筒の位置・大きさ調整（partの位置からの差・m/°。液体はこの筒の中ほどから出る）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="lqx" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-lqx" data-k="lqx" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="lqx" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-lqx">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="lqy" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-lqy" data-k="lqy" min="-1" max="2" step="0.01"><button type="button" class="pstep" data-k="lqy" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-lqy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="lqz" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-lqz" data-k="lqz" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="lqz" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-lqz">0.00</span></div>
+      <div class="prow"><span class="pl">半径</span><button type="button" class="pstep" data-k="lqr" data-d="-1" data-step="0.005">−</button><input type="range" id="rng-lqr" data-k="lqr" min="0.005" max="0.3" step="0.005"><button type="button" class="pstep" data-k="lqr" data-d="1" data-step="0.005">＋</button><span class="pv" id="val-lqr">0.00</span></div>
+      <div class="prow"><span class="pl">長さ</span><button type="button" class="pstep" data-k="lql" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-lql" data-k="lql" min="0.02" max="1" step="0.01"><button type="button" class="pstep" data-k="lql" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-lql">0.00</span></div>
+      <div class="prow"><span class="pl">傾き</span><button type="button" class="pstep" data-k="lqt" data-d="-1" data-step="1">−</button><input type="range" id="rng-lqt" data-k="lqt" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="lqt" data-d="1" data-step="1">＋</button><span class="pv" id="val-lqt">0.00</span></div>
+      <div class="prow"><span class="pl">液の大きさ</span><button type="button" class="pstep" data-k="lqs" data-d="-1" data-step="0.1">−</button><input type="range" id="rng-lqs" data-k="lqs" min="0.3" max="6" step="0.1"><button type="button" class="pstep" data-k="lqs" data-d="1" data-step="0.1">＋</button><span class="pv" id="val-lqs">0.00</span></div>
     </div>
   </div>
 
@@ -411,11 +418,16 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">半径</span><button type="button" class="dpstep" data-k="tbr" data-d="-1" data-step="0.005">−</button><input type="range" id="d-rng-tbr" data-k="tbr" min="0.005" max="0.3" step="0.005"><button type="button" class="dpstep" data-k="tbr" data-d="1" data-step="0.005">＋</button><span class="pv" id="d-val-tbr">0.00</span></div>
       <div class="prow"><span class="pl">長さ</span><button type="button" class="dpstep" data-k="tbl" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-tbl" data-k="tbl" min="0.02" max="1" step="0.01"><button type="button" class="dpstep" data-k="tbl" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-tbl">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="tbt" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-tbt" data-k="tbt" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="tbt" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-tbt">0.00</span></div>
-      <div class="prow"><span class="pl">液体 X</span><button type="button" class="dpstep" data-k="tbox" data-d="-1" data-step="0.005">−</button><input type="range" id="d-rng-tbox" data-k="tbox" min="-0.5" max="0.5" step="0.005"><button type="button" class="dpstep" data-k="tbox" data-d="1" data-step="0.005">＋</button><span class="pv" id="d-val-tbox">0.00</span></div>
-      <div class="prow"><span class="pl">液体 Y</span><button type="button" class="dpstep" data-k="tboy" data-d="-1" data-step="0.005">−</button><input type="range" id="d-rng-tboy" data-k="tboy" min="-0.5" max="0.5" step="0.005"><button type="button" class="dpstep" data-k="tboy" data-d="1" data-step="0.005">＋</button><span class="pv" id="d-val-tboy">0.00</span></div>
-      <div class="prow"><span class="pl">液体 Z</span><button type="button" class="dpstep" data-k="tboz" data-d="-1" data-step="0.005">−</button><input type="range" id="d-rng-tboz" data-k="tboz" min="-0.5" max="0.5" step="0.005"><button type="button" class="dpstep" data-k="tboz" data-d="1" data-step="0.005">＋</button><span class="pv" id="d-val-tboz">0.00</span></div>
-      <div class="prow"><span class="pl">液体 大きさ</span><button type="button" class="dpstep" data-k="tbos" data-d="-1" data-step="0.1">−</button><input type="range" id="d-rng-tbos" data-k="tbos" min="0.3" max="6" step="0.1"><button type="button" class="dpstep" data-k="tbos" data-d="1" data-step="0.1">＋</button><span class="pv" id="d-val-tbos">0.00</span></div>
       <button type="button" class="mini" id="dBtnTubeReset" style="width:100%; margin-top:4px">筒をリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">液体用の筒の位置・大きさ調整（partの位置からの差。液体はこの筒の中ほどから出る）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="lqx" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-lqx" data-k="lqx" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="lqx" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-lqx">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="lqy" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-lqy" data-k="lqy" min="-1" max="2" step="0.01"><button type="button" class="dpstep" data-k="lqy" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-lqy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="lqz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-lqz" data-k="lqz" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="lqz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-lqz">0.00</span></div>
+      <div class="prow"><span class="pl">半径</span><button type="button" class="dpstep" data-k="lqr" data-d="-1" data-step="0.005">−</button><input type="range" id="d-rng-lqr" data-k="lqr" min="0.005" max="0.3" step="0.005"><button type="button" class="dpstep" data-k="lqr" data-d="1" data-step="0.005">＋</button><span class="pv" id="d-val-lqr">0.00</span></div>
+      <div class="prow"><span class="pl">長さ</span><button type="button" class="dpstep" data-k="lql" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-lql" data-k="lql" min="0.02" max="1" step="0.01"><button type="button" class="dpstep" data-k="lql" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-lql">0.00</span></div>
+      <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="lqt" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-lqt" data-k="lqt" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="lqt" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-lqt">0.00</span></div>
+      <div class="prow"><span class="pl">液の大きさ</span><button type="button" class="dpstep" data-k="lqs" data-d="-1" data-step="0.1">−</button><input type="range" id="d-rng-lqs" data-k="lqs" min="0.3" max="6" step="0.1"><button type="button" class="dpstep" data-k="lqs" data-d="1" data-step="0.1">＋</button><span class="pv" id="d-val-lqs">0.00</span></div>
+      <button type="button" class="mini" id="dBtnLqReset" style="width:100%; margin-top:4px">液体筒をリセット</button>
       <button type="button" class="mini on" id="dBtnOozeGuide" style="width:100%; margin-top:6px">液体の位置ガイド: ON</button>
       <button type="button" class="mini" id="dBtnOozeTest" style="width:100%; margin-top:6px">液体を出す（テスト）</button>
       <p class="postitle" style="margin:10px 0 6px">揺れの球の位置・大きさ（変更中は球を表示）</p>
@@ -553,7 +565,7 @@ body.stereo .dispbar{opacity:.55}
     aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
     hox: 0.01, hoy: 0.6, hoz: 0.11, hos: 0.7, hot: -17,       // part.glb: player本体とのズレ（位置m）・スケール（倍率）・傾き（度）
     tbx: 0, tby: 0.28, tbz: 0.07, tbr: 0.005, tbl: 0.2, tbt: 3.0,
-    tbox: 0, tboy: 0, tboz: 0, tbos: 1.5    // 液体（筒からあふれる粘液）: 位置のズレ(m・筒の位置から)と大きさの倍率
+    lqx: 0, lqy: 0.28, lqz: 0.07, lqr: 0.01, lql: 0.2, lqt: 3.0, lqs: 1.5    // 液体用の筒（別の筒）: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度）・液の大きさ倍率
     // 筒: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度、X軸まわり）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
@@ -755,7 +767,7 @@ body.stereo .dispbar{opacity:.55}
   function syncPosUi() {
     for (const k of POS_KEYS) {
       $('#rng-' + k).value = st[k];
-      $('#val-' + k).textContent = st[k].toFixed(k.indexOf('tb') === 0 ? 3 : 2);
+      $('#val-' + k).textContent = st[k].toFixed((k.indexOf('tb') === 0 || k.indexOf('lq') === 0) ? 3 : 2);
     }
   }
   function setPos(k, v) {
@@ -769,7 +781,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.pstep').forEach((b) => {
     b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt', 'tbox', 'tboy', 'tboz', 'tbos'] };
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs'] };
   let posTab = 'body';
   document.querySelectorAll('#posTabs button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -837,7 +849,7 @@ body.stereo .dispbar{opacity:.55}
       if (!rng) continue;
       rng.value = inp[k];
       const val = document.getElementById('d-val-' + k);
-      if (val) val.textContent = inp[k].toFixed(k.indexOf('tb') === 0 ? 3 : 2);
+      if (val) val.textContent = inp[k].toFixed((k.indexOf('tb') === 0 || k.indexOf('lq') === 0) ? 3 : 2);
     }
   }
   function setDispPos(k, v) {
@@ -862,6 +874,10 @@ body.stereo .dispbar{opacity:.55}
     $('#dBtnOozeGuide').classList.toggle('on', oozeGuideOn);
   });
   $('#dBtnOozeTest').addEventListener('click', () => { for (let i = 0; i < 3; i++) emitOoze(); buzz(15); });   // 判定に関係なく今すぐ液体を出す
+  $('#dBtnLqReset').addEventListener('click', () => {
+    for (const k of TAB_KEYS.lq) inp[k] = POS_DEFAULT[k];
+    syncDispPosUi(); buzz(15);
+  });
   $('#dBtnTubeReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.tube) inp[k] = POS_DEFAULT[k];
     syncDispPosUi(); buzz(15);
@@ -983,7 +999,7 @@ body.stereo .dispbar{opacity:.55}
   let oozeLastKey = '', oozeFlashUntil = 0;
   let oozeGroup = null, oozeInside = false, oozePrevDepth = 0, oozeCool = 0;
   const _oz = { d: new THREE.Vector3(), u: new THREE.Vector3(), w: new THREE.Vector3(), x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0),
-                a: new THREE.Vector3(), b: new THREE.Vector3(), o: new THREE.Vector3(), t: new THREE.Vector3() };
+                a: new THREE.Vector3(), b: new THREE.Vector3(), o: new THREE.Vector3(), t: new THREE.Vector3(), c: new THREE.Vector3() };
   function initOoze(scene) {
     oozeGroup = new THREE.Group();
     const geo = new THREE.SphereGeometry(1, 14, 10);   // 単位球。大きさはスケールで反映
@@ -1030,7 +1046,7 @@ body.stereo .dispbar{opacity:.55}
     };
     const tubeG = new THREE.Group(), tubeW = mkWire(0xff6fa8);   // 筒（ピンク）
     tubeG.add(tubeW);
-    const liqG = new THREE.Group(), liqW = mkWire(0xf2ff3a);      // 液体が出る範囲（黄）：筒と同じ形を、液体の位置のズレぶん動かしたもの
+    const liqG = new THREE.Group(), liqW = mkWire(0xf2ff3a);      // 液体用の筒（黄）：液体はこの筒の中ほどから出る
     liqG.add(liqW);
     const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xf2ff3a, transparent: true, opacity: 0.85, depthTest: false, depthWrite: false }));
     dot.scale.setScalar(0.006); dot.renderOrder = 1001; dot.frustumCulled = false;   // 液体の中心（点）
@@ -1047,7 +1063,7 @@ body.stereo .dispbar{opacity:.55}
   function updateOozeGuide(now) {
     if (!oozeGuide || !R || !R.tube) return;
     // 液体まわりの操作値が動いたら、ガイドをOFFにしていても少しの間だけ表示する
-    const key = [inp.tbx, inp.tby, inp.tbz, inp.tbr, inp.tbl, inp.tbt, inp.tbox, inp.tboy, inp.tboz, inp.tbos].join(',');
+    const key = [inp.tbx, inp.tby, inp.tbz, inp.tbr, inp.tbl, inp.tbt, inp.lqx, inp.lqy, inp.lqz, inp.lqr, inp.lql, inp.lqt, inp.lqs].join(',');
     if (key !== oozeLastKey) { if (oozeLastKey !== '') oozeFlashUntil = now + 3000; oozeLastKey = key; }
     const on = oozeGuideOn || now < oozeFlashUntil;
     oozeGuide.tube.visible = oozeGuide.liq.visible = on;
@@ -1055,21 +1071,23 @@ body.stereo .dispbar{opacity:.55}
     const tp = R.tube.position, r = Math.max(0.004, inp.tbr), L = Math.max(0.002, inp.tbl), tr = inp.tbt * Math.PI / 180;
     oozeGuide.tube.position.copy(tp); oozeGuide.tube.rotation.x = tr;
     oozeGuide.tubeW.scale.set(r, L, r);
-    oozeGuide.liq.position.set(tp.x + inp.tbox, tp.y + inp.tboy, tp.z + inp.tboz); oozeGuide.liq.rotation.x = tr;
-    oozeGuide.liqW.scale.set(r * 1.4, L * (OOZE_AXIAL_MAX - OOZE_AXIAL_MIN), r * 1.4);   // 液体が出る軸方向の範囲
-    oozeGuide.liqW.position.set(0, 0, L * (OOZE_AXIAL_MIN + OOZE_AXIAL_MAX) / 2);   // 出る範囲の軸方向の中心へ
+    const lr = Math.max(0.004, inp.lqr), LL = Math.max(0.002, inp.lql), lt = inp.lqt * Math.PI / 180;
+    const hp = R.h ? R.h.position : tp;
+    oozeGuide.liq.position.set(hp.x + inp.lqx, hp.y + inp.lqy, hp.z + inp.lqz); oozeGuide.liq.rotation.x = lt;   // 液体用の筒（黄）
+    oozeGuide.liqW.scale.set(lr, LL, lr);
+    oozeGuide.liqW.position.set(0, 0, 0);
   }
   function emitOoze() {
     let o = null;
     for (let i = 0; i < oozes.length; i++) if (!oozes[i].on) { o = oozes[i]; break; }
     if (!o) return;
-    const e = _oz, tt = inp.tbt * Math.PI / 180, full = Math.max(0.002, inp.tbl);
-    e.d.set(0, -Math.sin(tt), Math.cos(tt));   // 筒の軸方向
+    const e = _oz, tt = inp.lqt * Math.PI / 180, full = Math.max(0.002, inp.lql);   // 液体用の筒の長さ・傾き
+    e.d.set(0, -Math.sin(tt), Math.cos(tt));   // 液体用の筒の軸方向
     e.w.set(0, Math.cos(tt), Math.sin(tt));    // 軸に垂直な「上」方向
     const ang = (OOZE_ANGLE_CENTER + (Math.random() - 0.5) * OOZE_ANGLE_SPREAD) * Math.PI / 180;
     o.n.set(0, 0, 0).addScaledVector(e.x, Math.cos(ang)).addScaledVector(e.w, Math.sin(ang));   // 筒の外向き
     const a = (OOZE_AXIAL_MIN + Math.random() * (OOZE_AXIAL_MAX - OOZE_AXIAL_MIN)) * full;
-    o.off.set(0, 0, 0).addScaledVector(e.d, a).addScaledVector(o.n, inp.tbr * 1.05);   // 筒の位置からの相対位置（筒・partに追従）
+    o.off.set(0, 0, 0).addScaledVector(e.d, a).addScaledVector(o.n, Math.max(0.002, inp.lqr) * 1.05);   // 液体用の筒の中心からの相対位置（筒・partに追従）
     o.size = OOZE_SIZE * (0.8 + Math.random() * 0.5);
     o.age = 0; o.life = OOZE_LIFE * (0.85 + Math.random() * 0.3);
     o.delay = OOZE_DRIP_DELAY * (0.6 + Math.random());
@@ -1091,6 +1109,7 @@ body.stereo .dispbar{opacity:.55}
     if (!OOZE_ON || !oozeGroup || !R || !R.tube) return;
     const e = _oz, tp = R.tube.position;
     updateOozeGuide(performance.now());
+    const lp = _oz.c; if (R.h) lp.set(R.h.position.x + inp.lqx, R.h.position.y + inp.lqy, R.h.position.z + inp.lqz); else lp.copy(tp);   // 液体用の筒の中心（partに追従）
     // ---- plus2の先端が筒に入ったかを、アニメどおりの姿勢（筒に合わせて曲げる前）で判定する ----
     if (plus2Rod && R.plus2 && dt > 0) {
       const full = Math.max(0.002, inp.tbl), tt = inp.tbt * Math.PI / 180;
@@ -1127,9 +1146,9 @@ body.stereo .dispbar{opacity:.55}
       const grow = clamp(o.age / 0.6, 0, 1), ge = grow * grow * (3 - 2 * grow);
       const fade = clamp((o.life - o.age) / 1.2, 0, 1);
       const alpha = 0.85 * fade * clamp(o.age / 0.15, 0, 1);
-      const sz = o.size * Math.max(0.1, inp.tbos);   // 大きさの倍率も操作値
+      const sz = o.size * Math.max(0.1, inp.lqs);   // 大きさの倍率も操作値
       // 元のにじみ（だまり）: 筒に追従しつつ、ほんの少しだけ自重で下がる
-      e.o.copy(tp).add(o.off); e.o.x += inp.tbox; e.o.y += inp.tboy - Math.min(o.age * 0.002, 0.01); e.o.z += inp.tboz;   // 位置のズレは操作値（動かすと出ている液体も一緒に動く）
+      e.o.copy(lp).add(o.off); e.o.y -= Math.min(o.age * 0.002, 0.01);   // 液体用の筒に追従しつつ、ほんの少しだけ自重で下がる
       o.base.position.copy(e.o).addScaledVector(o.n, sz * 0.25 * ge);
       o.base.scale.setScalar(Math.max(0.0001, sz * ge * (0.5 + 0.5 * fade)));
       o.base.material.opacity = alpha;

@@ -301,6 +301,7 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" class="on" data-tab="body">本体</button>
       <button type="button" data-tab="arm">腕(playerarm)</button>
       <button type="button" data-tab="part">part.glb</button>
+      <button type="button" data-tab="tube">筒</button>
     </div>
     <div id="posTab-body">
       <p class="postitle">水滴の位置（表示側の視点からの座標・m）</p>
@@ -322,6 +323,15 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="hoz" data-d="-1" data-step="1">−</button><input type="range" id="rng-hoz" data-k="hoz" min="-200" max="200" step="1"><button type="button" class="pstep" data-k="hoz" data-d="1" data-step="1">＋</button><span class="pv" id="val-hoz">0.00</span></div>
       <div class="prow"><span class="pl">サイズ</span><button type="button" class="pstep" data-k="hos" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-hos" data-k="hos" min="0.1" max="3" step="0.01"><button type="button" class="pstep" data-k="hos" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-hos">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="pstep" data-k="hot" data-d="-1" data-step="1">−</button><input type="range" id="rng-hot" data-k="hot" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="hot" data-d="1" data-step="1">＋</button><span class="pv" id="val-hot">0.00</span></div>
+    </div>
+    <div id="posTab-tube" class="hidden">
+      <p class="postitle">筒の位置・大きさ調整（partの位置からの差・m/°）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="pstep" data-k="tbx" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-tbx" data-k="tbx" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="tbx" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-tbx">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="pstep" data-k="tby" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-tby" data-k="tby" min="-1" max="2" step="0.01"><button type="button" class="pstep" data-k="tby" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-tby">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="tbz" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-tbz" data-k="tbz" min="-1" max="1" step="0.01"><button type="button" class="pstep" data-k="tbz" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-tbz">0.00</span></div>
+      <div class="prow"><span class="pl">半径</span><button type="button" class="pstep" data-k="tbr" data-d="-1" data-step="0.005">−</button><input type="range" id="rng-tbr" data-k="tbr" min="0.005" max="0.3" step="0.005"><button type="button" class="pstep" data-k="tbr" data-d="1" data-step="0.005">＋</button><span class="pv" id="val-tbr">0.00</span></div>
+      <div class="prow"><span class="pl">長さ</span><button type="button" class="pstep" data-k="tbl" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-tbl" data-k="tbl" min="0.02" max="1" step="0.01"><button type="button" class="pstep" data-k="tbl" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-tbl">0.00</span></div>
+      <div class="prow"><span class="pl">傾き</span><button type="button" class="pstep" data-k="tbt" data-d="-1" data-step="1">−</button><input type="range" id="rng-tbt" data-k="tbt" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="tbt" data-d="1" data-step="1">＋</button><span class="pv" id="val-tbt">0.00</span></div>
     </div>
   </div>
 
@@ -390,6 +400,14 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">サイズ</span><button type="button" class="dpstep" data-k="hos" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hos" data-k="hos" min="0.1" max="3" step="0.01"><button type="button" class="dpstep" data-k="hos" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hos">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="hot" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-hot" data-k="hot" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="hot" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-hot">0.00</span></div>
       <button type="button" class="mini" id="dBtnPosReset" style="width:100%; margin-top:4px">この項目をリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">筒の位置・大きさ調整（partの位置からの差）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="tbx" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-tbx" data-k="tbx" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="tbx" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-tbx">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="tby" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-tby" data-k="tby" min="-1" max="2" step="0.01"><button type="button" class="dpstep" data-k="tby" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-tby">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="tbz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-tbz" data-k="tbz" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="tbz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-tbz">0.00</span></div>
+      <div class="prow"><span class="pl">半径</span><button type="button" class="dpstep" data-k="tbr" data-d="-1" data-step="0.005">−</button><input type="range" id="d-rng-tbr" data-k="tbr" min="0.005" max="0.3" step="0.005"><button type="button" class="dpstep" data-k="tbr" data-d="1" data-step="0.005">＋</button><span class="pv" id="d-val-tbr">0.00</span></div>
+      <div class="prow"><span class="pl">長さ</span><button type="button" class="dpstep" data-k="tbl" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-tbl" data-k="tbl" min="0.02" max="1" step="0.01"><button type="button" class="dpstep" data-k="tbl" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-tbl">0.00</span></div>
+      <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="tbt" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-tbt" data-k="tbt" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="tbt" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-tbt">0.00</span></div>
+      <button type="button" class="mini" id="dBtnTubeReset" style="width:100%; margin-top:4px">筒をリセット</button>
     </div>
   </div>
   <div class="dispbar" id="dispbar">
@@ -515,7 +533,8 @@ body.stereo .dispbar{opacity:.55}
   const POS_DEFAULT = {
     px: 0, py: -0.6, pz: 0.25,                 // 水滴エフェクトの原点位置
     aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
-    hox: 0.01, hoy: 0.6, hoz: 0.11, hos: 0.7, hot: -17        // part.glb: player本体とのズレ（位置m）・スケール（倍率）・傾き（度）
+    hox: 0.01, hoy: 0.6, hoz: 0.11, hos: 0.7, hot: -17,       // part.glb: player本体とのズレ（位置m）・スケール（倍率）・傾き（度）
+    tbx: 0, tby: 0.5, tbz: 0, tbr: 0.03, tbl: 0.15, tbt: 0    // 筒: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度、X軸まわり）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
   const inp = Object.assign({ vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0 }, POS_DEFAULT);
@@ -567,7 +586,7 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- 操作側 ----
   const st = Object.assign({ vr: 0, rc: 0 }, POS_DEFAULT);
-  const r2 = (v) => Math.round(v * 100) / 100;
+  const r2 = (v) => Math.round(v * 1000) / 1000;
   const r1 = (v) => Math.round(v * 10) / 10;
 
   // 操作側スマホ自身の向き（表示側へ送って表示する）
@@ -716,12 +735,12 @@ body.stereo .dispbar{opacity:.55}
   function syncPosUi() {
     for (const k of POS_KEYS) {
       $('#rng-' + k).value = st[k];
-      $('#val-' + k).textContent = st[k].toFixed(2);
+      $('#val-' + k).textContent = st[k].toFixed(k.indexOf('tb') === 0 ? 3 : 2);
     }
   }
   function setPos(k, v) {
     const rng = $('#rng-' + k);
-    st[k] = clamp(Math.round(v * 100) / 100, parseFloat(rng.min), parseFloat(rng.max));
+    st[k] = clamp(Math.round(v * 1000) / 1000, parseFloat(rng.min), parseFloat(rng.max));
     syncPosUi(); pushCtrl();
   }
   for (const k of POS_KEYS) {
@@ -730,7 +749,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.pstep').forEach((b) => {
     b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'] };
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'] };
   let posTab = 'body';
   document.querySelectorAll('#posTabs button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -798,13 +817,13 @@ body.stereo .dispbar{opacity:.55}
       if (!rng) continue;
       rng.value = inp[k];
       const val = document.getElementById('d-val-' + k);
-      if (val) val.textContent = inp[k].toFixed(2);
+      if (val) val.textContent = inp[k].toFixed(k.indexOf('tb') === 0 ? 3 : 2);
     }
   }
   function setDispPos(k, v) {
     const rng = document.getElementById('d-rng-' + k);
     if (!rng) return;
-    inp[k] = clamp(Math.round(v * 100) / 100, parseFloat(rng.min), parseFloat(rng.max));
+    inp[k] = clamp(Math.round(v * 1000) / 1000, parseFloat(rng.min), parseFloat(rng.max));
     syncDispPosUi();
   }
   document.querySelectorAll('#dPosBody input[type=range]').forEach((r) => {
@@ -815,6 +834,10 @@ body.stereo .dispbar{opacity:.55}
   });
   $('#dBtnPosReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.part) inp[k] = POS_DEFAULT[k];
+    syncDispPosUi(); buzz(15);
+  });
+  $('#dBtnTubeReset').addEventListener('click', () => {
+    for (const k of TAB_KEYS.tube) inp[k] = POS_DEFAULT[k];
     syncDispPosUi(); buzz(15);
   });
   syncDispPosUi();
@@ -1353,9 +1376,21 @@ body.stereo .dispbar{opacity:.55}
       if (h.parent) h.matrixWorld.multiplyMatrices(h.parent.matrixWorld, h.matrix); else h.matrixWorld.copy(h.matrix);
       c.inv.copy(h.matrixWorld).invert();
       let bestLen = 0;
+      // 筒の中心・向き（軸はZ方向をX軸まわりにtbt°傾けたもの）。この内側に入った頂点は、窪みに収まっているとみなして押し出さない
+      const tcx = h.position.x + inp.tbx, tcy = h.position.y + inp.tby, tcz = h.position.z + inp.tbz;
+      const tt = inp.tbt * Math.PI / 180, tdy = -Math.sin(tt), tdz = Math.cos(tt);
+      const tHalf = inp.tbl / 2, tR2 = inp.tbr * inp.tbr;
       for (let i = 0; i < total; i++) {
         c.v.set(partCollPts[i * 3], partCollPts[i * 3 + 1], partCollPts[i * 3 + 2]);
         const px = c.v.x, py = c.v.y, pz = c.v.z;
+        {
+          const dx = px - tcx, dy = py - tcy, dz = pz - tcz;
+          const ax = dy * tdy + dz * tdz;                          // 軸方向の位置
+          if (Math.abs(ax) <= tHalf) {
+            const rx2 = dx, ry2 = dy - ax * tdy, rz2 = dz - ax * tdz;   // 軸からのズレ
+            if (rx2 * rx2 + ry2 * ry2 + rz2 * rz2 <= tR2) continue;
+          }
+        }
         c.v.applyMatrix4(c.inv);
         let qx = (c.v.x - hCollide.cx) / rx, qy = (c.v.y - hCollide.cy) / ry, qz = (c.v.z - hCollide.cz) / rz;
         const d2 = qx * qx + qy * qy + qz * qz;
@@ -2377,6 +2412,17 @@ body.stereo .dispbar{opacity:.55}
       hGroup.rotation.x = inp.hot * Math.PI / 180;
       scene.add(hGroup);
 
+      // 筒（plus2の突起がpartの窪みに収まる動きを再現するための小さな円柱。両端が開いた半透明の筒。位置はpartに追従）
+      const tubeGroup = new THREE.Group();
+      const tubeMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(1, 1, 1, 28, 1, true),   // 単位サイズ。半径・長さはスケールで反映
+        new THREE.MeshBasicMaterial({ color: 0xff8fb8, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })
+      );
+      tubeMesh.rotation.x = Math.PI / 2;   // 筒の軸をZ方向（前後）に向ける
+      tubeMesh.frustumCulled = false;
+      tubeGroup.add(tubeMesh);
+      scene.add(tubeGroup);
+
       // playerarm.glb（playerと同じ位置・向き。player本体は固定なのでズレ量だけを適用）
       const armGroup = new THREE.Group();
       armGroup.position.set(inp.aox, inp.aoy, inp.aoz);
@@ -2411,7 +2457,7 @@ body.stereo .dispbar{opacity:.55}
       initActionButton(scene);   // ゲージ満タン時にhの上へ出す、視線で注視できるボタン
 
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup, plus2: plus2Group, bg: bgGroup,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup, plus2: plus2Group, bg: bgGroup, tube: tubeGroup, tubeMesh: tubeMesh,
         W: 0, H: 0
       };
       T = {
@@ -2895,6 +2941,11 @@ body.stereo .dispbar{opacity:.55}
     }
 
     updatePartCollision(dt);   // playerの今のポーズに合わせて、partがplayerと重ならないよう押し出す
+    if (R.tube && R.h) {   // 筒：partの今の位置（押し出し・ゆれ込み）＋ズレ量。半径・長さ・傾きは操作値
+      R.tube.position.set(R.h.position.x + inp.tbx, R.h.position.y + inp.tby, R.h.position.z + inp.tbz);
+      R.tube.rotation.x = inp.tbt * Math.PI / 180;
+      R.tubeMesh.scale.set(Math.max(0.001, inp.tbr), Math.max(0.001, inp.tbl), Math.max(0.001, inp.tbr));
+    }
 
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;

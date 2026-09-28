@@ -1004,8 +1004,17 @@ body.stereo .dispbar{opacity:.55}
   const WET_DRY = 0.002;          // 毎秒少しずつ乾く量（WET_BASE より下には減らない）
   const WET_REACH = 0.15;         // m: 濡れが最大まで広がった時に、筒の線から届く距離
   const WET_DRIP_MIN = 0.3;       // この濡れ量を超えると、口から糸を引いて垂れる
+  const WET_STRANDS = 6;          // partとplayerの間に張る糸の本数（濡れが増えるほど1本ずつ増える）
+  const WET_STRING_MAX = 0.6;     // m: partの口とplayerの間がこれ以上離れると糸がちぎれる（HUDの「糸の距離」を見て調整）
+  const WET_STRING_FIRST = 0.18;  // 最初の1本が出る濡れ量（0〜1）
+  const WET_STRING_STEP = 0.13;   // 次の1本が出るまでの濡れ量の間隔
+  const WET_STRING_R = 0.0016;    // m: 糸の細さ（濡れ量が増えると最大で約3倍まで太くなる）
+  const WET_ANCHOR_SPREAD = 0.02; // m: player側のつなぎ目のばらつき
+  const wetStrands = [];
+  const wetAnchor = new THREE.Vector3();
+  let wetAnchorOk = false;
   const WETU = { P: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, K: { value: WET_BASE }, R: { value: WET_REACH }, env: { value: null } };
-  let wetK = WET_BASE, wetSide = 1, wetPrimed = false, wetRing = null;
+  let wetK = WET_BASE, wetSide = 1, wetPrimed = false;
   const WET_VDECL = 'varying vec3 vWetP;\nvarying vec3 vWetQ;\n';
   const WET_VPOS = '\nvWetP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWetQ = (modelMatrix * vec4(position, 1.0)).xyz;\n';
   const WET_FDECL = [
@@ -1065,7 +1074,7 @@ body.stereo .dispbar{opacity:.55}
   function wetMatsOf(o) { if (o.isMesh && o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(wetInject); }
   let oozeGuideOn = true;             // 液体の位置ガイド（黄=液体が出る範囲と中心、ピンク=筒。軸: 赤=X右 緑=Y上 青=Z手前）
   let oozeGuide = null;
-  const oozeDbg = { ratio: 0, radialMM: 0, inside: false, near: false, has: false };
+  const oozeDbg = { strandD: 0, ratio: 0, radialMM: 0, inside: false, near: false, has: false };
   let oozeLastKey = '', oozeFlashUntil = 0;
   let oozeGroup = null, oozeInside = false, oozePrevDepth = 0, oozeCool = 0, oozeSeep = 0, oozeEnv = null;
   const _oz = { d: new THREE.Vector3(), u: new THREE.Vector3(), w: new THREE.Vector3(), x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1),
@@ -1114,14 +1123,51 @@ body.stereo .dispbar{opacity:.55}
     geo.attributes.position.needsUpdate = true;
     geo.computeVertexNormals();
   }
+  const WS_S = 22, WS_M = 8;          // 糸の分割数（長さ方向・周）
+  function wsGeo() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(WS_S * WS_M * 3), 3));
+    const idx = [];
+    for (let i = 0; i < WS_S - 1; i++) for (let j = 0; j < WS_M; j++) {
+      const a = i * WS_M + j, b = i * WS_M + (j + 1) % WS_M, c = (i + 1) * WS_M + j, d = (i + 1) * WS_M + (j + 1) % WS_M;
+      idx.push(a, b, c, b, d, c);
+    }
+    geo.setIndex(idx);
+    return geo;
+  }
+  const _ws = { A: new THREE.Vector3(), B: new THREE.Vector3(), C: new THREE.Vector3(), P: new THREE.Vector3(), T: new THREE.Vector3(), N1: new THREE.Vector3(), N2: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0), fx: new THREE.Vector3(1, 0, 0) };
+  function wsShape(s, A, B, sag, rmid) {   // A(partの口)→B(player側)を、たるみsagをつけた曲線でつなぎ、両端がふくらんだ細い糸にする
+    const w = _ws, pos = s.geo.attributes.position.array;
+    w.C.copy(A).add(B).multiplyScalar(0.5); w.C.y -= sag * 2;   // 2次ベジェの制御点（中央を下へ引く）
+    for (let i = 0; i < WS_S; i++) {
+      const t = i / (WS_S - 1), u = 1 - t;
+      w.P.set(0, 0, 0).addScaledVector(A, u * u).addScaledVector(w.C, 2 * u * t).addScaledVector(B, t * t);
+      w.T.set(0, 0, 0).addScaledVector(A, -2 * u).addScaledVector(w.C, 2 * (u - t)).addScaledVector(B, 2 * t).normalize();
+      w.N1.crossVectors(w.T, Math.abs(w.T.y) < 0.95 ? w.up : w.fx).normalize();
+      w.N2.crossVectors(w.T, w.N1).normalize();
+      const flare = Math.exp(-t * 14) + Math.exp(-(1 - t) * 14);
+      const r = rmid * (1 + 2.6 * flare);
+      for (let j = 0; j < WS_M; j++) {
+        const th = 2 * Math.PI * j / WS_M, k = (i * WS_M + j) * 3, c = Math.cos(th) * r, sn = Math.sin(th) * r;
+        pos[k] = w.P.x + w.N1.x * c + w.N2.x * sn; pos[k + 1] = w.P.y + w.N1.y * c + w.N2.y * sn; pos[k + 2] = w.P.z + w.N1.z * c + w.N2.z * sn;
+      }
+    }
+    s.geo.attributes.position.needsUpdate = true;
+    s.geo.computeVertexNormals();
+  }
   function initOoze(scene) {
     oozeGroup = new THREE.Group();
     oozeEnv = ozEnvTexture();
     WETU.env.value = oozeEnv;
-    wetRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.2, 14, 40), new THREE.MeshStandardMaterial({ color: OOZE_COLOR, emissive: 0x2a2208, roughness: 0.06, metalness: 0.25, envMap: oozeEnv, envMapIntensity: 1.4,
-                                                                                                       transparent: true, opacity: 0, depthWrite: true, depthTest: !OOZE_SEE_THROUGH }));
-    wetRing.visible = false; wetRing.frustumCulled = false;
-    oozeGroup.add(wetRing);
+    for (let i = 0; i < WET_STRANDS; i++) {
+      const geo = wsGeo();
+      const mat = new THREE.MeshStandardMaterial({ color: OOZE_COLOR, emissive: 0x2a2208, roughness: 0.06, metalness: 0.25, envMap: oozeEnv, envMapIntensity: 1.4,
+                                                   transparent: true, opacity: 0, depthWrite: true, depthTest: !OOZE_SEE_THROUGH, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(geo, mat); mesh.visible = false; mesh.frustumCulled = false;
+      oozeGroup.add(mesh);
+      const ph = i * 2.399 + 0.6;   // 口の周りに散らす角度
+      wetStrands.push({ geo: geo, mat: mat, mesh: mesh, ph: ph, ph2: ph * 1.7 + 1.1, sagK: 0.7 + 0.6 * ((i * 0.618) % 1), thick: 0.75 + 0.5 * ((i * 0.37 + 0.2) % 1), thr: WET_STRING_FIRST + WET_STRING_STEP * i, vis: 0, broken: false });
+    }
     const sph = new THREE.SphereGeometry(1, 20, 14);   // 単位球。大きさはスケールで反映
     const mkMat = function () {   // つやつやで、ほぼ不透明なぬれた質感
       return new THREE.MeshStandardMaterial({ color: OOZE_COLOR, emissive: 0x2a2208, roughness: 0.06, metalness: 0.25, envMap: oozeEnv, envMapIntensity: 1.4,
@@ -1250,6 +1296,7 @@ body.stereo .dispbar{opacity:.55}
       const near = radial <= Math.max(OOZE_RADIAL_MIN, inp.tbr * OOZE_RADIAL_MAX);   // 筒が細くても、最低でもOOZE_RADIAL_MIN(m)までは「近い」とみなす
       const inside = near && (oozeInside ? ratio > OOZE_EXIT_RATIO : ratio >= OOZE_ENTER_RATIO);
       const speed = (depth - oozePrevDepth) / dt;
+      wetAnchor.copy(_pe.p[0]); wetAnchorOk = true;   // player側のつなぎ目（突起の根元）
       if (near && wetPrimed) wetK = Math.min(1, wetK + Math.min(0.04, Math.abs(speed) * dt * WET_GAIN + (inside ? WET_SEEP * dt : 0)));   // 動かすほど濡れる
       wetPrimed = true;
       oozeCool -= dt;
@@ -1275,14 +1322,29 @@ body.stereo .dispbar{opacity:.55}
       WETU.P.value[1].copy(tp).addScaledVector(e.d, wetSide * fullT / 2);           // 筒の入口
       WETU.P.value[2].copy(tp).addScaledVector(e.d, -wetSide * fullT / 2);          // 筒の奥
       WETU.K.value = wetK;
-      if (wetRing) {   // 口のふちに、ぷっくり盛り上がった液体（濡れ量に応じて見え始め、太くなる）
-        const lv = clamp((wetK - 0.02) / 0.2, 0, 1);
-        wetRing.visible = lv > 0.01;
-        wetRing.material.opacity = 0.92 * lv;
-        e.d.set(0, -Math.sin(lt2), Math.cos(lt2));
-        wetRing.position.copy(lp).addScaledVector(e.d, wetSide * LL / 2);
-        wetRing.quaternion.setFromUnitVectors(e.z, e.d);
-        wetRing.scale.set(rr * 0.95, rr * 0.95, rr * (0.5 + 1.0 * wetK));
+      // ---- partの口とplayerの間に、濡れが増えるほど1本ずつ増える糸。離れるほど細く長く伸び、伸びきるとちぎれる ----
+      if (wetAnchorOk) {
+        e.d.set(0, -Math.sin(lt2), Math.cos(lt2)); e.w.set(0, Math.cos(lt2), Math.sin(lt2));
+        e.o.copy(lp).addScaledVector(e.d, wetSide * LL / 2);   // 口の中心
+        const tsec = performance.now() / 1000;
+        oozeDbg.strandD = e.o.distanceTo(wetAnchor) * 100;
+        for (let i = 0; i < wetStrands.length; i++) {
+          const s = wetStrands[i];
+          e.a.copy(e.o).addScaledVector(e.x, Math.cos(s.ph) * rr * 0.8).addScaledVector(e.w, Math.sin(s.ph) * rr * 0.8);                       // 口のふち
+          e.b.copy(wetAnchor).addScaledVector(e.x, Math.cos(s.ph2) * WET_ANCHOR_SPREAD).addScaledVector(e.w, Math.sin(s.ph2) * WET_ANCHOR_SPREAD); // player側
+          const D = e.a.distanceTo(e.b), stretch = clamp(D / WET_STRING_MAX, 0, 1);
+          if (stretch >= 1) s.broken = true; else if (stretch < 0.85) s.broken = false;   // ちぎれたら、少し近づくまで戻らない
+          const want = (!s.broken && wetK >= s.thr && D > 0.004) ? 1 : 0;
+          s.vis += (want - s.vis) * Math.min(1, dt * (want ? 2.2 : 9));                    // ゆっくり現れ、ちぎれると素早く消える
+          if (s.vis < 0.02) { s.mesh.visible = false; continue; }
+          const grow = clamp((wetK - s.thr) / 0.25, 0, 1);                                   // 出始めは細く、濡れるほど太くなる
+          const rmid = WET_STRING_R * s.thick * (0.5 + 1.5 * grow) * (1 - 0.8 * stretch) * s.vis;
+          const sag = D * 0.22 * (1 - stretch) * s.sagK * (0.6 + 0.4 * s.vis);
+          e.a.x += Math.sin(tsec * 1.3 + s.ph) * 0.0006; e.b.x += Math.sin(tsec * 1.1 + s.ph2) * 0.0006;   // わずかな揺れ
+          wsShape(s, e.a, e.b, sag, Math.max(0.0002, rmid));
+          s.mesh.visible = true;
+          s.mat.opacity = 0.93 * clamp(s.vis * 1.3, 0, 1);
+        }
       }
     }
     // ---- にじみ（だまり）→ 垂れて糸を引く → ちぎれて落ちる → また垂れる ----
@@ -3971,7 +4033,7 @@ body.stereo .dispbar{opacity:.55}
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + plusRodInfo + (plusRod ? '（曲げ ' + Math.round(plusRod.bend) + '°）' : '') + '\n' +
         'playerplus2.glb: ' + plus2State + plus2Anim + plus2RodInfo + (plus2Rod ? '（曲げ ' + Math.round(plus2Rod.bend) + '°）' : '') + '\n' +
-        '液体: ' + (oozeDbg.has ? (oozeDbg.inside ? '筒に入った判定' : '入っていない') + '  深さ' + Math.round(oozeDbg.ratio * 100) + '%（' + Math.round(OOZE_ENTER_RATIO * 100) + '%以上で出る）  中心線から' + oozeDbg.radialMM.toFixed(0) + 'mm' : 'plus2なし') + '  出ている' + oozes.filter(function (o) { return o.on; }).length + '個\n' +
+        '液体: ' + (oozeDbg.has ? (oozeDbg.inside ? '筒に入った判定' : '入っていない') + '  深さ' + Math.round(oozeDbg.ratio * 100) + '%（' + Math.round(OOZE_ENTER_RATIO * 100) + '%以上で出る）  中心線から' + oozeDbg.radialMM.toFixed(0) + 'mm' : 'plus2なし') + '  出ている' + oozes.filter(function (o) { return o.on; }).length + '個  糸の距離' + oozeDbg.strandD.toFixed(0) + 'cm（' + Math.round(WET_STRING_MAX * 100) + 'cmでちぎれる）\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +

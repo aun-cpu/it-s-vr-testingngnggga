@@ -1008,8 +1008,8 @@ body.stereo .dispbar{opacity:.55}
   const WET_STRANDS = 48;         // partとplayerの間に出せる細い糸の本数（濡れが増えるほど、使える本数が増える）
   const WET_STRING_MAX = 1.5;     // m: 口とplayerがこれ以上離れていると糸は張らない（HUDの「糸の距離」を見て調整）
   const WET_STRING_FIRST = 0.1;   // 最初の糸が使える濡れ量（0〜1）
-  const WET_STRING_STEP = 0.012;  // 次の糸が使えるようになる濡れ量の間隔
-  const WET_STRING_R = 0.0003;    // m: 糸の基準の太さ（細いほど繊細）
+  const WET_STRING_STEP = 0.0008;  // 次の糸が使えるようになる濡れ量の間隔
+  const WET_STRING_R = 0.0007;    // m: 糸の基準の太さ（細いほど繊細）
   const WET_ANCHOR_SPREAD = 0.035; // m: player側の糸の付け根が散らばる範囲（筒の入口まわりだけ）
   const WET_MOUTH_SPREAD = 2.5;   // part側の糸の付け根が散らばる範囲（筒の半径の倍率）
   const WET_END_GAP = 0.16;       // m: 糸の両端を、さらに外側へ離す量（大きいほど、糸の両端が遠くなる）
@@ -1345,7 +1345,7 @@ body.stereo .dispbar{opacity:.55}
       if (near && wetPrimed) wetK = Math.min(1, wetK + Math.min(0.04, Math.abs(speed) * dt * WET_GAIN + (inside ? WET_SEEP * dt : 0)));   // 動かすほど濡れる
       wetPrimed = true;
       wetBurstCd -= dt;
-      const touchNow = near && depth > -0.02;   // 先端が筒に当たっている
+      const touchNow = inside || (near && depth > -0.02);   // 先端が筒に当たっている
       if (wetTouch && !touchNow && wetBurstCd <= 0 && wetK >= WET_STRING_FIRST) {   // 当たってから離れた瞬間だけ、糸がいっせいに張られる
         wetBurstT = WET_BURST_TIME; wetBurstCd = 0.3 + Math.random() * 0.3;
         for (let j = 0; j < wetStrands.length; j++) if (wetStrands[j].state === 0) wetStrands[j].wait = Math.min(wetStrands[j].wait, Math.random() * 0.25);
@@ -1410,12 +1410,12 @@ body.stereo .dispbar{opacity:.55}
           e.u.subVectors(e.b, e.a); e.b.copy(e.a).addScaledVector(e.u, s.growEnd);
           const D = e.a.distanceTo(e.b);
           const rm = s.r0 * Math.min(1.6, Math.sqrt(s.D0 / Math.max(D, 0.01))) * (1 - 0.8 * sx * sx * sx) * (0.2 + 0.8 * ez(s.age / 0.1));
-          if (u >= 1 || rm < 0.00003 || D > WET_STRING_MAX * 1.4 || D < 0.004) {   // ぷつっとちぎれる
+          if (u >= 1 || rm < 0.00008 || D > WET_STRING_MAX * 1.4 || D < 0.004) {   // ぷつっとちぎれる
             s.state = 2; s.rt = 0; s.recDur = rnd(WET_RECOIL_MIN, WET_RECOIL_MAX); s.rm0 = Math.max(rm, 0.0004);
             if (Math.random() < 0.1) { e.t.copy(e.a).lerp(e.b, s.tk); wetSpawnDrop(e.t, Math.max(0.0008, s.rm0 * rnd(2, 3)), rnd(-0.01, 0.01), rnd(-0.01, 0.01)); }
           } else {
             const sag = D * 0.07 * Math.pow(1 - sx, 1.5) * s.sagK;
-            wsShape(s.geo, e.a, e.b, sag, e.u.copy(s.bow).multiplyScalar(D / 0.2 * (1 - sx) * 0.6), Math.max(0.00006, rm),
+            wsShape(s.geo, e.a, e.b, sag, e.u.copy(s.bow).multiplyScalar(D / 0.2 * (1 - sx) * 0.6), Math.max(0.00012, rm),
                     { neck: 0.6 * sx * sx, tk: s.tk, bead: 0.4 * clamp((sx - 0.3) / 0.7, 0, 1), beadT: tsec + s.bt, free: false, tip: 0 });
             s.mesh.visible = true; s.mesh2.visible = false;
             s.mat.opacity = Math.min(0.9, WET_ALPHA * 1.35) * clamp(s.age * 10, 0, 1) * (1 - 0.7 * sx);
@@ -4132,7 +4132,7 @@ body.stereo .dispbar{opacity:.55}
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + plusRodInfo + (plusRod ? '（曲げ ' + Math.round(plusRod.bend) + '°）' : '') + '\n' +
         'playerplus2.glb: ' + plus2State + plus2Anim + plus2RodInfo + (plus2Rod ? '（曲げ ' + Math.round(plus2Rod.bend) + '°）' : '') + '\n' +
-        '液体: ' + (oozeDbg.has ? (oozeDbg.inside ? '筒に入った判定' : '入っていない') + '  深さ' + Math.round(oozeDbg.ratio * 100) + '%（' + Math.round(OOZE_ENTER_RATIO * 100) + '%以上で出る）  中心線から' + oozeDbg.radialMM.toFixed(0) + 'mm' : 'plus2なし') + '  出ている' + oozes.filter(function (o) { return o.on; }).length + '個  糸の距離' + oozeDbg.strandD.toFixed(0) + 'cm（' + Math.round(WET_STRING_MAX * 100) + 'cmでちぎれる）\n' +
+        '液体: ' + (oozeDbg.has ? (oozeDbg.inside ? '筒に入った判定' : '入っていない') + '  深さ' + Math.round(oozeDbg.ratio * 100) + '%（' + Math.round(OOZE_ENTER_RATIO * 100) + '%以上で出る）  中心線から' + oozeDbg.radialMM.toFixed(0) + 'mm' : 'plus2なし') + '  出ている' + oozes.filter(function (o) { return o.on; }).length + '個  糸' + wetStrands.filter(function (q) { return q.state === 1; }).length + '本 ' + (wetTouch ? '接触中' : '離れ') + '  糸の距離' + oozeDbg.strandD.toFixed(0) + 'cm（' + Math.round(WET_STRING_MAX * 100) + 'cmでちぎれる）\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +

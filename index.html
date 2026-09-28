@@ -938,6 +938,147 @@ body.stereo .dispbar{opacity:.55}
     }
   }
 
+  // ---- plus2を筒に入れた時、筒の中ほどから粘り気のある液体（スライム状の油）が少しあふれ出るエフェクト ----
+  const OOZE_ON = true;
+  const OOZE_ENTER_RATIO = 0.2;       // plus2の先端が、筒の入口から筒の長さのこの割合以上入ったら「入れた」とみなす
+  const OOZE_EXIT_RATIO = 0.05;       // この割合より浅くなったら「抜けた」とみなす（ちらつき防止）
+  const OOZE_RADIAL_MAX = 3;          // 先端が筒の中心線からこの倍率×半径以内にある時だけ判定する
+  const OOZE_PUMP_SPEED = 0.04;       // m/s: 入っている間、これ以上の速さで奥へ動くたびに追加でにじむ
+  const OOZE_COOLDOWN = 0.7;          // 秒: 追加でにじむ間隔の目安
+  const OOZE_BURST = 2;               // 入れた瞬間に出す数
+  const OOZE_MAX = 6;                 // 同時に出る数の上限（「少し」あふれる量）
+  const OOZE_SIZE = 0.009;            // m: 基準の大きさ
+  const OOZE_LIFE = 5.0;              // 秒: にじんでから消えるまで
+  const OOZE_AXIAL_MIN = -0.15, OOZE_AXIAL_MAX = 0.2;   // 出る位置（筒の中心から軸方向。筒の長さに対する割合。0=ちょうど真ん中）
+  const OOZE_ANGLE_CENTER = -90;      // 度: 筒の周りのどこから出るか（-90=真下側）
+  const OOZE_ANGLE_SPREAD = 140;      // 度: 上の角度を中心にしたばらつき幅
+  const OOZE_DRIP_DELAY = 0.5;        // 秒: にじんでから垂れ始めるまで（±ばらつき）
+  const OOZE_DRIP_SPEED = 0.018;      // m/s: 垂れ始めの速さ（粘りがあるのでとてもゆっくり）
+  const OOZE_DRIP_ACCEL = 0.03;       // m/s^2: 垂れながら少しずつ速くなる量
+  const OOZE_STRING_MAX = 0.05;       // m: 糸を引く長さ。これを超えると雫がちぎれて落ちる
+  const OOZE_SEE_THROUGH = false;     // true にすると、partなどの後ろに隠れても常に手前に表示する
+  const oozes = [];
+  let oozeGroup = null, oozeInside = false, oozePrevDepth = 0, oozeCool = 0;
+  const _oz = { d: new THREE.Vector3(), u: new THREE.Vector3(), w: new THREE.Vector3(), x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0),
+                a: new THREE.Vector3(), b: new THREE.Vector3(), o: new THREE.Vector3(), t: new THREE.Vector3() };
+  function initOoze(scene) {
+    oozeGroup = new THREE.Group();
+    const geo = new THREE.SphereGeometry(1, 14, 10);   // 単位球。大きさはスケールで反映
+    const mk = function () {
+      const mat = new THREE.MeshPhongMaterial({ color: 0xe6e0a0, emissive: 0x2a2810, specular: 0xffffff, shininess: 120,
+                                                transparent: true, opacity: 0, depthWrite: false, depthTest: !OOZE_SEE_THROUGH });
+      const m = new THREE.Mesh(geo, mat);
+      m.visible = false; m.frustumCulled = false;
+      if (OOZE_SEE_THROUGH) m.renderOrder = 999;
+      oozeGroup.add(m);
+      return m;
+    };
+    for (let i = 0; i < OOZE_MAX; i++) {
+      oozes.push({ on: false, base: mk(), drop: mk(), strand: mk(), age: 0, life: OOZE_LIFE, size: OOZE_SIZE, delay: 0,
+                   off: new THREE.Vector3(), n: new THREE.Vector3(), len: 0, fall: false, fallT: 0, fallV: 0 });
+    }
+    scene.add(oozeGroup);
+  }
+  function emitOoze() {
+    let o = null;
+    for (let i = 0; i < oozes.length; i++) if (!oozes[i].on) { o = oozes[i]; break; }
+    if (!o) return;
+    const e = _oz, tt = inp.tbt * Math.PI / 180, full = Math.max(0.002, inp.tbl);
+    e.d.set(0, -Math.sin(tt), Math.cos(tt));   // 筒の軸方向
+    e.w.set(0, Math.cos(tt), Math.sin(tt));    // 軸に垂直な「上」方向
+    const ang = (OOZE_ANGLE_CENTER + (Math.random() - 0.5) * OOZE_ANGLE_SPREAD) * Math.PI / 180;
+    o.n.set(0, 0, 0).addScaledVector(e.x, Math.cos(ang)).addScaledVector(e.w, Math.sin(ang));   // 筒の外向き
+    const a = (OOZE_AXIAL_MIN + Math.random() * (OOZE_AXIAL_MAX - OOZE_AXIAL_MIN)) * full;
+    o.off.set(0, 0, 0).addScaledVector(e.d, a).addScaledVector(o.n, inp.tbr * 1.05);   // 筒の位置からの相対位置（筒・partに追従）
+    o.size = OOZE_SIZE * (0.8 + Math.random() * 0.5);
+    o.age = 0; o.life = OOZE_LIFE * (0.85 + Math.random() * 0.3);
+    o.delay = OOZE_DRIP_DELAY * (0.6 + Math.random());
+    o.len = 0; o.fall = false; o.fallT = 0; o.fallV = 0; o.on = true;
+    o.base.visible = true;
+  }
+  function ozStrand(mesh, a, b, th, alpha) {   // aとbを結ぶ細長い楕円体（糸）
+    const e = _oz;
+    e.t.subVectors(b, a);
+    const L = e.t.length();
+    if (L < 1e-5 || th < 1e-5 || alpha <= 0.01) { mesh.visible = false; return; }
+    mesh.visible = true;
+    mesh.position.copy(a).addScaledVector(e.t, 0.5);
+    mesh.quaternion.setFromUnitVectors(e.y, e.t.multiplyScalar(1 / L));
+    mesh.scale.set(th, L * 0.5, th);
+    mesh.material.opacity = alpha;
+  }
+  function updateOoze(dt) {
+    if (!OOZE_ON || !oozeGroup || !R || !R.tube) return;
+    const e = _oz, tp = R.tube.position;
+    // ---- plus2の先端が筒に入ったかを、アニメどおりの姿勢（筒に合わせて曲げる前）で判定する ----
+    if (plus2Rod && R.plus2 && dt > 0) {
+      const full = Math.max(0.002, inp.tbl), tt = inp.tbt * Math.PI / 180;
+      R.plus2.updateMatrixWorld(true);
+      peMeasure(plus2Rod);
+      e.d.set(0, -Math.sin(tt), Math.cos(tt));
+      e.a.subVectors(_pe.p[0], tp);
+      e.u.copy(e.d).multiplyScalar(e.a.dot(e.d) >= 0 ? -1 : 1);   // 根元側から筒へ向かう向き（updatePlusRodと同じ）
+      e.b.subVectors(_pe.tip, tp);
+      const axial = e.b.dot(e.u);
+      const depth = axial + full / 2;                              // 入口からの深さ（負なら筒の手前）
+      const radial = e.b.addScaledVector(e.u, -axial).length();
+      const ratio = depth / full;
+      const near = radial <= Math.max(0.0003, inp.tbr * OOZE_RADIAL_MAX);
+      const inside = near && (oozeInside ? ratio > OOZE_EXIT_RATIO : ratio >= OOZE_ENTER_RATIO);
+      const speed = (depth - oozePrevDepth) / dt;
+      oozeCool -= dt;
+      if (inside && !oozeInside) {
+        for (let i = 0; i < OOZE_BURST; i++) emitOoze();
+        oozeCool = OOZE_COOLDOWN * (0.7 + Math.random() * 0.6);
+      } else if (inside && speed > OOZE_PUMP_SPEED && oozeCool <= 0) {
+        emitOoze();
+        oozeCool = OOZE_COOLDOWN * (0.7 + Math.random() * 0.6);
+      }
+      oozeInside = inside; oozePrevDepth = depth;
+    }
+    // ---- にじみ・垂れ・糸引き・ちぎれ ----
+    for (let i = 0; i < oozes.length; i++) {
+      const o = oozes[i];
+      if (!o.on) continue;
+      o.age += dt;
+      if (o.age >= o.life) { o.on = false; o.base.visible = false; o.drop.visible = false; o.strand.visible = false; continue; }
+      const grow = clamp(o.age / 0.6, 0, 1), ge = grow * grow * (3 - 2 * grow);
+      const fade = clamp((o.life - o.age) / 1.2, 0, 1);
+      const alpha = 0.85 * fade * clamp(o.age / 0.15, 0, 1);
+      const sz = o.size;
+      // 元のにじみ（だまり）: 筒に追従しつつ、ほんの少しだけ自重で下がる
+      e.o.copy(tp).add(o.off); e.o.y -= Math.min(o.age * 0.002, 0.01);
+      o.base.position.copy(e.o).addScaledVector(o.n, sz * 0.25 * ge);
+      o.base.scale.setScalar(Math.max(0.0001, sz * ge * (0.5 + 0.5 * fade)));
+      o.base.material.opacity = alpha;
+      // 垂れる雫と糸
+      if (o.age > o.delay) {
+        const dtT = o.age - o.delay;
+        let dropAlpha = alpha, strandK = 1;
+        if (!o.fall) {
+          o.len += (OOZE_DRIP_SPEED + OOZE_DRIP_ACCEL * dtT) * dt;   // 粘りがあるので、ゆっくり・だんだん速く
+          if (o.len >= OOZE_STRING_MAX) { o.fall = true; o.fallT = 0; o.fallV = OOZE_DRIP_SPEED + OOZE_DRIP_ACCEL * dtT; }
+        } else {
+          o.fallT += dt; o.fallV += 0.8 * dt; o.len += o.fallV * dt;   // ちぎれた雫は少しだけ加速して落ちる
+          strandK = clamp(1 - o.fallT / 0.35, 0, 1);                    // 糸は元へ縮む
+          dropAlpha = alpha * clamp(1 - o.fallT / 0.6, 0, 1);
+        }
+        const stretch = clamp(o.len / OOZE_STRING_MAX, 0, 1);
+        e.a.copy(e.o).addScaledVector(o.n, sz * 0.3); e.a.y -= o.len;   // 雫の位置
+        const dsz = sz * (0.55 + 0.25 * stretch);
+        if (dropAlpha > 0.01) {
+          o.drop.visible = true;
+          o.drop.position.copy(e.a);
+          o.drop.scale.set(dsz, dsz * 1.25, dsz);   // 少し縦長のしずく
+          o.drop.material.opacity = dropAlpha;
+        } else o.drop.visible = false;
+        e.b.copy(e.o).addScaledVector(o.n, sz * 0.15);
+        e.a.sub(e.b).multiplyScalar(strandK).add(e.b);   // 糸の下端（ちぎれたら元へ縮む）
+        ozStrand(o.strand, e.b, e.a, sz * 0.35 * (1 - 0.6 * stretch) * strandK, alpha * strandK);
+      }
+    }
+  }
+
   // ---- hのaction3が出た瞬間にhの周りへランダムに飛び出すピンクのハート（🩷）----
   const HEART_HEIGHT = SPLASH_HEIGHT;  // 人物モデルの位置(px,py,pz)からの高さの上乗せ分(m)。水滴と同じく顔付近を中心に散らす
   const HEART_FORWARD = 0.5;           // hの位置から前方（-Z方向）へずらす距離(m)。もっと手前から出したい時はここを増やす
@@ -2808,7 +2949,7 @@ body.stereo .dispbar{opacity:.55}
       playerOffX = model.position.x; playerOffY = model.position.y; playerOffZ = model.position.z;
       if (onReady) onReady();
       // 視点がモデルの内側に入っても消えないよう、視錐台カリングを切る
-      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); applySkinLook(o); } });
+      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); } });
       group.add(model);
       playerState = '表示中';
 
@@ -2957,6 +3098,7 @@ body.stereo .dispbar{opacity:.55}
       });
 
       initSplash(scene);   // hのaction3/4トリガー時の水滴エフェクト（初期カメラ正面の固定位置）
+      initOoze(scene);     // plus2を筒に入れた時、筒の中ほどから粘り気のある液体が少しあふれるエフェクト
       initHearts(scene);   // hのaction3トリガー時のハート（🩷）エフェクト
       initActionButton(scene);   // ゲージ満タン時にhの上へ出す、視線で注視できるボタン
 
@@ -3468,6 +3610,7 @@ body.stereo .dispbar{opacity:.55}
       R.tube.rotation.x = inp.tbt * Math.PI / 180;
       R.tubeMesh.scale.set(Math.max(0.001, inp.tbr), Math.max(0.001, inp.tbl), Math.max(0.001, inp.tbr));
     }
+    updateOoze(dt);   // plus2の先端が筒に入ったかを（曲げる前の姿勢で）判定し、粘液のにじみ・垂れを更新
     updatePlusRod(plusRod, R.plus, dt);     // plus / plus2 の突起（pe1〜pe4）を、同じように、しなる棒として筒の中へ向ける
     updatePlusRod(plus2Rod, R.plus2, dt);
 

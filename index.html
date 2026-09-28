@@ -212,14 +212,31 @@ body.stereo .tilt{display:none}
 .dispbar-body{display:flex; gap:8px}
 .dispbar.folded .dispbar-body{display:none}
 body.stereo .dispbar{opacity:.55}
-.wait{
-  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center;
-  font-size:14px; color:#fff; background:rgba(0,0,0,.6); padding:14px 20px; border-radius:14px; pointer-events:none; line-height:1.7;
-  width:min(86vw,420px);
+
+/* 表示側UIを左上の1つのメニューにまとめる（既定は折りたたみ） */
+.uimenu{z-index:7; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px); pointer-events:none}
+.uimenu > .foldbtn{pointer-events:auto}
+.uimenu-body{
+  margin-top:6px; display:flex; flex-direction:column; align-items:flex-start; gap:8px;
+  width:min(86vw,360px); max-height:calc(100vh - 70px); overflow-y:auto; pointer-events:auto;
 }
+.uimenu.folded .uimenu-body{display:none}
+.uimenu-body > *{position:static !important; transform:none !important; max-width:none !important; box-sizing:border-box}
+.uimenu-body .hudwrap{width:100%; pointer-events:auto}
+.uimenu-body .tilt{width:132px; pointer-events:auto}
+.uimenu-body .tilt.folded{width:auto}
+.uimenu-body .posbox{width:100%}
+.uimenu-body .dispbar{width:100%; align-items:flex-start}
+.uimenu-body .dispbar-body{flex-wrap:wrap}
+.wait{
+  position:absolute; z-index:5; left:auto; top:calc(env(safe-area-inset-top,0px) + 8px); right:calc(env(safe-area-inset-right,0px) + 10px);
+  transform:none; text-align:right; font-size:10px; color:#c9d1e2; background:rgba(0,0,0,.45);
+  padding:4px 10px; border-radius:10px; pointer-events:none; line-height:1.4; width:auto; max-width:60vw;
+}
+.wait .tilthead,.wait #waitSub{display:none}
 .wait .tilthead{pointer-events:auto; margin-bottom:4px}
 .wait.folded .wait-body{display:none}
-.wait .code{font:700 44px/1.2 ui-monospace,Menlo,monospace; letter-spacing:.18em; margin:6px 0}
+.wait .code{font:700 16px/1.3 ui-monospace,Menlo,monospace; letter-spacing:.12em; margin:0; color:#fff}
 /* 注視で選択した直後、20秒間の強制ループ中に画面中央へ出すピンクのカウントダウン */
 .countdown{
   z-index:6; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
@@ -318,14 +335,28 @@ body.stereo .dispbar{opacity:.55}
 <div id="disp" class="screen dark hidden">
   <canvas id="cv"></canvas>
   <div id="seam"></div>
-  <div class="hudwrap" id="hudwrap">
-    <button type="button" class="foldbtn" id="hudFold" aria-expanded="true"><span class="arr">▼</span>表示確認</button>
-    <div class="hud" id="hud"></div>
-  </div>
   <div class="gauge" id="gauge">
     <div class="gaugebar"><div class="gaugefill" id="gaugeFill"></div></div>
   </div>
   <div class="countdown" id="countdown">20</div>
+  <div class="wait" id="wait">
+    <div class="tilthead">
+      <p class="tiltcap" style="margin:0">接続コード</p>
+      <button type="button" class="foldbtn" id="waitFold" aria-expanded="true"><span class="arr">▼</span></button>
+    </div>
+    <div class="wait-body" id="waitBody">
+      <div id="waitMsg">接続を準備中…</div>
+      <div class="code" id="codeText">------</div>
+      <div id="waitSub">もう1台で「操作する」を選び、このコードを入力してください</div>
+    </div>
+  </div>
+  <div class="uimenu folded" id="uiMenu">
+    <button type="button" class="foldbtn" id="uiMenuFold" aria-expanded="false"><span class="arr">▼</span>メニュー</button>
+    <div class="uimenu-body">
+  <div class="hudwrap" id="hudwrap">
+    <button type="button" class="foldbtn" id="hudFold" aria-expanded="true"><span class="arr">▼</span>表示確認</button>
+    <div class="hud" id="hud"></div>
+  </div>
   <div class="tilt off" id="tilt">
     <div class="tilthead">
       <div class="tiltcap">操作側の角度 <span id="buildTag"></span></div>
@@ -361,17 +392,6 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" class="mini" id="dBtnPosReset" style="width:100%; margin-top:4px">この項目をリセット</button>
     </div>
   </div>
-  <div class="wait" id="wait">
-    <div class="tilthead">
-      <p class="tiltcap" style="margin:0">接続コード</p>
-      <button type="button" class="foldbtn" id="waitFold" aria-expanded="true"><span class="arr">▼</span></button>
-    </div>
-    <div class="wait-body" id="waitBody">
-      <div id="waitMsg">接続を準備中…</div>
-      <div class="code" id="codeText">------</div>
-      <div id="waitSub">もう1台で「操作する」を選び、このコードを入力してください</div>
-    </div>
-  </div>
   <div class="dispbar" id="dispbar">
     <button type="button" class="foldbtn" id="dispbarFold" aria-expanded="true"><span class="arr">▼</span></button>
     <div class="dispbar-body" id="dispbarBody">
@@ -380,6 +400,8 @@ body.stereo .dispbar{opacity:.55}
       <button class="mini" id="dispReset">視点リセット</button>
       <button class="mini" id="dispTalkTest">話す動きテスト: OFF</button>
       <button class="mini" id="dispGaugeTest">ゲージ 75→150</button>
+    </div>
+  </div>
     </div>
   </div>
 </div>
@@ -763,6 +785,7 @@ body.stereo .dispbar{opacity:.55}
   bindFold('#dPosFold', '#dPos');
   bindFold('#waitFold', '#wait');
   bindFold('#dispbarFold', '#dispbar');
+  bindFold('#uiMenuFold', '#uiMenu');
 
   /* 表示側の位置調整パネル（inpを直接書き換える。操作側が繋がっている間は
      操作側からの送信で上書きされるため、単独で使う場合の微調整用） */
@@ -1118,7 +1141,7 @@ body.stereo .dispbar{opacity:.55}
   const INTRO_MAX_DEG = 0;
   const INTRO_END_START_DEG = 0;      // 導入→通常の2actionに切り替わった瞬間に、2actionのこの角度(0°=5フレーム目)の位置から始める
   // 2actionに切り替わるタイミングで、part.glbの位置(y,z)を滑らかに目標位置へ動かす
-  const PART_AFTER_Y = 0.55, PART_AFTER_Z = 0.15;   // 切り替え後のpartの位置（m）
+  const PART_AFTER_Y = 0.55, PART_AFTER_Z = 0.13;   // 切り替え後のpartの位置（m）
   const PART_MOVE_SEC = 1.0;          // 秒: 推移にかける時間
   let partMoving = false, partMoveT = 0;
   let partShiftY = 0, partShiftZ = 0; // 切り替え時の位置からの推移量（現在の位置に加算して使う）

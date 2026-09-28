@@ -418,6 +418,7 @@ body.stereo .dispbar{opacity:.55}
       <button class="mini" id="dispReset">視点リセット</button>
       <button class="mini" id="dispTalkTest">話す動きテスト: OFF</button>
       <button class="mini" id="dispGaugeTest">ゲージ 75→150</button>
+      <button class="mini" id="dispSph">球表示: OFF</button>
     </div>
   </div>
     </div>
@@ -430,7 +431,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921h-hglb-samepos';
+  const BUILD = '0921h-hglb-2sph';
   const $ = (s) => document.querySelector(s);
   const screens = { days: $('#days'), select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -849,6 +850,7 @@ body.stereo .dispbar{opacity:.55}
   }
   $('#dispVr').addEventListener('click', () => setStereo(!stereo));
   $('#dispReset').addEventListener('click', () => { recenterPending = true; });
+  $('#dispSph').addEventListener('click', () => window.toggleHSpheres(!hSphDebugOn));
   $('#dispTalkTest').addEventListener('click', () => {
     talkOn = !talkOn;
     $('#dispTalkTest').textContent = '話す動きテスト: ' + (talkOn ? 'ON' : 'OFF');
@@ -1326,7 +1328,7 @@ body.stereo .dispbar{opacity:.55}
   const partVel = new THREE.Vector3();       // ずれの速度
   let partPushLen = 0;                       // 現在のずれの大きさ（m）
   let partCollList = null, partCollKey = '', partCollPts = null;
-  const _cp = { v: new THREE.Vector3(), inv: new THREE.Matrix4(), t: new THREE.Vector3(), best: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), prev: new THREE.Vector3() };
+  const _cp = { v: new THREE.Vector3(), inv: new THREE.Matrix4(), t: new THREE.Vector3(), best: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), prev: new THREE.Vector3(), bp: new THREE.Vector3(), bp0: new THREE.Vector3(), sum: new THREE.Vector3() };
   function collectPartCollideMeshes() {
     const list = [];
     [R.player, R.arm].forEach(function (g) {
@@ -1348,6 +1350,7 @@ body.stereo .dispbar{opacity:.55}
     });
   }
   function updatePartCollision(dt) {
+    _sp.contactOn = false;
     if (!PART_COLLIDE_ON || !R || !R.h || !hCollide || !(dt > 0)) return;
     const h = R.h, c = _cp;
     // 1) 自由な状態：弾性で元の位置へ戻る
@@ -1377,6 +1380,7 @@ body.stereo .dispbar{opacity:.55}
     // 3) 重なりを解消：partの楕円体の内側に入った頂点のうち一番深いものを、表面まで押し出す（数回反復）
     const rx = hCollide.rx * PART_COLLIDE_SCALE, ry = hCollide.ry * PART_COLLIDE_SCALE, rz = hCollide.rz * PART_COLLIDE_SCALE;
     let touched = false;
+    c.sum.set(0, 0, 0);
     for (let it = 0; it < PART_COLLIDE_ITER; it++) {
       h.position.copy(partBase).add(partOff);
       h.updateMatrix();
@@ -1408,10 +1412,12 @@ body.stereo .dispbar{opacity:.55}
         c.s.set(hCollide.cx + qx / d * rx, hCollide.cy + qy / d * ry, hCollide.cz + qz / d * rz).applyMatrix4(h.matrixWorld);
         c.t.set(px - c.s.x, py - c.s.y, pz - c.s.z);   // partを動かす向き（頂点が表面に乗るまで）
         const len = c.t.length();
-        if (len > bestLen) { bestLen = len; c.best.copy(c.t); }
+        if (len > bestLen) { bestLen = len; c.best.copy(c.t); c.bp.set(px, py, pz); }
       }
       if (bestLen < 1e-4) break;
       if (bestLen > 0.1) c.best.multiplyScalar(0.1 / bestLen);   // 1回の押し出しの上限（急にワープしないように）
+      if (!touched) c.bp0.copy(c.bp);
+      c.sum.add(c.best);
       partOff.add(c.best);
       touched = true;
     }
@@ -1420,6 +1426,9 @@ body.stereo .dispbar{opacity:.55}
     if (touched) {
       partVel.copy(partOff).sub(c.prev).divideScalar(dt);
       if (partVel.length() > 5) partVel.setLength(5);
+      _sp.cp.copy(c.bp0).applyMatrix4(c.inv);   // 触れた場所と押し出した量をモデル空間で球へ渡す
+      _sp.cv.copy(c.bp0).add(c.sum).applyMatrix4(c.inv).sub(_sp.cp);
+      _sp.contactOn = true;
     }
     partPushLen = partOff.length();
     h.position.copy(partBase).add(partOff);
@@ -1877,45 +1886,65 @@ body.stereo .dispbar{opacity:.55}
     tex.needsUpdate = true;
     return tex;
   }
-  // ---- partの「肉だけが揺れる」表現（骨格は動かさず、表面の肉だけが揺れる）＋ 左右分割の細かい揺れ ----
-  // ・骨格：アニメーションのボーンの動きはそのまま。全体を揺らす剛体的な動き（伸縮・傾き・沈み込み）は H_SKELETON_SHAKE 倍まで抑える。
-  // ・肉  ：頂点シェーダーで、骨（ボーンの線分）から離れた頂点ほど大きく揺らす（骨のすぐそばはほとんど動かない）。
-  //         ゼリー揺れに合わせて表面が膨らんだり凹んだりし、さらに左右で向き・周期が少し違う細かい揺れが乗る。
-  // part全体がゼリー揺れと同じタイミングで細かく震えるが、右半分と左半分で揺れの方向・周期が少しだけ違う。
-  // 頂点シェーダーで、頂点の左右位置（x）に応じて「左の揺れ」から「右の揺れ」へなめらかに切り替えて動かす
-  // （境目で裂けないよう、中央付近は連続的に混ぜる。上ほど大きく揺れ、足元はあまり動かない）。
-  // ※頂点属性は増やさず、メッシュごとのuniformだけを使う。
-  const H_SPLIT_ON = true;             // false: 左右分割の細かい揺れを止める
-  const H_SPLIT_MODES = [              // 細かい揺れの成分（ゼリー本体より高い周波数）
-    { stiffness: 1100, damping: 10, impact: 1.00 },
-    { stiffness: 2600, damping: 18, impact: 0.55 }
-  ];
-  const H_SPLIT_KICK = 20;             // 押し込み・離れる速さに対する揺れの強さ（ゼリーの揺れのきっかけと同じ入力）
-  const H_SPLIT_MAX = 0.012;           // 揺れの最大変位（partの高さに対する比率）
-  const H_SPLIT_R_STIFF = 1.08;        // 右半分の揺れの硬さ（左より少し速く揺れて、周期をずらす）
-  const H_SPLIT_GAIN = [1.0, 0.85];    // [左, 右] の強さ
-  const H_SPLIT_DIR_L = [-0.30, 1, 0.12];   // 左半分の揺れの向き（モデル空間 x=左右, y=上下, z=前後）
-  const H_SPLIT_DIR_R = [0.30, 1, -0.12];   // 右半分の揺れの向き（左と少しだけ違う）
-  const H_SPLIT_BLEND = 0.2;           // 左右が切り替わる幅（partの幅に対する比率。中央のこの範囲でなめらかに混ぜる）
+  // ---- partの揺れ：左右に「2つの球」を並べて置き、その球の動きをメッシュの頂点へ投影して揺らす ----
+  // ・球は静止姿勢のpartの左右に1個ずつ。各球は3次元のバネ＋ダンパで動き、2つの球は互いにバネでつながる
+  //   （片方が動くともう片方が遅れて揺れ返し、左右で位相のずれたうねりになる）
+  // ・球を動かす力: ①押し込む/離れる速さ（操作側の角度）②playerが実際に触れて押し出した量（近い球ほど強く）③part全体が動いた時の慣性（球は置いていかれる）
+  // ・投影: 頂点ごとに球の中心からの距離で重み（内側は1、外側へなめらかに0）を決め、球の変位をその重みで頂点へ伝える。
+  //   さらに球は動く向きへ伸び、横は縮む（squash & stretch）ので、球がたわむようにメッシュが波打つ
+  // ・骨のそば（アニメで動く骨格の近く）は動かさず、離れた「肉」だけが動く（従来どおり）
+  const H_SPLIT_ON = true;             // false: 球による揺れを止める
+  const H_SPH_SEP = 0.5;               // 2つの球の左右の位置（partの半幅に対する割合。中心から±この位置）
+  const H_SPH_RADIUS = 1.1;            // 球の影響半径（partの大きさに対する倍率）
+  const H_SPH_CORE = 0.3;              // 影響半径のうち、球の変位が100%伝わる内側の割合（外側へなめらかに0）
+  const H_SPH_STIFF = 900;             // 球のバネの硬さ（大きいほど速く揺れる。900≒約4.8Hz）
+  const H_SPH_DAMP = 6;                // 球の減衰（小さいほど長く揺れる）
+  const H_SPH_COUPLE = 0.6;            // 2つの球をつなぐバネ（H_SPH_STIFFに対する比。大きいほど左右が引き合う）
+  const H_SPH_AXIS = [1.0, 0.8, 1.0];  // 軸ごとの硬さの倍率(x,y,z)。yを小さくすると上下に大きく揺れる
+  const H_SPH_MAX = 0.32;              // 球の変位の上限（影響半径に対する割合。tanhで滑らかに抑える）
+  const H_SPH_STRETCH = 0.9;           // 球が動く向きへ伸びる強さ（横は半分だけ縮む）
+  const H_SPH_KICK = 26;               // 押し込み/離れる速さ(jellySVel)に対する加速の強さ
+  const H_SPH_KICK_DIR_L = [-0.30, 1, 0.12];   // 左の球の揺れの向き（従来の左右分割と同じ）
+  const H_SPH_KICK_DIR_R = [0.30, 1, -0.12];   // 右の球の揺れの向き
+  const H_SPH_CONTACT = 0.2;           // playerが押し出した量に対して球へ与える速さ（大きいほど触れた時に大きく揺れる）
+  const H_SPH_INERTIA = 0.5;           // part全体が動いた時の慣性の強さ
+  const H_SPH_ACC_MAX = 90;            // m/s^2: 慣性加速度の上限
   const H_SKELETON_SHAKE = 0.1;        // 骨格（全体の剛体的な揺れ）に残す割合。0で骨格は完全に動かない／1で従来どおり
-  const H_FLESH_BULGE = 0.06;          // ゼリー揺れ1.0あたりの、肉の膨らみ・凹みの大きさ（partの高さに対する比率）
   const H_BONE_MAX = 24;               // 骨として扱う線分の最大数（長い骨から順に採用）
   const H_BONE_R0 = 0.03, H_BONE_R1 = 0.09;   // 骨からの距離（partの高さに対する比率）: R0以内は骨（動かない）→ R1以上は肉（全部動く）
   let hSplitRef = 1;                   // partの高さ(m)。読込時に実測値へ更新
-  let hSplitBoneCount = 0;             // 骨として使っている線分の数（0なら全体を肉として扱う）
-  const hSplitX = [[0, 0], [0, 0]];    // [左/右][モード] の変位
-  const hSplitV = [[0, 0], [0, 0]];    // [左/右][モード] の速度
+  let hSplitBoneCount = 0;             // 骨として使っている線分の数
+  let hSphReady = false;               // 球を置き終えたか（part読込後にtrue）
+  let hSphDebugOn = false;             // 球の可視化（ワイヤーフレーム）
+  const hSph = [0, 1].map(function () {   // [0]=左 [1]=右。c=静止位置 d/v=変位/速度 dd=表示用の変位（上限をかけたもの）
+    return { c: new THREE.Vector3(), d: new THREE.Vector3(), v: new THREE.Vector3(), dd: new THREE.Vector3(), dbg: null };
+  });
   const hSplitU = {                    // 全メッシュ共通のuniform（毎フレーム更新）
-    left: { value: null }, right: { value: null }, w: { value: 0.05 },   // left/right は読込時にVector3を入れる
-    boneA: { value: null }, boneB: { value: null },   // 骨の線分の両端（モデル空間）。読込時にVector3の配列を入れる
-    hasBones: { value: 0 }, r0: { value: 0.05 }, r1: { value: 0.15 },   // r0/r1: 骨からの距離(m)
-    bulge: { value: 0 }                                // 肉の膨らみ・凹み（m。表面の法線方向、符号つき）
+    sphC: { value: [hSph[0].c, hSph[1].c] }, sphD: { value: [hSph[0].dd, hSph[1].dd] }, sphE: { value: [0, 0] },
+    sphR: { value: 0.3 }, sphCore: { value: H_SPH_CORE },
+    boneA: { value: null }, boneB: { value: null }, hasBones: { value: 0 }, r0: { value: 0.05 }, r1: { value: 0.15 }
+  };
+  const _sp = { a: new THREE.Vector3(), b: new THREE.Vector3(), f: new THREE.Vector3(), q: new THREE.Quaternion(), lastPV: new THREE.Vector3(),
+                cp: new THREE.Vector3(), cv: new THREE.Vector3(), contactOn: false, wv: [0, 0] };
+  window.toggleHSpheres = function (v) {
+    hSphDebugOn = !!v;
+    const btn = $('#dispSph');
+    if (btn) { btn.textContent = '球表示: ' + (hSphDebugOn ? 'ON' : 'OFF'); btn.classList.toggle('on', hSphDebugOn); }
   };
   const HSPLIT_DECL =
     'uniform mat4 uSplitMat;\nuniform mat3 uSplitM;\n' +   // メッシュごと：ローカル→モデル空間の座標変換、モデル空間の向き→ローカルの向き
-    'uniform vec3 uSplitL;\nuniform vec3 uSplitR;\nuniform float uSplitW;\n' +
+    'uniform vec3 uSphC[2];\nuniform vec3 uSphD[2];\nuniform float uSphE[2];\nuniform float uSphR;\nuniform float uSphCore;\n' +
     'uniform vec3 uBoneA[' + H_BONE_MAX + '];\nuniform vec3 uBoneB[' + H_BONE_MAX + '];\n' +
-    'uniform float uHasBones;\nuniform float uBoneR0;\nuniform float uBoneR1;\nuniform float uBulge;\n';
+    'uniform float uHasBones;\nuniform float uBoneR0;\nuniform float uBoneR1;\n' +
+    'float sphW(vec3 p, vec3 c) { return 1.0 - smoothstep(uSphR * uSphCore, uSphR, length(p - c)); }\n' +   // 球の中心からの距離による重み
+    'vec3 sphDisp(vec3 p, vec3 c, vec3 d, float e, float w) {\n' +                                        // 球の変位＋動く向きへの伸縮を、頂点へ投影
+    '  vec3 dl = p - c;\n' +
+    '  float dn = length(d);\n' +
+    '  vec3 u = dn > 1.0e-6 ? d / dn : vec3(0.0, 1.0, 0.0);\n' +
+    '  vec3 par = u * dot(dl, u);\n' +
+    '  vec3 perp = dl - par;\n' +
+    '  return w * (d + par * e - perp * (0.5 * e));\n' +
+    '}\n';
   const HSPLIT_POS_CODE =
     '{\n' +
     '  vec3 smp = (uSplitMat * vec4(position, 1.0)).xyz;\n' +                       // モデル空間での位置（静止姿勢）
@@ -1926,9 +1955,11 @@ body.stereo .dispbar{opacity:.55}
     '    sdmin = min(sdmin, length(smp - (sa + sab * st)));\n' +
     '  }\n' +
     '  float sflesh = mix(1.0, smoothstep(uBoneR0, uBoneR1, sdmin), uHasBones);\n' +   // 骨のそば=0（動かない）／離れるほど1（肉）
-    '  float ssd = smoothstep(-uSplitW, uSplitW, smp.x);\n' +
-    '  vec3 sdm = mix(uSplitL, uSplitR, ssd);\n' +                                   // 左右で違う細かい揺れ（モデル空間）
-    '  transformed += (uSplitM * sdm + normalize(normal) * uBulge) * sflesh;\n' +      // 肉だけが、左右の細かい揺れ＋表面の膨らみ・凹みで動く
+    '  float sw0 = sphW(smp, uSphC[0]);\n' +
+    '  float sw1 = sphW(smp, uSphC[1]);\n' +
+    '  float swn = 1.0 / max(1.0, sw0 + sw1);\n' +                                   // 2つの球が重なる所で二重に動かない（境目で裂けない）
+    '  vec3 sdisp = sphDisp(smp, uSphC[0], uSphD[0], uSphE[0], sw0 * swn) + sphDisp(smp, uSphC[1], uSphD[1], uSphE[1], sw1 * swn);\n' +
+    '  transformed += uSplitM * sdisp * sflesh;\n' +
     '}\n';
   // メッシュごとの情報（読込直後の静止姿勢での位置から作る）
   function makeHSplitInfo(o) {
@@ -1941,15 +1972,16 @@ body.stereo .dispbar{opacity:.55}
   }
   function makeHSplitHook(info) {
     return function (shader) {
-      shader.uniforms.uSplitL = hSplitU.left;
-      shader.uniforms.uSplitR = hSplitU.right;
-      shader.uniforms.uSplitW = hSplitU.w;
+      shader.uniforms.uSphC = hSplitU.sphC;
+      shader.uniforms.uSphD = hSplitU.sphD;
+      shader.uniforms.uSphE = hSplitU.sphE;
+      shader.uniforms.uSphR = hSplitU.sphR;
+      shader.uniforms.uSphCore = hSplitU.sphCore;
       shader.uniforms.uBoneA = hSplitU.boneA;
       shader.uniforms.uBoneB = hSplitU.boneB;
       shader.uniforms.uHasBones = hSplitU.hasBones;
       shader.uniforms.uBoneR0 = hSplitU.r0;
       shader.uniforms.uBoneR1 = hSplitU.r1;
-      shader.uniforms.uBulge = hSplitU.bulge;
       shader.uniforms.uSplitMat = info.mat;
       shader.uniforms.uSplitM = info.m;
       shader.vertexShader = shader.vertexShader
@@ -1982,31 +2014,55 @@ body.stereo .dispbar{opacity:.55}
     hSplitU.r1.value = height * H_BONE_R1;
     return n;
   }
-  // 毎フレーム: ゼリー揺れのきっかけ(押し込む/離れる速さ)を左右それぞれの細かい揺れに与え、変位をuniformへ渡す
-  function updateHSplit(dt, kickVel, softLimitFn, jellySum) {
-    if (!hSplitU.left.value || !hSplitU.right.value) return;   // partの読込前は何もしない
-    hSplitU.bulge.value = jellySum * H_FLESH_BULGE * hSplitRef;   // ゼリー揺れの伸び縮みと同じ符号・強弱で、肉の表面が膨らむ・凹む
-    const ext = H_SPLIT_KICK * kickVel;
-    const nSub = Math.max(1, Math.min(8, Math.ceil(dt * 240)));   // 硬いバネなので細かく刻んで安定させる
-    const h = dt / nSub;
-    const sums = [0, 0];
-    for (let side = 0; side < 2; side++) {
-      for (let m = 0; m < H_SPLIT_MODES.length; m++) {
-        const md = H_SPLIT_MODES[m];
-        const k = md.stiffness * (side ? H_SPLIT_R_STIFF : 1);
-        let x = hSplitX[side][m], v = hSplitV[side][m];
-        for (let i = 0; i < nSub; i++) {
-          v += (-k * x - md.damping * v + ext * H_SPLIT_GAIN[side] * md.impact) * h;
-          x += v * h;
-        }
-        hSplitX[side][m] = x; hSplitV[side][m] = v;
-        sums[side] += x;
-      }
+  // 毎フレーム: 2つの球をバネで動かし、表示用の変位・伸びをuniformへ渡す
+  function updateHSpheres(dt, kickVel, softLimitFn) {
+    if (!(dt > 0) || !hSphReady) return;
+    const s = _sp, Rr = hSplitU.sphR.value, kd = [H_SPH_KICK_DIR_L, H_SPH_KICK_DIR_R];
+    // ③ 慣性: part全体が押し出されて動いた加速度（ワールド）をモデル空間へ直し、逆向きの力として球に与える
+    s.f.set(0, 0, 0);
+    if (R && R.h) {
+      s.a.copy(partVel).sub(s.lastPV).multiplyScalar(1 / dt);
+      s.lastPV.copy(partVel);
+      const al = s.a.length();
+      if (al > H_SPH_ACC_MAX) s.a.multiplyScalar(H_SPH_ACC_MAX / al);
+      s.q.copy(R.h.quaternion).invert();
+      s.a.applyQuaternion(s.q).multiplyScalar(1 / Math.max(0.05, R.h.scale.x));
+      s.f.copy(s.a).multiplyScalar(-H_SPH_INERTIA);
     }
-    const dl = softLimitFn(sums[0], H_SPLIT_MAX) * hSplitRef;
-    const dr = softLimitFn(sums[1], H_SPLIT_MAX) * hSplitRef;
-    hSplitU.left.value.set(H_SPLIT_DIR_L[0] * dl, H_SPLIT_DIR_L[1] * dl, H_SPLIT_DIR_L[2] * dl);
-    hSplitU.right.value.set(H_SPLIT_DIR_R[0] * dr, H_SPLIT_DIR_R[1] * dr, H_SPLIT_DIR_R[2] * dr);
+    // ② 接触: playerが押し出した量を、触れた場所に近い球へ速さとして与える
+    if (s.contactOn) {
+      let ws = 0;
+      for (let i = 0; i < 2; i++) {
+        s.b.copy(hSph[i].c).add(hSph[i].d).sub(s.cp);
+        s.wv[i] = 1 / (0.05 * Rr * Rr + s.b.lengthSq());
+        ws += s.wv[i];
+      }
+      for (let i = 0; i < 2; i++) hSph[i].v.addScaledVector(s.cv, H_SPH_CONTACT * (s.wv[i] / ws) / dt);
+    }
+    // ① 押し込む/離れる速さ + バネ・ダンパ・2球をつなぐバネを積分（硬いので細かく刻む）
+    const ks = H_SPH_KICK * kickVel, cd = H_SPH_DAMP, kc = H_SPH_STIFF * H_SPH_COUPLE;
+    const kx = H_SPH_STIFF * H_SPH_AXIS[0], ky = H_SPH_STIFF * H_SPH_AXIS[1], kz = H_SPH_STIFF * H_SPH_AXIS[2];
+    const L = hSph[0], Rt = hSph[1];
+    const nSub = Math.max(1, Math.min(8, Math.ceil(dt * 240))), h = dt / nSub;
+    for (let n = 0; n < nSub; n++) {
+      const rx = Rt.d.x - L.d.x, ry = Rt.d.y - L.d.y, rz = Rt.d.z - L.d.z;   // 右−左（引き合う向き：左は+、右は−）
+      for (let i = 0; i < 2; i++) {
+        const sp = hSph[i], sg = i ? -1 : 1, dir = kd[i];
+        sp.v.x += (-kx * sp.d.x - cd * sp.v.x + sg * kc * rx + s.f.x + ks * dir[0]) * h;
+        sp.v.y += (-ky * sp.d.y - cd * sp.v.y + sg * kc * ry + s.f.y + ks * dir[1]) * h;
+        sp.v.z += (-kz * sp.d.z - cd * sp.v.z + sg * kc * rz + s.f.z + ks * dir[2]) * h;
+      }
+      for (let i = 0; i < 2; i++) hSph[i].d.addScaledVector(hSph[i].v, h);
+    }
+    // 表示用: 変位に上限をかけ、伸びを決める。球の可視化も更新
+    for (let i = 0; i < 2; i++) {
+      const sp = hSph[i];
+      if (!isFinite(sp.d.x + sp.d.y + sp.d.z + sp.v.x + sp.v.y + sp.v.z)) { sp.d.set(0, 0, 0); sp.v.set(0, 0, 0); }
+      const len = sp.d.length();
+      if (len > 1e-7) sp.dd.copy(sp.d).multiplyScalar(softLimitFn(len, H_SPH_MAX * Rr) / len); else sp.dd.set(0, 0, 0);
+      hSplitU.sphE.value[i] = Math.min(0.6, H_SPH_STRETCH * sp.dd.length() / Rr);
+      if (sp.dbg) { sp.dbg.visible = hSphDebugOn; sp.dbg.position.copy(sp.c).add(sp.dd); sp.dbg.scale.setScalar(Rr); }
+    }
   }
   const hToonMats = [];   // {mat, origColor, litColor, origTransparent, origOpacity}: 各材質の元の状態とオン/オフを切り替えるための情報
   function applyToon(o) {
@@ -2518,8 +2574,13 @@ body.stereo .dispbar{opacity:.55}
       const outlineWorldThickness = finalSize.y > 0 ? finalSize.y * H_OUTLINE_RATIO : H_OUTLINE_RATIO;
       // 左右分割の細かい揺れ: 高さと左右の切り替え幅の基準を決め、行列を確定させてから各メッシュの情報を作る
       hSplitRef = finalSize.y > 0 ? finalSize.y : 1;
-      if (!hSplitU.left.value) { hSplitU.left.value = new THREE.Vector3(); hSplitU.right.value = new THREE.Vector3(); }
-      hSplitU.w.value = Math.max(0.005, (finalSize.x > 0 ? finalSize.x : 0.5) * H_SPLIT_BLEND);
+      if (hCollide) {   // 2つの球をpartの左右に並べて置く（大きさはpartの大きさから決める）
+        const sx = hCollide.rx * H_SPH_SEP;
+        hSph[0].c.set(hCollide.cx - sx, hCollide.cy, hCollide.cz);
+        hSph[1].c.set(hCollide.cx + sx, hCollide.cy, hCollide.cz);
+        hSplitU.sphR.value = Math.max(hCollide.rx * (1 - H_SPH_SEP), hCollide.ry, hCollide.rz) * H_SPH_RADIUS;
+        hSphReady = true;
+      }
       model.updateMatrixWorld(true);
       if (!hSplitU.boneA.value) {   // 骨の取得に失敗してもシェーダーが動くよう、先に遠くの線分で埋めておく
         hSplitU.boneA.value = []; hSplitU.boneB.value = [];
@@ -2530,6 +2591,11 @@ body.stereo .dispbar{opacity:.55}
       applyHOutline(); applyHProcessing();   // 初期状態（既定は全部ON）を反映
       group.add(model);
       hState = '表示中';
+      hSph.forEach(function (sp, i) {   // 球の可視化（「球表示」ボタンでON/OFF）
+        const m = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ color: i ? 0xff5fa8 : 0x5fd0ff, wireframe: true, transparent: true, opacity: 0.45, depthTest: false }));
+        m.frustumCulled = false; m.renderOrder = 10; m.visible = false;
+        group.add(m); sp.dbg = m;
+      });
 
       // まばたきモーフ・話す動き用の母音モーフ（シェイプキー）を探す
       hBlinkTargets = [];
@@ -2975,7 +3041,7 @@ body.stereo .dispbar{opacity:.55}
     }
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
-    if (H_SPLIT_ON) updateHSplit(dt, jellySVel, softLimit, hJellySum);   // 肉の揺れ（ゼリー揺れと同じ強弱・きっかけで動く）
+    if (H_SPLIT_ON) updateHSpheres(dt, jellySVel, softLimit);   // 肉の揺れ（ゼリー揺れと同じ強弱・きっかけで動く）
     updateHHeadOffset(dt, now / 1000);                        // action4中、頭ボーンにほんの僅かな右・下オフセットを重ねる
     updateHGaze(dt, now);                                     // アニメの後に、両目・左目・右目ボーンへ視線を重ねる
     updateSplash(dt);                                         // 水滴エフェクトの飛散・落下・フェードを更新

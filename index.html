@@ -1116,6 +1116,8 @@ body.stereo .dispbar{opacity:.55}
   // INTRO_MIN_DEG°(-7°)=0フレーム目、INTRO_MAX_DEG°(0°)=最終フレーム。最終フレームに達したら、そのまま通常の2action/2actionplusの仕様に戻る。
   const INTRO_MIN_DEG = -7;
   const INTRO_MAX_DEG = 0;
+  const INTRO_END_START_DEG = -3;     // 導入→通常の2actionに切り替わった瞬間に、2actionのこの角度(-3°)の位置から始める
+  let introOffset = 0;                // 切り替え時に決まる角度のずれ（切り替え後は「現在の角度+これ」を2action・action3判定の角度として使う）
   let introArmed = false;             // 一度でもINTRO_MAX_DEG未満になったらtrue（開始時点で既に0°だと導入が即終了してしまうのを防ぐ）
   let frontIntro = true;              // true: 導入の最中（2action0 / plusの導入クリップを使う）。最初から導入で始める
   let playerAct0 = null;              // player.glb内の「2action0」
@@ -2532,7 +2534,7 @@ body.stereo .dispbar{opacity:.55}
       updateForcedLoopCountdown();
       const duration = playerAct.getClip().duration;
       let t;
-      const tiltRaw = tiltSmooth;              // カクツキを抑えるため、補間後の角度で再生位置を決める
+      const tiltRaw = tiltSmooth + introOffset;   // カクツキを抑えるため、補間後の角度で再生位置を決める（導入後は-3°始まりになるようずらす）
       if (frontIntro && playerAct0) {
         // 導入: -7°=0フレーム目 → 0°=最終フレーム（範囲外は端のフレームで止める）
         const d0 = playerAct0.getClip().duration;
@@ -2614,6 +2616,7 @@ body.stereo .dispbar{opacity:.55}
     if (frontIntro && tiltLive && tiltSmooth < INTRO_MAX_DEG) introArmed = true;
     if (frontIntro && tiltLive && introArmed && tiltSmooth >= INTRO_MAX_DEG) {
       frontIntro = false;
+      introOffset = INTRO_END_START_DEG - tiltSmooth;   // 切り替わった時点の角度が、2actionの-3°になるようにずらす
       playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、2action0→2actionに切り替わるこのタイミングで流す
     }
 

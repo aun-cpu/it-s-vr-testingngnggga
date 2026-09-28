@@ -438,7 +438,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921h-hglb-skin3d';
+  const BUILD = '0921h-hglb-skin-pp2';
   const $ = (s) => document.querySelector(s);
   const screens = { days: $('#days'), select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1597,6 +1597,7 @@ body.stereo .dispbar{opacity:.55}
         };
         o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
         applyGloss(o);
+        applySkinLook(o);
       });
       group.add(model);
       plus2State = '表示中';
@@ -2153,6 +2154,24 @@ body.stereo .dispbar{opacity:.55}
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + SKIN_COLOR)
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + SKIN_NORMAL)
       .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' + SKIN_FRAG);
+  }
+  function applySkinLook(o) {   // player / playerplus2: 既存の材質へ肌感を上乗せする（partと同じノイズ。座標はUVでなくワールドの静止位置）
+    if (!H_SKIN_ON || !o.isMesh || !o.material) return;
+    (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) {
+      if (!m.isMeshStandardMaterial || m.userData.__skinLook) return;
+      m.userData.__skinLook = true;
+      m.roughness = H_SKIN_ROUGH;
+      if (m.map) { m.map.magFilter = THREE.LinearFilter; m.map.minFilter = THREE.LinearMipmapLinearFilter; m.map.generateMipmaps = true; m.map.anisotropy = H_SKIN_TEX_ANISO; m.map.needsUpdate = true; }
+      const prev = m.onBeforeCompile;
+      m.onBeforeCompile = function (sh) {
+        if (prev) prev.call(this, sh);
+        sh.vertexShader = sh.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying vec3 vSkinP;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkinP = (modelMatrix * vec4(position, 1.0)).xyz;');
+        sh.fragmentShader = skinFragment(sh.fragmentShader);
+      };
+      m.needsUpdate = true;
+    });
   }
   const hToonMats = [];   // {mat, origColor, litColor, origTransparent, origOpacity}: 各材質の元の状態とオン/オフを切り替えるための情報
   function applyToon(o) {
@@ -2789,7 +2808,7 @@ body.stereo .dispbar{opacity:.55}
       playerOffX = model.position.x; playerOffY = model.position.y; playerOffZ = model.position.z;
       if (onReady) onReady();
       // 視点がモデルの内側に入っても消えないよう、視錐台カリングを切る
-      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); } });
+      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; applyGloss(o); applySkinLook(o); } });
       group.add(model);
       playerState = '表示中';
 

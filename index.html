@@ -1568,6 +1568,22 @@ body.stereo .dispbar{opacity:.55}
       group.add(model);
       plus2State = '表示中';
 
+      // 突起のボーン pe1〜pe4（連続してつながっている）を探す。しなる棒として筒の中へ向けるために使う
+      (function () {
+        const found = [null, null, null, null];
+        model.traverse(function (o) {
+          if (!o.isBone) return;
+          const m = PE_BONE_RE.exec(o.name || '');
+          if (m) found[parseInt(m[1], 10) - 1] = o;
+        });
+        if (found.every(function (b) { return !!b; })) {
+          plus2Rod = { bones: found, rest: found.map(function (b) { return b.quaternion.clone(); }), ts: new THREE.Vector3(), tsReady: false, bend: 0 };
+          plus2RodInfo = '  ／突起ボーン pe1〜pe4: しなる棒として筒に追従';
+        } else {
+          plus2RodInfo = '  ／突起ボーン pe1〜pe4: 見つかりません（' + found.map(function (b, i) { return b ? '' : 'pe' + (i + 1); }).filter(Boolean).join(',') + '）';
+        }
+      })();
+
       const clips = gltf.animations || [];
       if (clips.length === 0) { plus2Anim = '  アニメなし'; return; }
       const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
@@ -1609,6 +1625,97 @@ body.stereo .dispbar{opacity:.55}
       try { console.error(err); } catch (e) {}
       if (onDone) onDone();
     });
+  }
+  // ---- plus2の突起（ボーン pe1〜pe4）を、若干しなる棒として扱い、常に向きが筒の中に収まるようにする ----
+  // アニメで動かした後のポーズを出発点に、先端が筒の内側に入るよう pe1→pe4 に曲がりを分担させる（CCD法）。
+  // 根元ほど大きく、先端側ほど小さく曲がるので、1本の棒がしなったように見える。最後に先端側を筒の軸方向へ揃える。
+  const PE_ROD_ON = true;
+  const PE_BONE_RE = /^pe[_.]?([1-4])$/i;         // ボーン名（pe1〜pe4）
+  const PE_WEIGHTS = [0.30, 0.30, 0.25, 0.15];    // 各ボーンの曲がり分担（pe1〜pe4）
+  const PE_MAX_BEND_DEG = 30;                     // 各ボーンがアニメの向きから曲がってよい最大角度（度）
+  const PE_ITER = 3;                              // 曲げ計算の反復回数
+  const PE_SMOOTH_SEC = 0.05;                     // 目標点への追従の遅れ（秒）。大きいほど遅れてしなる。0で遅れなし
+  const PE_TUBE_RADIUS_RATIO = 0.75;              // 先端が収まる範囲（筒の半径に対する割合）
+  const PE_END_MARGIN = 0.01;                     // m: 筒の端より内側に先端を入れる余裕
+  const PE_ALIGN = [0, 0, 0.3, 0.6];              // 最後に筒の軸方向へ向ける割合（pe1〜pe4）
+  let plus2Rod = null;                            // {bones, rest, ts(目標点の平滑値), tsReady, bend}
+  let plus2RodInfo = '';
+  const _pe = { p: [0, 1, 2, 3].map(function () { return new THREE.Vector3(); }), tip: new THREE.Vector3(),
+                a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), d: new THREE.Vector3(), tgt: new THREE.Vector3(),
+                q: new THREE.Quaternion(), wq: new THREE.Quaternion(), pq: new THREE.Quaternion(), ident: new THREE.Quaternion() };
+  function plus2RodReset() {   // アニメ更新の前に、ボーンを元の向きに戻す（アニメが動かさないボーンに、前フレームの曲がりが残らないように）
+    if (!plus2Rod) return;
+    for (let i = 0; i < 4; i++) plus2Rod.bones[i].quaternion.copy(plus2Rod.rest[i]);
+  }
+  function peMeasure() {   // 各ボーンの位置と、突起の先端位置（pe4の先に、pe3→pe4と同じ長さの区間があるとみなす）
+    const e = _pe, bones = plus2Rod.bones;
+    for (let i = 0; i < 4; i++) bones[i].getWorldPosition(e.p[i]);
+    e.tip.copy(bones[3].position);
+    bones[3].localToWorld(e.tip);
+  }
+  function peRotate(b, dq) {   // ワールド座標の回転dqを、ボーンbに追加する
+    const e = _pe;
+    b.getWorldQuaternion(e.wq);
+    e.wq.premultiply(dq);
+    if (b.parent) { b.parent.getWorldQuaternion(e.pq); e.pq.invert(); e.wq.premultiply(e.pq); }
+    b.quaternion.copy(e.wq);
+  }
+  function peBend(i, dq, frac, used, maxB) {   // 回転dqのfrac倍（上限つき）をボーンiに加える
+    const e = _pe;
+    e.q.copy(dq).slerp(e.ident, 1 - frac);
+    const ang = 2 * Math.acos(Math.min(1, Math.abs(e.q.w)));
+    const allowed = maxB - used[i];
+    if (allowed <= 1e-5 || ang < 1e-5) return;
+    if (ang > allowed) { e.q.slerp(e.ident, 1 - allowed / ang); used[i] += allowed; } else used[i] += ang;
+    peRotate(plus2Rod.bones[i], e.q);
+  }
+  function updatePlus2Rod(dt) {
+    const rod = plus2Rod;
+    if (!PE_ROD_ON || !rod || !R || !R.plus2 || !R.tube) return;
+    const e = _pe, bones = rod.bones;
+    R.plus2.updateMatrixWorld(true);
+    // 筒（ワールド）：中心・軸方向（Z方向をX軸まわりにtbt°傾けたもの）
+    const tt = inp.tbt * Math.PI / 180;
+    e.c.copy(R.tube.position);
+    e.d.set(0, -Math.sin(tt), Math.cos(tt));
+    const halfL = Math.max(0.001, inp.tbl / 2 - PE_END_MARGIN);
+    const rSafe = Math.max(0.0005, inp.tbr * PE_TUBE_RADIUS_RATIO);
+    // 1) アニメどおりの先端に一番近い「筒の内側の点」を目標にする（すでに内側なら先端そのもの）
+    peMeasure();
+    e.a.subVectors(e.tip, e.c);
+    const axial = e.a.dot(e.d);
+    e.b.copy(e.a).addScaledVector(e.d, -axial);                 // 軸からのズレ
+    const rl = e.b.length();
+    if (rl > rSafe) e.b.multiplyScalar(rSafe / rl);
+    e.tgt.copy(e.c).addScaledVector(e.d, clamp(axial, -halfL, halfL)).add(e.b);
+    // 2) 目標点はゆっくり追従させる（棒がしなって遅れてついてくる）。筒の内側同士の補間なので常に筒の内側
+    if (!rod.tsReady || !(dt > 0) || PE_SMOOTH_SEC <= 0) { rod.ts.copy(e.tgt); rod.tsReady = true; }
+    else rod.ts.lerp(e.tgt, 1 - Math.exp(-dt / PE_SMOOTH_SEC));
+    // 3) pe1→pe4 の順に、先端が目標点へ向かうよう少しずつ曲げる（各ボーンの曲がりは上限つき）
+    const used = [0, 0, 0, 0], maxB = PE_MAX_BEND_DEG * Math.PI / 180;
+    for (let it = 0; it < PE_ITER; it++) {
+      for (let i = 0; i < 4; i++) {
+        peMeasure();
+        e.a.subVectors(e.tip, e.p[i]);
+        e.b.subVectors(rod.ts, e.p[i]);
+        if (e.a.lengthSq() < 1e-10 || e.b.lengthSq() < 1e-10) continue;
+        const dq = new THREE.Quaternion().setFromUnitVectors(e.a.normalize(), e.b.normalize());
+        peBend(i, dq, PE_WEIGHTS[i], used, maxB);
+      }
+    }
+    // 4) 先端側のボーンを筒の軸方向へ揃える（向きが筒の中に収まる）
+    for (let i = 2; i < 4; i++) {
+      if (!(PE_ALIGN[i] > 0)) continue;
+      peMeasure();
+      if (i < 3) e.a.subVectors(e.p[i + 1], e.p[i]); else e.a.subVectors(e.tip, e.p[3]);
+      if (e.a.lengthSq() < 1e-10) continue;
+      e.a.normalize();
+      e.b.copy(e.d); if (e.a.dot(e.b) < 0) e.b.negate();
+      const dq = new THREE.Quaternion().setFromUnitVectors(e.a, e.b);
+      peBend(i, dq, PE_ALIGN[i], used, maxB);
+    }
+    rod.bend = (used[0] + used[1] + used[2] + used[3]) * 180 / Math.PI;
+    R.plus2.updateMatrixWorld(true);
   }
   // ---- playerarm.glb（playerと同じ読み込み。hのaction2/3/4と同じタイミングで 2action2/3/4 を再生） ----
   const ARM_URL = 'playerarm.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く
@@ -2916,6 +3023,7 @@ body.stereo .dispbar{opacity:.55}
       if (plusAct0 && playerAct0) plusAct0.time = clamp(playerAct0.time, 0, plusAct0.getClip().duration);
       plusMixer.update(0);
     }
+    plus2RodReset();   // 突起ボーンを元の向きに戻してからアニメを当てる（曲げは筒の位置が決まった後で加える）
     if (plus2Mixer && plus2Act && playerAct) {   // playerplus2も同様に、playerと同じ再生位置で動かす
       plus2Act.time = clamp(playerAct.time, 0, plus2Act.getClip().duration);
       if (plus2Act0 && playerAct0) plus2Act0.time = clamp(playerAct0.time, 0, plus2Act0.getClip().duration);
@@ -2946,6 +3054,7 @@ body.stereo .dispbar{opacity:.55}
       R.tube.rotation.x = inp.tbt * Math.PI / 180;
       R.tubeMesh.scale.set(Math.max(0.001, inp.tbr), Math.max(0.001, inp.tbl), Math.max(0.001, inp.tbr));
     }
+    updatePlus2Rod(dt);   // plus2の突起（pe1〜pe4）を、しなる棒として筒の中へ向ける
 
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;
@@ -3028,7 +3137,7 @@ body.stereo .dispbar{opacity:.55}
           (hGazeDebugAng != null ? '（角度差' + hGazeDebugAng + '°）' : '') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + '\n' +
-        'playerplus2.glb: ' + plus2State + plus2Anim + '\n' +
+        'playerplus2.glb: ' + plus2State + plus2Anim + plus2RodInfo + (plus2Rod ? '（曲げ ' + Math.round(plus2Rod.bend) + '°）' : '') + '\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +

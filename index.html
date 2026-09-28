@@ -1010,20 +1010,20 @@ body.stereo .dispbar{opacity:.55}
   const WET_STRING_FIRST = 0.1;   // 最初の糸が使える濡れ量（0〜1）
   const WET_STRING_STEP = 0.012;  // 次の糸が使えるようになる濡れ量の間隔
   const WET_STRING_R = 0.0003;    // m: 糸の基準の太さ（細いほど繊細）
-  const WET_ANCHOR_SPREAD = 0.09; // m: player側の糸の付け根が散らばる範囲
-  const WET_MOUTH_SPREAD = 2.6;   // part側の糸の付け根が散らばる範囲（筒の半径の倍率）
+  const WET_ANCHOR_SPREAD = 0.012; // m: player側の糸の付け根が散らばる範囲（筒の入口まわりだけ）
+  const WET_MOUTH_SPREAD = 1.1;   // part側の糸の付け根が散らばる範囲（筒の半径の倍率）
   const WET_END_GAP = 0.16;       // m: 糸の両端を、さらに外側へ離す量（大きいほど、糸の両端が遠くなる）
   const WET_FLASH = 1.2;          // 張ってから消えるまでに、糸が自分で伸びる割合（0.8=約1.8倍まで）
   const WET_STRING_LIFE = [0.25, 0.6];   // 秒: 糸が張ってから、伸びきってちぎれるまで（一瞬）
   const WET_STRING_WAIT = [0.6, 2.0];    // 秒: ちぎれてから、次に張るまでの待ち
   const WET_BURST_TIME = 0.7;     // 秒: plus2を素早く動かした時、糸がいっせいに張られる時間
-  const WET_STRING_AMBIENT = 12;   // 素早く動かしていなくても、ときどき張る糸の本数
+  const WET_STRING_AMBIENT = 0;   // 素早く動かしていなくても、ときどき張る糸の本数
   const WET_ALPHA = OOZE_ALPHA;
   const WET_RECOIL_MIN = 0.15, WET_RECOIL_MAX = 0.32;   // 秒: ちぎれた糸が縮みきるまで
   const wetStrands = [], wetDrops = [];
   const wetAnchor = new THREE.Vector3();
   const wetZero = new THREE.Vector3();
-  let wetBurstT = 0, wetBurstCd = 0;
+  let wetBurstT = 0, wetBurstCd = 0, wetTouch = false;   // wetTouch: plus2の先端が筒に当たっている間 true
   let wetAnchorOk = false;
   const WETU = { P: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, K: { value: WET_BASE }, R: { value: WET_REACH }, env: { value: null } };
   let wetK = WET_BASE, wetSide = 1, wetPrimed = false;
@@ -1340,14 +1340,17 @@ body.stereo .dispbar{opacity:.55}
       const near = radial <= Math.max(OOZE_RADIAL_MIN, inp.tbr * OOZE_RADIAL_MAX);   // 筒が細くても、最低でもOOZE_RADIAL_MIN(m)までは「近い」とみなす
       const inside = near && (oozeInside ? ratio > OOZE_EXIT_RATIO : ratio >= OOZE_ENTER_RATIO);
       const speed = (depth - oozePrevDepth) / dt;
-      wetAnchor.copy(_pe.p[0]); wetAnchorOk = true;   // player側のつなぎ目（突起の根元）
+      { const cap = Math.max(0.006, inp.tbr * 1.2), kk = radial > cap ? cap / radial : 1;   // player側のつなぎ目：plus2先端の、筒の軸上（入口より外側）に寄せる
+        wetAnchor.copy(tp).addScaledVector(e.u, Math.min(axial, -full / 2)).addScaledVector(e.b, kk); wetAnchorOk = true; }
       if (near && wetPrimed) wetK = Math.min(1, wetK + Math.min(0.04, Math.abs(speed) * dt * WET_GAIN + (inside ? WET_SEEP * dt : 0)));   // 動かすほど濡れる
       wetPrimed = true;
       wetBurstCd -= dt;
-      if (near && Math.abs(speed) > OOZE_PUMP_SPEED * 2 && wetBurstCd <= 0 && wetK >= WET_STRING_FIRST) {   // 素早く動かした瞬間、たくさんの糸がいっせいに張られる
-        wetBurstT = WET_BURST_TIME; wetBurstCd = 0.5 + Math.random() * 0.5;
-        for (let j = 0; j < wetStrands.length; j++) if (wetStrands[j].state === 0) wetStrands[j].wait = Math.min(wetStrands[j].wait, Math.random() * 0.35);
+      const touchNow = near && depth > -0.02;   // 先端が筒に当たっている
+      if (wetTouch && !touchNow && wetBurstCd <= 0 && wetK >= WET_STRING_FIRST) {   // 当たってから離れた瞬間だけ、糸がいっせいに張られる
+        wetBurstT = WET_BURST_TIME; wetBurstCd = 0.3 + Math.random() * 0.3;
+        for (let j = 0; j < wetStrands.length; j++) if (wetStrands[j].state === 0) wetStrands[j].wait = Math.min(wetStrands[j].wait, Math.random() * 0.25);
       }
+      wetTouch = touchNow;
       oozeCool -= dt;
       if (inside && !oozeInside) {
         if (wetK >= WET_DRIP_MIN) for (let i = 0; i < OOZE_BURST; i++) emitOoze();
@@ -1399,7 +1402,7 @@ body.stereo .dispbar{opacity:.55}
         // 両端：part側は口のふち周りに広く、player側は根元まわりに広く散らし、さらに外側へGAPだけ離す
         e.a.copy(e.o).addScaledVector(e.x, Math.cos(s.ph) * rr * WET_MOUTH_SPREAD * s.am).addScaledVector(e.w, Math.sin(s.ph) * rr * WET_MOUTH_SPREAD * s.am).addScaledVector(e.d, -wetSide * WET_END_GAP * 0.5);
         e.b.copy(wetAnchor).addScaledVector(e.x, Math.cos(s.ph2) * WET_ANCHOR_SPREAD * s.ao).addScaledVector(e.w, Math.sin(s.ph2) * WET_ANCHOR_SPREAD * s.ao);
-        e.u.subVectors(e.b, e.a); const D1 = e.u.length(); if (D1 > 1e-5) e.b.addScaledVector(e.u, WET_END_GAP * 0.5 / D1);
+        e.b.addScaledVector(e.d, wetSide * WET_END_GAP * 0.5);   // 口から外へ、筒の軸方向にだけ離す
         if (s.state === 1) {
           s.age += dt;
           const u = clamp(s.age / s.life, 0, 1), sx = Math.pow(u, 1.6);

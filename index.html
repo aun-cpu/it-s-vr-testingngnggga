@@ -409,11 +409,11 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="tbt" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-tbt" data-k="tbt" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="tbt" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-tbt">0.00</span></div>
       <button type="button" class="mini" id="dBtnTubeReset" style="width:100%; margin-top:4px">筒をリセット</button>
       <p class="postitle" style="margin:10px 0 6px">揺れの球の位置・大きさ（変更中は球を表示）</p>
-      <div class="prow"><span class="pl">間隔</span><button type="button" class="dpstep" data-sk="sep" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-sep" data-sk="sep" min="0" max="1.5" step="0.01" value="0.5"><button type="button" class="dpstep" data-sk="sep" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-sep">0.50</span></div>
+      <div class="prow"><span class="pl">間隔</span><button type="button" class="dpstep" data-sk="sep" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-sep" data-sk="sep" min="0" max="1.5" step="0.01" value="0.57"><button type="button" class="dpstep" data-sk="sep" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-sep">0.57</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-sk="oy" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-oy" data-sk="oy" min="-1" max="1" step="0.01" value="0"><button type="button" class="dpstep" data-sk="oy" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-oy">0.00</span></div>
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-sk="oz" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-oz" data-sk="oz" min="-1" max="1" step="0.01" value="0"><button type="button" class="dpstep" data-sk="oz" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-oz">0.00</span></div>
       <div class="prow"><span class="pl">大きさ</span><button type="button" class="dpstep" data-sk="rad" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-rad" data-sk="rad" min="0.2" max="2.5" step="0.01" value="1"><button type="button" class="dpstep" data-sk="rad" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-rad">1.00</span></div>
-      <div class="prow"><span class="pl">中心の範囲</span><button type="button" class="dpstep" data-sk="core" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-core" data-sk="core" min="0.05" max="0.9" step="0.01" value="0.3"><button type="button" class="dpstep" data-sk="core" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-core">0.30</span></div>
+      <div class="prow"><span class="pl">中心の範囲</span><button type="button" class="dpstep" data-sk="core" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-core" data-sk="core" min="0.05" max="0.9" step="0.01" value="0.9"><button type="button" class="dpstep" data-sk="core" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-core">0.90</span></div>
       <button type="button" class="mini" id="dBtnSphReset" style="width:100%; margin-top:4px">球をリセット</button>
     </div>
   </div>
@@ -1912,7 +1912,7 @@ body.stereo .dispbar{opacity:.55}
   const H_SPLIT_ON = true;             // false: 球による揺れを止める
   const H_SPH_SEP = 0.5;               // 2つの球の左右の位置（partの半幅に対する割合。中心から±この位置）
   const H_SPH_RADIUS = 1.1;            // 球の影響半径（partの大きさに対する倍率）
-  const H_SPH_CORE = 0.3;              // 影響半径のうち、球の変位が100%伝わる内側の割合（外側へなめらかに0）
+  const H_SPH_CORE = 0.9;              // 影響半径のうち、球の変位が100%伝わる内側の割合（外側へなめらかに0）
   const H_SPH_STIFF = 900;             // 球のバネの硬さ（大きいほど速く揺れる。900≒約4.8Hz）
   const H_SPH_DAMP = 6;                // 球の減衰（小さいほど長く揺れる）
   const H_SPH_COUPLE = 0.6;            // 2つの球をつなぐバネ（H_SPH_STIFFに対する比。大きいほど左右が引き合う）
@@ -1930,7 +1930,7 @@ body.stereo .dispbar{opacity:.55}
   const H_BONE_R0 = 0.03, H_BONE_R1 = 0.09;   // 骨からの距離（partの高さに対する比率）: R0以内は骨（動かない）→ R1以上は肉（全部動く）
   let hSplitRef = 1;                   // partの高さ(m)。読込時に実測値へ更新
   let hSplitBoneCount = 0;             // 骨として使っている線分の数
-  const SPH_DEFAULT = { sep: 0.5, oy: 0, oz: 0, rad: 1, core: H_SPH_CORE };   // 表示側で調整する球の位置・大きさ
+  const SPH_DEFAULT = { sep: 0.57, oy: 0, oz: 0, rad: 1, core: H_SPH_CORE };   // 表示側で調整する球の位置・大きさ
   const sphP = Object.assign({}, SPH_DEFAULT);   // sep=左右の間隔(半幅比) oy/oz=上下/前後のずれ(partの半高/半奥行き比) rad=大きさの倍率 core=100%伝わる内側の割合
   let hSphBaseR = 0.3;                 // 倍率1の時の球の影響半径（読込時に算出）
   let hSphReady = false;               // 球を置き終えたか（part読込後にtrue）

@@ -438,7 +438,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921h-hglb-2sph-adj';
+  const BUILD = '0921h-hglb-skin';
   const $ = (s) => document.querySelector(s);
   const screens = { days: $('#days'), select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -2090,6 +2090,52 @@ body.stereo .dispbar{opacity:.55}
       if (sp.dbg) { sp.dbg.visible = hSphDebugOn; sp.dbg.position.copy(sp.c).add(sp.dd); sp.dbg.scale.setScalar(Rr); }
     }
   }
+  // ---- partの肌材質：肌と判定した材質だけ、トゥーンをやめて光沢・細かな凹凸・縁の赤み（皮下散乱風）のある材質にする ----
+  const H_SKIN_ON = true;              // false: すべて従来のトゥーン
+  const H_SKIN_ALL = true;             // true: partの材質を全て肌にする（partは全て身体）。falseなら下の名前・色で判定
+  const H_SKIN_RE = /skin|肌|body|体|flesh|face|顔|hada|皮/i;             // 材質名がこれに合えば肌
+  const H_NONSKIN_RE = /eye|目|眉|brow|hair|髪|mouth|口|teeth|歯|tongue|舌|lash|睫|cloth|服|shoe|靴|nail|爪/i;   // 合えば肌にしない
+  const H_SKIN_ROUGH = 0.55;           // 表面の粗さ（小さいほどテカる）
+  const H_SKIN_BUMP = 0.25;            // 細かな凹凸（キメ）の強さ。0で無し
+  const H_SKIN_BUMP_REPEAT = 6;        // 凹凸の細かさ（UVに対する繰り返し。テクスチャ付き材質ではテクスチャ側の設定が使われる）
+  const H_SKIN_SSS = 0.6;              // 輪郭付近の赤み（皮下散乱風）の強さ
+  const hSkinNames = [];               // 材質名と判定結果（HUD表示用）
+  let hSkinBumpTex = null;
+  function getSkinBump() {   // 細かさの違うノイズを重ねた、つなぎ目のない凹凸テクスチャ
+    if (hSkinBumpTex) return hSkinBumpTex;
+    const N = 256, rng = mulberry32(7), layers = [[32, 0.5], [64, 0.3], [128, 0.2]];
+    const grids = layers.map(function (l) { const g = new Float32Array(l[0] * l[0]); for (let i = 0; i < g.length; i++) g[i] = rng(); return g; });
+    const data = new Uint8Array(N * N * 4);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      let v = 0;
+      for (let k = 0; k < layers.length; k++) {
+        const G = layers[k][0], fx = x / N * G, fy = y / N * G, x0 = Math.floor(fx), y0 = Math.floor(fy);
+        let tx = fx - x0, ty = fy - y0; tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
+        const a = grids[k][(y0 % G) * G + (x0 % G)], b = grids[k][(y0 % G) * G + ((x0 + 1) % G)],
+              c = grids[k][((y0 + 1) % G) * G + (x0 % G)], d = grids[k][((y0 + 1) % G) * G + ((x0 + 1) % G)];
+        v += layers[k][1] * ((a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty);
+      }
+      const i = (y * N + x) * 4; data[i] = data[i + 1] = data[i + 2] = Math.round(clamp(v, 0, 1) * 255); data[i + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(H_SKIN_BUMP_REPEAT, H_SKIN_BUMP_REPEAT);
+    tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = true; tex.needsUpdate = true;
+    return (hSkinBumpTex = tex);
+  }
+  function isSkinMat(m, c) {
+    if (H_SKIN_ALL) return true;
+    const nm = m.name || '';
+    if (H_NONSKIN_RE.test(nm)) return false;
+    if (H_SKIN_RE.test(nm)) return true;
+    if (m.map || m.transparent) return false;   // 名前で判定できず、テクスチャ付き/半透明なら肌にしない
+    const lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
+    return c.r > c.g && c.g > c.b && lum > 0.5 && (c.r - c.b) > 0.08 && (c.r - c.b) < 0.5;   // 明るい暖色（肌色）
+  }
+  const SKIN_FRAG =
+    '{\n' +
+    '  float skF = pow(1.0 - clamp(abs(dot(normalize(vNormal), normalize(vViewPosition))), 0.0, 1.0), 2.5);\n' +   // 縁ほど大きい
+    '  gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * vec3(1.15, 0.78, 0.72) + vec3(0.05, 0.012, 0.008), skF * ' + H_SKIN_SSS.toFixed(3) + ');\n' +
+    '}\n';
   const hToonMats = [];   // {mat, origColor, litColor, origTransparent, origOpacity}: 各材質の元の状態とオン/オフを切り替えるための情報
   function applyToon(o) {
     if (!o.isMesh || !o.material) return;
@@ -2101,7 +2147,12 @@ body.stereo .dispbar{opacity:.55}
       const origColor = m.color ? m.color.clone() : new THREE.Color(0xffffff);
       const origTransparent = !!m.transparent;
       const origOpacity = m.opacity != null ? m.opacity : 1;
-      const t = new THREE.MeshToonMaterial({
+      const skin = H_SKIN_ON && isSkinMat(m, origColor);
+      hSkinNames.push((skin ? '肌:' : '') + (m.name || '無名'));
+      const t = skin
+        ? new THREE.MeshStandardMaterial({ color: origColor.clone(), map: m.map || null, roughness: H_SKIN_ROUGH, metalness: 0,
+            bumpMap: H_SKIN_BUMP > 0 ? getSkinBump() : null, bumpScale: H_SKIN_BUMP, transparent: origTransparent, opacity: origOpacity })
+        : new THREE.MeshToonMaterial({
         color: origColor.clone(),
         map: m.map || null,
         gradientMap: hToonGradient,
@@ -2118,6 +2169,10 @@ body.stereo .dispbar{opacity:.55}
       if (o.isSkinnedMesh) t.skinning = true;
       if (o.morphTargetInfluences && o.morphTargetInfluences.length) t.morphTargets = true;
       if (H_SPLIT_ON) { try { t.onBeforeCompile = makeHSplitHook(makeHSplitInfo(o)); } catch (err) { console.warn('[split] 材質への左右分割の揺れの設定に失敗', err); } }   // 左右分割の細かい揺れ
+      if (skin) {   // 揺れの頂点シェーダーはそのままに、フラグメントへ縁の赤みを足す
+        const prevHook = t.onBeforeCompile;
+        t.onBeforeCompile = function (sh) { if (prevHook) prevHook(sh); sh.fragmentShader = sh.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' + SKIN_FRAG); };
+      }
       hToonMats.push({ mat: t, origColor: origColor, litColor: litColor, origTransparent: origTransparent, origOpacity: origOpacity });
       return t;
     });
@@ -3453,6 +3508,7 @@ body.stereo .dispbar{opacity:.55}
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         'part.glb: ' + hState + hAnim + (hSplitBoneCount ? '  骨' + hSplitBoneCount + '本' : '') + (partPushLen > 0.0005 ? '  押し出し ' + (partPushLen * 100).toFixed(1) + 'cm' : '') + '\n' +
+        'part材質: ' + (hSkinNames.length ? hSkinNames.join(', ') : '未読込') + '\n' +
         'h視線: ' + hEyeInfo + (hEyes ? (hGaze.mode === 'camera' ? '（カメラを見ている）' : '（自由に見ている）') : '') +
           (hGazeDebugAng != null ? '（角度差' + hGazeDebugAng + '°）' : '') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +

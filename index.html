@@ -1154,6 +1154,7 @@ body.stereo .dispbar{opacity:.55}
   let frontIntro = true;              // true: 導入の最中（2action0 / plusの導入クリップを使う）。最初から導入で始める
   let playerAct0 = null;              // player.glb内の「2action0」
   let plusAct0 = null;                // playerplus.glb内の「2action0」
+  let plus2Act0 = null;               // playerplus2.glb内の「2action0」
   function syncIntroActs() {
     // 導入中は導入クリップだけ、それ以外は通常のクリップだけを有効にする（重ねると混ざってしまうため）
     const p = frontIntro && !!playerAct0;
@@ -1162,6 +1163,9 @@ body.stereo .dispbar{opacity:.55}
     const q = frontIntro && !!plusAct0;
     if (plusAct0) plusAct0.enabled = q;
     if (plusAct) plusAct.enabled = !q;
+    const q2 = frontIntro && !!plus2Act0;
+    if (plus2Act0) plus2Act0.enabled = q2;
+    if (plus2Act) plus2Act.enabled = !q2;
   }
 
   // ---- bg.glb（背景として置くだけの静的モデル） ----
@@ -1483,6 +1487,90 @@ body.stereo .dispbar{opacity:.55}
       if (onDone) onDone();
     }, undefined, function (err) {
       plusState = '読込失敗（playerplus.glb を index.html と同じ場所に置く）';
+      try { console.error(err); } catch (e) {}
+      if (onDone) onDone();
+    });
+  }
+  // ---- playerplus2.glb（playerplusと同じ扱い。playerと同じ位置・同じ読み込み。物理（partとの衝突）には使わない。playerと同じ名前の動き「2action」を、playerと同じ再生位置で動かす。半透明） ----
+  const PLUS2_URL = 'playerplus2.glb?' + ASSET_VERSION; // index.html と同じ場所に置く
+  const PLUS2_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
+  const PLUS2_FACING = PLAYER_FACING; // playerと同じ向き
+  const PLUS2_OPACITY = 0.4;          // 透明度（1=不透明 / 0=完全に透明）
+  let plus2State = '未読込';
+  let plus2Anim = '';
+  let plus2Mixer = null;
+  let plus2Act = null;                // 「2actionplus」（角度で再生位置を決める）
+  function loadPlus2(group, onDone) {
+    if (!THREE.GLTFLoader) { plus2State = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
+    plus2State = '読込中…';
+    new THREE.GLTFLoader().load(PLUS2_URL, function (gltf) {
+      (function () {
+      const model = gltf.scene;
+      if (playerScale != null) {
+        // player.glbのメッシュを間引いただけでボーンは同じなので、playerと全く同じ縮尺・位置合わせを使う
+        model.scale.setScalar(playerScale);
+        model.position.set(playerOffX, playerOffY, playerOffZ);
+      } else {
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        if (PLUS2_HEIGHT && size.y > 0) model.scale.multiplyScalar(PLUS2_HEIGHT / size.y);
+        box.setFromObject(model);
+        const c = box.getCenter(new THREE.Vector3());
+        model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      }
+      // 半透明にする（マテリアルは複製して、他のモデルに影響しないようにする）
+      model.traverse(function (o) {
+        if (!o.isMesh) return;
+        o.frustumCulled = false;
+        const one = function (m) {
+          const n = m.clone();
+          n.transparent = true; n.opacity = PLUS2_OPACITY; n.depthWrite = false;
+          return n;
+        };
+        o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
+        applyGloss(o);
+      });
+      group.add(model);
+      plus2State = '表示中';
+
+      const clips = gltf.animations || [];
+      if (clips.length === 0) { plus2Anim = '  アニメなし'; return; }
+      const nm = function (c) { return (c.name || '').trim().toLowerCase(); };
+      // playerと同じ名前の動き（2action）を使う。無ければ従来の名前（2actionplus）で代用
+      const playerClipName = playerAct ? nm(playerAct.getClip()) : '2action';
+      const clip = clips.find(function (c) { return nm(c) === playerClipName; }) ||
+                   clips.find(function (c) { return nm(c) === '2action'; }) ||
+                   clips.find(function (c) { return nm(c).endsWith('2action'); }) ||
+                   clips.find(function (c) { return nm(c) === '2actionplus2'; }) ||
+                   clips.find(function (c) { return nm(c) === '2actionplus'; }) ||
+                   clips.find(function (c) { return nm(c).endsWith('2actionplus'); });
+      if (!clip) {
+        plus2Anim = '  「' + playerClipName + '」が見つかりません（あるもの: ' + clips.map(function (c) { return c.name || '無名'; }).join(', ') + '）';
+        return;
+      }
+      plus2Mixer = new THREE.AnimationMixer(model);
+      plus2Act = plus2Mixer.clipAction(clip);
+      plus2Act.play();
+      plus2Act.paused = true;         // 時間では進めず、角度だけで位置を決める
+      // 正面に戻った直後に使う導入クリップ（あれば）。名前は「2action0」（念のため「2action0plus」「2actionplus0」も可）
+      const isIntro = function (n) { return n === '2action0' || n === '2action0plus' || n === '2actionplus0'; };
+      const clip0p2 = clips.find(function (c) { return nm(c) === '2action0'; }) ||
+                     clips.find(function (c) { return isIntro(nm(c)); }) ||
+                     clips.find(function (c) { return nm(c).endsWith('2action0'); });
+      if (clip0p2) {
+        plus2Act0 = plus2Mixer.clipAction(clip0p2);
+        plus2Act0.play();
+        plus2Act0.paused = true;
+        plus2Act0.enabled = false;
+      }
+      plus2Act.time = playerAct ? clamp(playerAct.time, 0, clip.duration) : 0;   // playerと同じ再生位置から始める
+      plus2Mixer.update(0);
+      plus2Anim = '  アクション: ' + clip.name + '（playerと同じ再生位置・透明度' + PLUS2_OPACITY + '）' +
+                 (clip0p2 ? ' ＋導入: ' + clip0p2.name : ' ／導入クリップ（2action0）なし');
+      })();
+      if (onDone) onDone();
+    }, undefined, function (err) {
+      plus2State = '読込失敗（playerplus2.glb を index.html と同じ場所に置く）';
       try { console.error(err); } catch (e) {}
       if (onDone) onDone();
     });
@@ -2300,6 +2388,11 @@ body.stereo .dispbar{opacity:.55}
       plusGroup.position.copy(playerGroup.position);
       plusGroup.rotation.y = playerGroup.rotation.y;
       scene.add(plusGroup);
+      // playerplus2.glb（playerplusと同じ扱い：常にplayerと全く同じ位置・向き。物理には使わない）
+      const plus2Group = new THREE.Group();
+      plus2Group.position.copy(playerGroup.position);
+      plus2Group.rotation.y = playerGroup.rotation.y;
+      scene.add(plus2Group);
 
       // 読み込みは同時に走らせず、1つずつ順番に行う（端末によっては同時読込でクラッシュするため）
       // bg → h → player →（playerの縮尺確定後）arm → plus
@@ -2307,7 +2400,7 @@ body.stereo .dispbar{opacity:.55}
         loadH(hGroup, function () {
           loadPlayer(playerGroup, function () {
             loadArm(armGroup, function () {
-              loadPlus(plusGroup);
+              loadPlus(plusGroup, function () { loadPlus2(plus2Group); });
             });
           });
         });
@@ -2318,7 +2411,7 @@ body.stereo .dispbar{opacity:.55}
       initActionButton(scene);   // ゲージ満タン時にhの上へ出す、視線で注視できるボタン
 
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup, bg: bgGroup,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, arm: armGroup, plus: plusGroup, plus2: plus2Group, bg: bgGroup,
         W: 0, H: 0
       };
       T = {
@@ -2507,6 +2600,11 @@ body.stereo .dispbar{opacity:.55}
       R.plus.visible = true;
       R.plus.position.copy(R.player.position);   // 常にplayerと同じ位置・向き
       R.plus.rotation.y = R.player.rotation.y;
+    }
+    if (R.plus2) {
+      R.plus2.visible = true;
+      R.plus2.position.copy(R.player.position);   // plusと同じく、常にplayerと同じ位置・向き
+      R.plus2.rotation.y = R.player.rotation.y;
     }
     if (R.arm) {
       R.arm.visible = true;
@@ -2772,6 +2870,11 @@ body.stereo .dispbar{opacity:.55}
       if (plusAct0 && playerAct0) plusAct0.time = clamp(playerAct0.time, 0, plusAct0.getClip().duration);
       plusMixer.update(0);
     }
+    if (plus2Mixer && plus2Act && playerAct) {   // playerplus2も同様に、playerと同じ再生位置で動かす
+      plus2Act.time = clamp(playerAct.time, 0, plus2Act.getClip().duration);
+      if (plus2Act0 && playerAct0) plus2Act0.time = clamp(playerAct0.time, 0, plus2Act0.getClip().duration);
+      plus2Mixer.update(0);
+    }
     // 最終フレーム（INTRO_MAX_DEG°）に達したら導入を終え、次のフレームから通常の2actionの仕様に戻る
     if (partMoving) {
       partMoveT += dt;
@@ -2875,6 +2978,7 @@ body.stereo .dispbar{opacity:.55}
           (hGazeDebugAng != null ? '（角度差' + hGazeDebugAng + '°）' : '') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + '\n' +
+        'playerplus2.glb: ' + plus2State + plus2Anim + '\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +

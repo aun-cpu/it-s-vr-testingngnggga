@@ -372,7 +372,7 @@ body.stereo .dispbar{opacity:.55}
     </div>
     <div class="tiltsel"><button type="button" id="tiltManualBtn">手動角度</button><button type="button" id="tiltReset">角度リセット</button></div>
     <div class="tiltmanual hidden" id="tiltManualWrap">
-      <input type="range" id="tiltManualRng" min="-7" max="0" step="0.5" value="-7">
+      <input type="range" id="tiltManualRng" min="-7" max="7" step="0.5" value="-7">
       <div class="tiltmanualval" id="tiltManualValTxt">-7°</div>
     </div>
     </div>
@@ -1264,8 +1264,19 @@ body.stereo .dispbar{opacity:.55}
     { stiffness: 230, damping: 7.0, impact: 0.55 },   // 2次モード：その上に重なる、やや速い揺り返し
     { stiffness: 620, damping: 13.0, impact: 0.28 },  // 3次モード：さらに細かく速い波打ち。すぐ収まる
   ];
-  const JELLY_IMPACT_SCALE = 0.015;   // 触れた瞬間の勢い（角速度 度/秒）→揺れの初速への変換係数
-  const JELLY_IMPACT_MIN = 0.35;      // 触れた瞬間に最低これだけの初速は与える（勢いが弱くても揺れが分かるように）
+  // ---- 接触の物理演算 ----
+  // playerが触れている間だけ、各モードのバネの支点がplayerの押し込みに連動して動く（ばね＋ダンパで接続）。
+  //  ・触れていない → 揺れの元になる力は無い（触れる前に動かしても揺れない）
+  //  ・ゆっくり押し込む → 支点の動きにそのまま追従して、押し込んだ分だけ少し潰れる（揺れは起きない）
+  //  ・速く押し込む → 追従しきれず、慣性で行き過ぎて跳ね返り、波打ちながら収まる
+  //  ・離れた後 → 潰れていた分が自分の弾性で戻り、速く離れるほど跳ね返りが出る
+  const CONTACT_START_DEG = 0;               // 度: この角度からplayerがpartに触れ始める（2actionの0°=5フレーム目）
+  const CONTACT_FULL_DEG = ACTION3_DEG;      // 度: ここまで押し込むと最大の潰れ（＝action3が出る角度）
+  const JELLY_SQUASH_MAX = 0.04;             // ゆっくり最大まで押し込んだ時の潰れ量（Y方向の縮み。静的な潰れ）
+  const JELLY_CONTACT_KICK = 6;              // 押し込む速さに対する揺れの強さ（大きいほど速い接触で大きく揺れる）
+  const JELLY_WEIGHT_SUM = JELLY_MODES.reduce(function (a, m) { return a + m.impact; }, 0);   // 静的な潰れを各モードに配分する重みの合計
+  let jellyDepthDeg = 0;                     // 現在の押し込み量（度）。0以下=接触なし
+  let jellySPrev = 0;                        // 前フレームの押し込みによる潰れ量（押し込む速さの計算用）
   const JELLY_MAX = 0.16;             // 全モード合計の変位（つぶれ・伸び）の上限（現実的な範囲に抑える）
   const JELLY_ROT_MAX = 4 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
   const JELLY_BOB_MAX = 0.012;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
@@ -2354,9 +2365,20 @@ body.stereo .dispbar{opacity:.55}
     // 戻ってくるまでの間、表示上の値が上限に張り付いて「一瞬固まる」ように見えてしまうため）
     const softLimit = function (v, m) { return m * Math.tanh(v / m); };
     let hJellySumRaw = 0;
+    // playerの押し込み量から、支点の位置（＝潰れの目標）と押し込む速さを求める
+    const jellyContact = jellyDepthDeg > 0;
+    const jellyS = JELLY_SQUASH_MAX * clamp(jellyDepthDeg / Math.max(0.001, CONTACT_FULL_DEG - CONTACT_START_DEG), 0, 1);
+    const jellySVel = dt > 0 ? (jellyS - jellySPrev) / dt : 0;
+    jellySPrev = jellyS;
     for (let ji = 0; ji < JELLY_MODES.length; ji++) {
       const jm = JELLY_MODES[ji];
-      const jAccel = -jm.stiffness * hJellyX[ji] - jm.damping * hJellyV[ji];
+      let jAccel = -jm.stiffness * hJellyX[ji] - jm.damping * hJellyV[ji];   // 自由な状態：自分の弾性で戻る
+      if (jellyContact) {
+        const jw = jm.impact / JELLY_WEIGHT_SUM;                       // このモードが受け持つ潰れの割合
+        const jTgt = -jw * jellyS;                                     // 支点の位置（負=潰れる向き）
+        const jTgtV = jellySVel > 0 ? -jw * jellySVel * JELLY_CONTACT_KICK : 0;   // 押し込む速さ（離れる時は引きずらない）
+        jAccel = -jm.stiffness * (hJellyX[ji] - jTgt) - jm.damping * (hJellyV[ji] - jTgtV);
+      }
       hJellyV[ji] += jAccel * dt;
       hJellyX[ji] += hJellyV[ji] * dt;
       hJellySumRaw += hJellyX[ji];
@@ -2543,6 +2565,8 @@ body.stereo .dispbar{opacity:.55}
     // 触れる勢い（角速度）＝tiltSmoothの1フレームあたりの変化量。ゼリー揺れの強さの元になる
     tiltSmoothVel = dt > 0 ? (tiltSmooth - tiltSmoothPrev) / dt : 0;
     tiltSmoothPrev = tiltSmooth;
+    // 接触の深さ（次フレームの揺れの計算で使う）。導入中・強制ループ中・角度データが無い間は接触なし
+    jellyDepthDeg = (tiltLive && !frontIntro && !forcedLoopActive) ? Math.max(0, tiltSmooth + introOffset - CONTACT_START_DEG) : 0;
     // 2action: 選んだ軸の角度で再生位置を決める。-20°=先頭フレーム／0°=5フレーム目／8°=最終フレーム（区分線形）
     if (forcedLoopActive) {
       // ---- 注視で選択された直後の演出：入力を無視して、5〜10フレーム目とhのaction4を往復ループ ----
@@ -2626,11 +2650,6 @@ body.stereo .dispbar{opacity:.55}
       const action3IsAbove = tiltRaw >= ACTION3_DEG;
       if (action3IsAbove && !action3Above && !frontIntro) {   // 導入中はaction3を流さない（hはidleのまま）
         if (hAct3) playH(hAct3);
-        // playerが触れた瞬間：その勢い（角速度）に応じて各振動モードへ同時に初速を与える
-        // （押した方向へまず動いてから跳ね返るように、押した向きと同じ符号の初速にする）
-        // → モードごとに周波数・収まる速さが違うため、単純な一往復ではなく波打つように揺れる
-        const jellyImpact = clamp(Math.abs(tiltSmoothVel) * JELLY_IMPACT_SCALE, JELLY_IMPACT_MIN, 3);
-        for (let ji = 0; ji < JELLY_MODES.length; ji++) hJellyV[ji] += jellyImpact * JELLY_MODES[ji].impact * 4;
       }
       action3Above = action3IsAbove;
     } else {

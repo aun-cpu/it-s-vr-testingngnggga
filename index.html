@@ -565,7 +565,7 @@ body.stereo .dispbar{opacity:.55}
     aox: 0, aoy: 0, aoz: 0.4, aor: 0,          // playerarm: player本体とのズレ（位置m・回転°）
     hox: 0.01, hoy: 0.6, hoz: 0.11, hos: 0.7, hot: -17,       // part.glb: player本体とのズレ（位置m）・スケール（倍率）・傾き（度）
     tbx: 0, tby: 0.28, tbz: 0.07, tbr: 0.005, tbl: 0.2, tbt: 3.0,
-    lqx: 0, lqy: 0.28, lqz: 0.07, lqr: 0.01, lql: 0.2, lqt: 3.0, lqs: 1.5    // 液体用の筒（別の筒）: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度）・液の大きさ倍率
+    lqx: 0, lqy: 0.32, lqz: 0.13, lqr: 0.02, lql: 0.02, lqt: 3.0, lqs: 1.5    // 液体用の筒（別の筒）: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度）・液の大きさ倍率
     // 筒: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度、X軸まわり）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
@@ -991,21 +991,71 @@ body.stereo .dispbar{opacity:.55}
   const OOZE_DRIP_SPEED = 0.018;      // m/s: 垂れ始めの速さ（粘りがあるのでとてもゆっくり）
   const OOZE_DRIP_ACCEL = 0.03;       // m/s^2: 垂れながら少しずつ速くなる量
   const OOZE_STRING_MAX = 0.05;       // m: 糸を引く長さ。これを超えると雫がちぎれて落ちる
+  const OOZE_COLOR = 0xe6cf6b;        // 液体の色（琥珀色の油。緑がかったスライムにしたければ 0xb8e068 など）
+  const OOZE_SEEP_INTERVAL = 1.8;     // 秒: 筒に入っている間、ゆっくり湧き出し続ける間隔の目安
+  const OOZE_GRAVITY = 1.4;           // m/s^2: ちぎれた雫が落ちる加速
   const OOZE_SEE_THROUGH = false;     // true にすると、partなどの後ろに隠れても常に手前に表示する
   const oozes = [];
   let oozeGuideOn = true;             // 液体の位置ガイド（黄=液体が出る範囲と中心、ピンク=筒。軸: 赤=X右 緑=Y上 青=Z手前）
   let oozeGuide = null;
   const oozeDbg = { ratio: 0, radialMM: 0, inside: false, near: false, has: false };
   let oozeLastKey = '', oozeFlashUntil = 0;
-  let oozeGroup = null, oozeInside = false, oozePrevDepth = 0, oozeCool = 0;
-  const _oz = { d: new THREE.Vector3(), u: new THREE.Vector3(), w: new THREE.Vector3(), x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0),
+  let oozeGroup = null, oozeInside = false, oozePrevDepth = 0, oozeCool = 0, oozeSeep = 0, oozeEnv = null;
+  const _oz = { d: new THREE.Vector3(), u: new THREE.Vector3(), w: new THREE.Vector3(), x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1),
                 a: new THREE.Vector3(), b: new THREE.Vector3(), o: new THREE.Vector3(), t: new THREE.Vector3(), c: new THREE.Vector3() };
+  const OZ_N = 26, OZ_M = 14;         // 垂れる糸の形状の分割数（縦・周）
+  function ozEnvTexture() {   // 液体のつやのための、疑似的な周囲の映り込み（明るい窓・空・暗い床）
+    const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+    const g = c.getContext('2d');
+    const gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, '#e4edff'); gr.addColorStop(0.48, '#8f99ab'); gr.addColorStop(0.52, '#3b3731'); gr.addColorStop(1, '#171512');
+    g.fillStyle = gr; g.fillRect(0, 0, 512, 256);
+    g.fillStyle = '#ffffff';
+    [[50, 40, 100, 36], [200, 24, 120, 30], [350, 56, 90, 42], [466, 40, 60, 30], [130, 104, 70, 22]].forEach(function (r) { g.fillRect(r[0], r[1], r[2], r[3]); });
+    g.fillStyle = 'rgba(255,232,190,0.9)'; g.fillRect(280, 108, 60, 14);
+    const t = new THREE.CanvasTexture(c);
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    return t;
+  }
+  function ozDripGeo() {   // 垂れる糸（上が太く、途中が細く、先がふくらんだしずく形）。頂点は毎フレーム更新する
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(OZ_N * OZ_M * 3), 3));
+    const idx = [];
+    for (let i = 0; i < OZ_N - 1; i++) for (let j = 0; j < OZ_M; j++) {
+      const a = i * OZ_M + j, b = i * OZ_M + (j + 1) % OZ_M, c = (i + 1) * OZ_M + j, d = (i + 1) * OZ_M + (j + 1) % OZ_M;
+      idx.push(a, b, c, b, d, c);
+    }
+    geo.setIndex(idx);
+    return geo;
+  }
+  function ozShapeDrip(geo, L, sz, stretch, bulbK) {   // 長さL・大きさsz・伸び具合stretch(0〜1)・先のふくらみbulbK(0〜1)に合わせて形を作る
+    const pos = geo.attributes.position.array;
+    const r0 = sz * 0.75, rn = sz * Math.max(0.15, 0.5 - 0.38 * stretch), rb = sz * 0.6 * (0.6 + 0.4 * stretch) * bulbK;
+    const bc = L - rb;
+    for (let i = 0; i < OZ_N; i++) {
+      const y = L * i / (OZ_N - 1);
+      const neck = rn + (r0 - rn) * Math.exp(-y / (sz * 0.55));
+      let bulb = rb;
+      if (y > bc) { const q = (y - bc) / Math.max(1e-6, rb); bulb = rb * Math.sqrt(Math.max(0, 1 - q * q)); }
+      const w0 = bc - rb * 1.4, wk = clamp((y - w0) / Math.max(1e-6, bc - w0), 0, 1), w = wk * wk * (3 - 2 * wk);
+      const R = bulbK > 0.001 ? neck * (1 - w) + bulb * w : neck * (1 - clamp((y - L * 0.6) / (L * 0.4 + 1e-6), 0, 1));   // 先がふくらんでいない時は、先へ向けて細くとがる
+      for (let j = 0; j < OZ_M; j++) {
+        const th = 2 * Math.PI * j / OZ_M, k = (i * OZ_M + j) * 3;
+        pos[k] = Math.cos(th) * R; pos[k + 1] = -y; pos[k + 2] = Math.sin(th) * R;
+      }
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.computeVertexNormals();
+  }
   function initOoze(scene) {
     oozeGroup = new THREE.Group();
-    const geo = new THREE.SphereGeometry(1, 14, 10);   // 単位球。大きさはスケールで反映
-    const mk = function () {
-      const mat = new THREE.MeshPhongMaterial({ color: 0xe6e0a0, emissive: 0x2a2810, specular: 0xffffff, shininess: 120,
-                                                transparent: true, opacity: 0, depthWrite: false, depthTest: !OOZE_SEE_THROUGH });
+    oozeEnv = ozEnvTexture();
+    const sph = new THREE.SphereGeometry(1, 20, 14);   // 単位球。大きさはスケールで反映
+    const mkMat = function () {   // つやつやで、ほぼ不透明なぬれた質感
+      return new THREE.MeshStandardMaterial({ color: OOZE_COLOR, emissive: 0x2a2208, roughness: 0.06, metalness: 0.25, envMap: oozeEnv, envMapIntensity: 1.4,
+                                              transparent: true, opacity: 0, depthWrite: true, depthTest: !OOZE_SEE_THROUGH });
+    };
+    const mk = function (geo, mat) {
       const m = new THREE.Mesh(geo, mat);
       m.visible = false; m.frustumCulled = false;
       if (OOZE_SEE_THROUGH) m.renderOrder = 999;
@@ -1013,8 +1063,12 @@ body.stereo .dispbar{opacity:.55}
       return m;
     };
     for (let i = 0; i < OOZE_MAX; i++) {
-      oozes.push({ on: false, base: mk(), drop: mk(), strand: mk(), age: 0, life: OOZE_LIFE, size: OOZE_SIZE, delay: 0,
-                   off: new THREE.Vector3(), n: new THREE.Vector3(), len: 0, fall: false, fallT: 0, fallV: 0 });
+      const mat = mkMat(), matD = mkMat();
+      const geoD = ozDripGeo();
+      oozes.push({ on: false, mat: mat, matD: matD, base: mk(sph, mat), lumpA: mk(sph, mat), lumpB: mk(sph, mat), drip: mk(geoD, mat), dripGeo: geoD, drop: mk(sph, matD),
+                   age: 0, life: OOZE_LIFE, size: OOZE_SIZE, phase: 0, wob: 0, gt: 0, rt: 0, len: 0,
+                   off: new THREE.Vector3(), n: new THREE.Vector3(), la: new THREE.Vector3(), lb: new THREE.Vector3(),
+                   dr: { on: false, pos: new THREE.Vector3(), v: 0, t: 0, r: 0.005 } });
     }
     scene.add(oozeGroup);
     initOozeGuide(scene);
@@ -1090,20 +1144,17 @@ body.stereo .dispbar{opacity:.55}
     o.off.set(0, 0, 0).addScaledVector(e.d, a).addScaledVector(o.n, Math.max(0.002, inp.lqr) * 1.05);   // 液体用の筒の中心からの相対位置（筒・partに追従）
     o.size = OOZE_SIZE * (0.8 + Math.random() * 0.5);
     o.age = 0; o.life = OOZE_LIFE * (0.85 + Math.random() * 0.3);
-    o.delay = OOZE_DRIP_DELAY * (0.6 + Math.random());
-    o.len = 0; o.fall = false; o.fallT = 0; o.fallV = 0; o.on = true;
-    o.base.visible = true;
-  }
-  function ozStrand(mesh, a, b, th, alpha) {   // aとbを結ぶ細長い楕円体（糸）
-    const e = _oz;
-    e.t.subVectors(b, a);
-    const L = e.t.length();
-    if (L < 1e-5 || th < 1e-5 || alpha <= 0.01) { mesh.visible = false; return; }
-    mesh.visible = true;
-    mesh.position.copy(a).addScaledVector(e.t, 0.5);
-    mesh.quaternion.setFromUnitVectors(e.y, e.t.multiplyScalar(1 / L));
-    mesh.scale.set(th, L * 0.5, th);
-    mesh.material.opacity = alpha;
+    o.phase = 0; o.wob = Math.random() * 6.28; o.rt = 0; o.len = 0;
+    o.gt = -OOZE_DRIP_DELAY * (0.6 + Math.random());   // 垂れ始めるまでの待ち（負の時間）
+    o.dr.on = false;
+    // だまりの周りに、つぶつぶと寄り集まる小さな粒
+    e.t.crossVectors(o.n, Math.abs(o.n.z) < 0.9 ? e.z : e.x).normalize();
+    e.a.crossVectors(o.n, e.t).normalize();
+    o.la.set(0, 0, 0).addScaledVector(e.t, (Math.random() - 0.5) * 1.6).addScaledVector(e.a, (Math.random() - 0.5) * 1.2);
+    o.lb.set(0, 0, 0).addScaledVector(e.t, (Math.random() - 0.5) * 1.6).addScaledVector(e.a, (Math.random() - 0.5) * 1.2);
+    o.on = true;
+    o.base.visible = o.lumpA.visible = o.lumpB.visible = true;
+    o.drip.visible = false; o.drop.visible = false;
   }
   function updateOoze(dt) {
     if (!OOZE_ON || !oozeGroup || !R || !R.tube) return;
@@ -1134,48 +1185,73 @@ body.stereo .dispbar{opacity:.55}
         emitOoze();
         oozeCool = OOZE_COOLDOWN * (0.7 + Math.random() * 0.6);
       }
+      oozeSeep -= dt;
+      if (inside && !oozeInside) oozeSeep = OOZE_SEEP_INTERVAL * (0.6 + Math.random() * 0.6);
+      else if (inside && oozeSeep <= 0) { emitOoze(); oozeSeep = OOZE_SEEP_INTERVAL * (0.7 + Math.random() * 0.6); }   // 入れている間は、ゆっくり湧き出し続ける
       oozeInside = inside; oozePrevDepth = depth;
       oozeDbg.ratio = ratio; oozeDbg.radialMM = radial * 1000; oozeDbg.inside = inside; oozeDbg.near = near; oozeDbg.has = true;
     }
-    // ---- にじみ・垂れ・糸引き・ちぎれ ----
+    // ---- にじみ（だまり）→ 垂れて糸を引く → ちぎれて落ちる → また垂れる ----
+    const ease = function (k) { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
     for (let i = 0; i < oozes.length; i++) {
       const o = oozes[i];
       if (!o.on) continue;
       o.age += dt;
-      if (o.age >= o.life) { o.on = false; o.base.visible = false; o.drop.visible = false; o.strand.visible = false; continue; }
-      const grow = clamp(o.age / 0.6, 0, 1), ge = grow * grow * (3 - 2 * grow);
+      if (o.age >= o.life) { o.on = false; o.base.visible = o.lumpA.visible = o.lumpB.visible = o.drip.visible = o.drop.visible = false; continue; }
+      const ge = ease(o.age / 0.8);                                   // だまりが盛り上がって広がる
       const fade = clamp((o.life - o.age) / 1.2, 0, 1);
-      const alpha = 0.85 * fade * clamp(o.age / 0.15, 0, 1);
-      const sz = o.size * Math.max(0.1, inp.lqs);   // 大きさの倍率も操作値
-      // 元のにじみ（だまり）: 筒に追従しつつ、ほんの少しだけ自重で下がる
-      e.o.copy(lp).add(o.off); e.o.y -= Math.min(o.age * 0.002, 0.01);   // 液体用の筒に追従しつつ、ほんの少しだけ自重で下がる
-      o.base.position.copy(e.o).addScaledVector(o.n, sz * 0.25 * ge);
-      o.base.scale.setScalar(Math.max(0.0001, sz * ge * (0.5 + 0.5 * fade)));
-      o.base.material.opacity = alpha;
-      // 垂れる雫と糸
-      if (o.age > o.delay) {
-        const dtT = o.age - o.delay;
-        let dropAlpha = alpha, strandK = 1;
-        if (!o.fall) {
-          o.len += (OOZE_DRIP_SPEED + OOZE_DRIP_ACCEL * dtT) * dt;   // 粘りがあるので、ゆっくり・だんだん速く
-          if (o.len >= OOZE_STRING_MAX) { o.fall = true; o.fallT = 0; o.fallV = OOZE_DRIP_SPEED + OOZE_DRIP_ACCEL * dtT; }
-        } else {
-          o.fallT += dt; o.fallV += 0.8 * dt; o.len += o.fallV * dt;   // ちぎれた雫は少しだけ加速して落ちる
-          strandK = clamp(1 - o.fallT / 0.35, 0, 1);                    // 糸は元へ縮む
-          dropAlpha = alpha * clamp(1 - o.fallT / 0.6, 0, 1);
+      const alpha = 0.93 * fade * clamp(o.age / 0.15, 0, 1);
+      const sz = o.size * Math.max(0.1, inp.lqs);                     // 大きさの倍率は操作値
+      const shrink = 0.55 + 0.45 * fade;
+      e.o.copy(lp).add(o.off);                                        // 出た地点（液体用の筒・partに追従）
+      // だまり：筒の面に沿って平たく広がり、少し自重で垂れ下がる。ゆっくり脈打つ
+      const wob = 1 + 0.035 * Math.sin(o.age * 3.1 + o.wob);
+      e.a.copy(e.o).addScaledVector(o.n, sz * 0.22 * ge); e.a.y -= sz * 0.18 * ge;
+      o.base.position.copy(e.a);
+      o.base.quaternion.setFromUnitVectors(e.y, o.n);
+      o.base.scale.set(sz * (1.0 + 0.5 * ge) * wob * shrink, sz * (0.55 + 0.15 * ge) * shrink, sz * (0.85 + 0.3 * ge) / wob * shrink);
+      o.mat.opacity = alpha;
+      // まわりの小さな粒：だまりへ寄り集まって溶け合う
+      const pull = 1 - 0.6 * ge;
+      e.t.copy(e.a).addScaledVector(o.la, sz * pull); e.t.y -= sz * 0.05 * ge;
+      o.lumpA.position.copy(e.t); o.lumpA.scale.setScalar(sz * 0.5 * ge * shrink);
+      e.t.copy(e.a).addScaledVector(o.lb, sz * pull); e.t.y -= sz * 0.08 * ge;
+      o.lumpB.position.copy(e.t); o.lumpB.scale.setScalar(sz * 0.36 * ge * shrink);
+      // 垂れる糸：だんだん速く伸び、細くくびれ、先がふくらむ。伸びきるとちぎれて雫が落ち、糸は縮む
+      o.gt += dt;
+      if (o.phase === 0 && o.gt > 0) {
+        o.len += (OOZE_DRIP_SPEED + OOZE_DRIP_ACCEL * o.gt) * dt;
+        if (o.len >= OOZE_STRING_MAX) {
+          o.len = OOZE_STRING_MAX; o.phase = 1; o.rt = 0;
+          const rbT = sz * 0.6;
+          o.dr.on = true; o.dr.t = 0; o.dr.v = OOZE_DRIP_SPEED * 2; o.dr.r = rbT;
+          o.dr.pos.copy(e.a); o.dr.pos.y -= (OOZE_STRING_MAX + sz * 0.25 - rbT);
         }
+      } else if (o.phase === 1) {
+        o.rt += dt;
+        const k = ease(o.rt / 0.3);
+        o.len = OOZE_STRING_MAX * (1 - k);
+        if (o.rt >= 0.3) { o.phase = 0; o.len = 0; o.gt = -0.4; }   // 縮み終わったら、少し待ってまた垂れ始める
+      }
+      if (o.len > sz * 0.08) {
         const stretch = clamp(o.len / OOZE_STRING_MAX, 0, 1);
-        e.a.copy(e.o).addScaledVector(o.n, sz * 0.3); e.a.y -= o.len;   // 雫の位置
-        const dsz = sz * (0.55 + 0.25 * stretch);
-        if (dropAlpha > 0.01) {
+        const bulbK = o.phase === 1 ? clamp(1 - o.rt / 0.25, 0, 1) : 1;   // ちぎれた後は先のふくらみが無くなる
+        ozShapeDrip(o.dripGeo, o.len + sz * 0.25, sz, stretch, bulbK);
+        o.drip.position.copy(e.a);
+        o.drip.visible = true;
+      } else o.drip.visible = false;
+      // ちぎれて落ちる雫
+      if (o.dr.on) {
+        const d = o.dr;
+        d.t += dt; d.v += OOZE_GRAVITY * dt; d.pos.y -= d.v * dt;
+        const da = 0.93 * fade * clamp(1 - (d.t - 0.5) / 0.6, 0, 1);
+        if (da <= 0.01) { d.on = false; o.drop.visible = false; }
+        else {
           o.drop.visible = true;
-          o.drop.position.copy(e.a);
-          o.drop.scale.set(dsz, dsz * 1.25, dsz);   // 少し縦長のしずく
-          o.drop.material.opacity = dropAlpha;
-        } else o.drop.visible = false;
-        e.b.copy(e.o).addScaledVector(o.n, sz * 0.15);
-        e.a.sub(e.b).multiplyScalar(strandK).add(e.b);   // 糸の下端（ちぎれたら元へ縮む）
-        ozStrand(o.strand, e.b, e.a, sz * 0.35 * (1 - 0.6 * stretch) * strandK, alpha * strandK);
+          o.drop.position.copy(d.pos);
+          o.drop.scale.set(d.r, d.r * (1.15 + 0.5 * clamp(d.v / 0.6, 0, 1)), d.r);   // 落ちるほど縦に伸びる
+          o.matD.opacity = da;
+        }
       }
     }
   }

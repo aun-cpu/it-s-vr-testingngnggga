@@ -1627,10 +1627,11 @@ body.stereo .dispbar{opacity:.55}
   const PE_DEPTH_MIN_RATIO = 0.4;                 // 先端が最低でも入る深さ（筒の長さに対する割合。筒の入口から測る）
   const PE_END_MARGIN = 0.01;                     // m: 筒の奥の端より手前に先端を止める余裕
   const PE_ALIGN = [0, 0.25, 0.7, 0.9];           // 筒の軸方向へ向ける強さ（pe1〜pe4）
+  const PE_JOINT_PULL = 0.7;                      // 筒の中に入った関節（pe2〜pe4の付け根）を、筒の中心線へ寄せる強さ。斜めから入っても、中に入った部分が筒に沿う
   let plusRod = null, plus2Rod = null;            // {bones, rest, ts(目標点の平滑値), tsReady, bend}
   let plusRodInfo = '', plus2RodInfo = '';
   const _pe = { p: [0, 1, 2, 3].map(function () { return new THREE.Vector3(); }), tip: new THREE.Vector3(),
-                a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), d: new THREE.Vector3(), u: new THREE.Vector3(), tgt: new THREE.Vector3(),
+                a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), d: new THREE.Vector3(), u: new THREE.Vector3(), tgt: new THREE.Vector3(), t2: new THREE.Vector3(), t3: new THREE.Vector3(),
                 q: new THREE.Quaternion(), dq: new THREE.Quaternion(), wq: new THREE.Quaternion(), pq: new THREE.Quaternion(), ident: new THREE.Quaternion() };
   function peMakeRod(model) {   // モデルからボーン pe1〜pe4 を探す。{rod, info}を返す
     const found = [null, null, null, null];
@@ -1680,6 +1681,15 @@ body.stereo .dispbar{opacity:.55}
     e.dq.setFromUnitVectors(e.a.normalize(), e.b.normalize());
     peBend(rod, i, e.dq, PE_WEIGHTS[i], used, maxB);
   }
+  function peReachJoint(rod, i, j, target, frac, used, maxB) {   // ボーンiを回して、関節j（付け根の位置p[j]）を目標点へ近づける
+    const e = _pe;
+    peMeasure(rod);
+    e.a.subVectors(e.p[j], e.p[i]);
+    e.b.subVectors(target, e.p[i]);
+    if (e.a.lengthSq() < 1e-10 || e.b.lengthSq() < 1e-10) return;
+    e.dq.setFromUnitVectors(e.a.normalize(), e.b.normalize());
+    peBend(rod, i, e.dq, frac, used, maxB);
+  }
   function peAlign(rod, i, used, maxB) {   // ボーンiの向き（次のボーンへの向き）を、筒の挿入方向uへ揃える
     if (!(PE_ALIGN[i] > 0)) return;
     const e = _pe;
@@ -1719,6 +1729,24 @@ body.stereo .dispbar{opacity:.55}
     const used = [0, 0, 0, 0], maxB = PE_MAX_BEND_DEG * Math.PI / 180;
     for (let it = 0; it < PE_ITER; it++) {
       for (let i = 0; i < 4; i++) peReach(rod, i, used, maxB);
+      // 筒の入口を越えて中に入った関節は、筒の中心線へ寄せる（入口付近はなめらかに効かせる）。斜めから入っても、中に入った部分が筒に沿う
+      for (let j = 3; j >= 1; j--) {
+        peMeasure(rod);
+        e.t3.subVectors(e.p[j], e.c);
+        const aj = e.t3.dot(e.u);
+        e.a.subVectors(e.tip, e.p[3]);
+        const soft = Math.max(0.005, e.a.length() * 0.5);
+        const x = clamp((aj - (-full / 2 - soft)) / (2 * soft), 0, 1);
+        const f = x * x * (3 - 2 * x);
+        if (f < 0.001) continue;
+        e.t3.addScaledVector(e.u, -aj);                        // 中心線からのズレ
+        const jl = e.t3.length();
+        if (jl > rMax) e.t3.multiplyScalar(rMax / jl);
+        e.t2.copy(e.c).addScaledVector(e.u, aj).add(e.t3);      // その関節を中心線へ寄せた点
+        let sumW = 0;
+        for (let i = 0; i < j; i++) sumW += PE_WEIGHTS[i];
+        for (let i = j - 1; i >= 0; i--) peReachJoint(rod, i, j, e.t2, PE_JOINT_PULL * f * PE_WEIGHTS[i] / sumW, used, maxB);
+      }
       for (let i = 3; i >= 1; i--) peAlign(rod, i, used, maxB);
     }
     peReach(rod, 0, used, maxB); peReach(rod, 1, used, maxB);

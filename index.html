@@ -438,7 +438,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0921h-hglb-skin';
+  const BUILD = '0921h-hglb-skin3d';
   const $ = (s) => document.querySelector(s);
   const screens = { days: $('#days'), select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1954,7 +1954,7 @@ body.stereo .dispbar{opacity:.55}
     'uniform mat4 uSplitMat;\nuniform mat3 uSplitM;\n' +   // メッシュごと：ローカル→モデル空間の座標変換、モデル空間の向き→ローカルの向き
     'uniform vec3 uSphC[2];\nuniform vec3 uSphD[2];\nuniform float uSphE[2];\nuniform float uSphR;\nuniform float uSphCore;\n' +
     'uniform vec3 uBoneA[' + H_BONE_MAX + '];\nuniform vec3 uBoneB[' + H_BONE_MAX + '];\n' +
-    'uniform float uHasBones;\nuniform float uBoneR0;\nuniform float uBoneR1;\n' +
+    'uniform float uHasBones;\nuniform float uBoneR0;\nuniform float uBoneR1;\nvarying vec3 vSkinP;\n' +
     'float sphW(vec3 p, vec3 c) { return 1.0 - smoothstep(uSphR * uSphCore, uSphR, length(p - c)); }\n' +   // 球の中心からの距離による重み
     'vec3 sphDisp(vec3 p, vec3 c, vec3 d, float e, float w) {\n' +                                        // 球の変位＋動く向きへの伸縮を、頂点へ投影
     '  vec3 dl = p - c;\n' +
@@ -1966,7 +1966,8 @@ body.stereo .dispbar{opacity:.55}
     '}\n';
   const HSPLIT_POS_CODE =
     '{\n' +
-    '  vec3 smp = (uSplitMat * vec4(position, 1.0)).xyz;\n' +                       // モデル空間での位置（静止姿勢）
+    '  vec3 smp = (uSplitMat * vec4(position, 1.0)).xyz;\n' +
+    '  vSkinP = smp;\n' +                       // モデル空間での位置（静止姿勢）
     '  float sdmin = 1.0e6;\n' +
     '  for (int bi = 0; bi < ' + H_BONE_MAX + '; bi++) {\n' +                        // 一番近い骨（線分）までの距離
     '    vec3 sa = uBoneA[bi]; vec3 sab = uBoneB[bi] - sa;\n' +
@@ -2096,32 +2097,12 @@ body.stereo .dispbar{opacity:.55}
   const H_SKIN_RE = /skin|肌|body|体|flesh|face|顔|hada|皮/i;             // 材質名がこれに合えば肌
   const H_NONSKIN_RE = /eye|目|眉|brow|hair|髪|mouth|口|teeth|歯|tongue|舌|lash|睫|cloth|服|shoe|靴|nail|爪/i;   // 合えば肌にしない
   const H_SKIN_ROUGH = 0.55;           // 表面の粗さ（小さいほどテカる）
-  const H_SKIN_BUMP = 0.25;            // 細かな凹凸（キメ）の強さ。0で無し
-  const H_SKIN_BUMP_REPEAT = 6;        // 凹凸の細かさ（UVに対する繰り返し。テクスチャ付き材質ではテクスチャ側の設定が使われる）
+  const H_SKIN_PORE_FREQ = 300, H_SKIN_PORE_DEPTH = 0.0003;      // 毛穴・キメ: 細かさ(1/m。大きいほど細かい)と深さ(m)
+  const H_SKIN_UNEVEN_FREQ = 80, H_SKIN_UNEVEN_DEPTH = 0.001;    // 肌のなだらかな凹凸
+  const H_SKIN_TONE = 0.06, H_SKIN_TONE_FREQ = 22;                // 赤み・色ムラの強さと細かさ
+  const H_SKIN_TEX_ANISO = 8;          // テクスチャがある材質の異方性フィルタ（ドット感の軽減）
   const H_SKIN_SSS = 0.6;              // 輪郭付近の赤み（皮下散乱風）の強さ
   const hSkinNames = [];               // 材質名と判定結果（HUD表示用）
-  let hSkinBumpTex = null;
-  function getSkinBump() {   // 細かさの違うノイズを重ねた、つなぎ目のない凹凸テクスチャ
-    if (hSkinBumpTex) return hSkinBumpTex;
-    const N = 256, rng = mulberry32(7), layers = [[32, 0.5], [64, 0.3], [128, 0.2]];
-    const grids = layers.map(function (l) { const g = new Float32Array(l[0] * l[0]); for (let i = 0; i < g.length; i++) g[i] = rng(); return g; });
-    const data = new Uint8Array(N * N * 4);
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-      let v = 0;
-      for (let k = 0; k < layers.length; k++) {
-        const G = layers[k][0], fx = x / N * G, fy = y / N * G, x0 = Math.floor(fx), y0 = Math.floor(fy);
-        let tx = fx - x0, ty = fy - y0; tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
-        const a = grids[k][(y0 % G) * G + (x0 % G)], b = grids[k][(y0 % G) * G + ((x0 + 1) % G)],
-              c = grids[k][((y0 + 1) % G) * G + (x0 % G)], d = grids[k][((y0 + 1) % G) * G + ((x0 + 1) % G)];
-        v += layers[k][1] * ((a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty);
-      }
-      const i = (y * N + x) * 4; data[i] = data[i + 1] = data[i + 2] = Math.round(clamp(v, 0, 1) * 255); data[i + 3] = 255;
-    }
-    const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(H_SKIN_BUMP_REPEAT, H_SKIN_BUMP_REPEAT);
-    tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = true; tex.needsUpdate = true;
-    return (hSkinBumpTex = tex);
-  }
   function isSkinMat(m, c) {
     if (H_SKIN_ALL) return true;
     const nm = m.name || '';
@@ -2136,6 +2117,43 @@ body.stereo .dispbar{opacity:.55}
     '  float skF = pow(1.0 - clamp(abs(dot(normalize(vNormal), normalize(vViewPosition))), 0.0, 1.0), 2.5);\n' +   // 縁ほど大きい
     '  gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * vec3(1.15, 0.78, 0.72) + vec3(0.05, 0.012, 0.008), skF * ' + H_SKIN_SSS.toFixed(3) + ');\n' +
     '}\n';
+  // UVに頼らず、静止姿勢のモデル空間座標(vSkinP)から作る3Dノイズで肌感を上乗せする（UVが密集していても粗くならない）
+  const f1 = function (v) { return v.toFixed(6); };
+  const SKIN_FDECL =
+    'varying vec3 vSkinP;\n' +
+    'float skHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }\n' +
+    'float skNoise(vec3 x) {\n' +
+    '  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);\n' +
+    '  return mix(mix(mix(skHash(i), skHash(i + vec3(1,0,0)), f.x), mix(skHash(i + vec3(0,1,0)), skHash(i + vec3(1,1,0)), f.x), f.y),\n' +
+    '             mix(mix(skHash(i + vec3(0,0,1)), skHash(i + vec3(1,0,1)), f.x), mix(skHash(i + vec3(0,1,1)), skHash(i + vec3(1,1,1)), f.x), f.y), f.z);\n' +
+    '}\n' +
+    'float skHeight(vec3 p) {\n' +                                                                    // 表面の高さ(m)。1ピクセルより細かい成分は消してチラつきを防ぐ
+    '  float pf = length(dFdx(p)) + length(dFdy(p)) + 1.0e-6;\n' +
+    '  float w1 = smoothstep(pf * 1.5, pf * 4.0, 1.0 / ' + f1(H_SKIN_PORE_FREQ) + ');\n' +
+    '  float w2 = smoothstep(pf * 1.5, pf * 4.0, 1.0 / ' + f1(H_SKIN_UNEVEN_FREQ) + ');\n' +
+    '  return ' + f1(H_SKIN_PORE_DEPTH) + ' * w1 * (skNoise(p * ' + f1(H_SKIN_PORE_FREQ) + ') - 0.5) + ' + f1(H_SKIN_UNEVEN_DEPTH) + ' * w2 * (skNoise(p * ' + f1(H_SKIN_UNEVEN_FREQ) + ') - 0.5);\n' +
+    '}\n';
+  const SKIN_COLOR =
+    '{\n' +
+    '  float skT = skNoise(vSkinP * ' + f1(H_SKIN_TONE_FREQ) + ') * 0.65 + skNoise(vSkinP * ' + f1(H_SKIN_TONE_FREQ * 2.7) + ') * 0.35;\n' +
+    '  diffuseColor.rgb *= vec3(1.0) + (skT - 0.5) * ' + f1(H_SKIN_TONE) + ' * vec3(0.4, -1.2, -1.4);\n' +   // 高いところほど赤く
+    '}\n';
+  const SKIN_NORMAL =
+    '{\n' +                                                                                          // 高さの画面上の変化から法線を傾ける（three.jsのバンプと同じ計算）
+    '  float skH = skHeight(vSkinP);\n' +
+    '  vec3 skP = -vViewPosition;\n' +
+    '  vec3 skDx = dFdx(skP), skDy = dFdy(skP);\n' +
+    '  vec3 skR1 = cross(skDy, normal), skR2 = cross(normal, skDx);\n' +
+    '  float skDet = dot(skDx, skR1);\n' +
+    '  vec3 skG = sign(skDet) * (dFdx(skH) * skR1 + dFdy(skH) * skR2);\n' +
+    '  normal = normalize(abs(skDet) * normal - skG);\n' +
+    '}\n';
+  function skinFragment(fs) {
+    return fs.replace('#include <common>', '#include <common>\n' + SKIN_FDECL)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + SKIN_COLOR)
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + SKIN_NORMAL)
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' + SKIN_FRAG);
+  }
   const hToonMats = [];   // {mat, origColor, litColor, origTransparent, origOpacity}: 各材質の元の状態とオン/オフを切り替えるための情報
   function applyToon(o) {
     if (!o.isMesh || !o.material) return;
@@ -2151,7 +2169,7 @@ body.stereo .dispbar{opacity:.55}
       hSkinNames.push((skin ? '肌:' : '') + (m.name || '無名'));
       const t = skin
         ? new THREE.MeshStandardMaterial({ color: origColor.clone(), map: m.map || null, roughness: H_SKIN_ROUGH, metalness: 0,
-            bumpMap: H_SKIN_BUMP > 0 ? getSkinBump() : null, bumpScale: H_SKIN_BUMP, transparent: origTransparent, opacity: origOpacity })
+            transparent: origTransparent, opacity: origOpacity })
         : new THREE.MeshToonMaterial({
         color: origColor.clone(),
         map: m.map || null,
@@ -2169,9 +2187,13 @@ body.stereo .dispbar{opacity:.55}
       if (o.isSkinnedMesh) t.skinning = true;
       if (o.morphTargetInfluences && o.morphTargetInfluences.length) t.morphTargets = true;
       if (H_SPLIT_ON) { try { t.onBeforeCompile = makeHSplitHook(makeHSplitInfo(o)); } catch (err) { console.warn('[split] 材質への左右分割の揺れの設定に失敗', err); } }   // 左右分割の細かい揺れ
+      if (skin) {
+        t.extensions.derivatives = true;
+        if (m.map) { m.map.magFilter = THREE.LinearFilter; m.map.minFilter = THREE.LinearMipmapLinearFilter; m.map.generateMipmaps = true; m.map.anisotropy = H_SKIN_TEX_ANISO; m.map.needsUpdate = true; }
+      }
       if (skin) {   // 揺れの頂点シェーダーはそのままに、フラグメントへ縁の赤みを足す
         const prevHook = t.onBeforeCompile;
-        t.onBeforeCompile = function (sh) { if (prevHook) prevHook(sh); sh.fragmentShader = sh.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' + SKIN_FRAG); };
+        t.onBeforeCompile = function (sh) { if (prevHook) prevHook(sh); sh.fragmentShader = skinFragment(sh.fragmentShader); };
       }
       hToonMats.push({ mat: t, origColor: origColor, litColor: litColor, origTransparent: origTransparent, origOpacity: origOpacity });
       return t;

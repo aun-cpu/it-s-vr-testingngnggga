@@ -1385,7 +1385,7 @@ body.stereo .dispbar{opacity:.55}
   let jellyDepthDeg = 0;                     // 現在の押し込み量（度）。0以下=接触なし
   let jellySPrev = 0;                        // 前フレームの押し込みによる潰れ量（押し込む速さの計算用）
   const JELLY_MAX = 0.16;             // 全モード合計の変位（つぶれ・伸び）の上限（現実的な範囲に抑える）
-  const JELLY_ROT_MAX = 4 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
+  const JELLY_ROT_MAX = 1.5 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
   const JELLY_BOB_MAX = 0.012;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
   let action3Count = 0;                // action3を再生した回数（累計）
   // action3が0.3秒以内の間隔で10回以上連続すると、目を開けて（閉じていれば）笑い目モーフを出す。連続が途切れたら終了する

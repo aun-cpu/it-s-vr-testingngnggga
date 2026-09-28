@@ -428,7 +428,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="lqt" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-lqt" data-k="lqt" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="lqt" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-lqt">0.00</span></div>
       <div class="prow"><span class="pl">液の大きさ</span><button type="button" class="dpstep" data-k="lqs" data-d="-1" data-step="0.1">−</button><input type="range" id="d-rng-lqs" data-k="lqs" min="0.3" max="6" step="0.1"><button type="button" class="dpstep" data-k="lqs" data-d="1" data-step="0.1">＋</button><span class="pv" id="d-val-lqs">0.00</span></div>
       <button type="button" class="mini" id="dBtnLqReset" style="width:100%; margin-top:4px">液体筒をリセット</button>
-      <button type="button" class="mini on" id="dBtnOozeGuide" style="width:100%; margin-top:6px">液体の位置ガイド: ON</button>
+      <button type="button" class="mini" id="dBtnOozeGuide" style="width:100%; margin-top:6px">液体の位置ガイド: OFF</button>
       <button type="button" class="mini" id="dBtnOozeTest" style="width:100%; margin-top:6px">液体を出す（テスト）</button>
       <p class="postitle" style="margin:10px 0 6px">揺れの球の位置・大きさ（変更中は球を表示）</p>
       <div class="prow"><span class="pl">間隔</span><button type="button" class="dpstep" data-sk="sep" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-sep" data-sk="sep" min="0" max="1.5" step="0.01" value="0.57"><button type="button" class="dpstep" data-sk="sep" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-sep">0.57</span></div>
@@ -1086,7 +1086,7 @@ body.stereo .dispbar{opacity:.55}
     m.needsUpdate = true;
   }
   function wetMatsOf(o) { if (o.isMesh && o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(wetInject); }
-  let oozeGuideOn = true;             // 液体の位置ガイド（黄=液体が出る範囲と中心、ピンク=筒。軸: 赤=X右 緑=Y上 青=Z手前）
+  let oozeGuideOn = false;            // 液体の位置ガイド（黄=液体が出る範囲と中心、ピンク=筒。軸: 赤=X右 緑=Y上 青=Z手前）
   let oozeGuide = null;
   const oozeDbg = { strandD: 0, ratio: 0, radialMM: 0, inside: false, near: false, has: false };
   let oozeLastKey = '', oozeFlashUntil = 0;

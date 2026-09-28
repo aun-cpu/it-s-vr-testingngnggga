@@ -1272,7 +1272,8 @@ body.stereo .dispbar{opacity:.55}
   //  ・離れた後 → 潰れていた分が自分の弾性で戻り、速く離れるほど跳ね返りが出る
   const CONTACT_START_DEG = 0;               // 度: この角度からplayerがpartに触れ始める（2actionの0°=5フレーム目）
   const CONTACT_FULL_DEG = ACTION3_DEG;      // 度: ここまで押し込むと最大の潰れ（＝action3が出る角度）
-  const JELLY_SQUASH_MAX = 0.04;             // ゆっくり最大まで押し込んだ時の潰れ量（Y方向の縮み。静的な潰れ）
+  const JELLY_SQUASH_MAX = 0.04;             // ゆっくり最大まで押し込んだ時の変形量（静的な押され量）
+  const JELLY_PUSH_DIR = 1;                  // 押された時の変形の向き。+1=Y方向に伸びてXZが縮む／-1=Y方向に潰れてXZが広がる
   const JELLY_CONTACT_KICK = 6;              // 押し込む速さに対する揺れの強さ（大きいほど速い接触で大きく揺れる）
   const JELLY_WEIGHT_SUM = JELLY_MODES.reduce(function (a, m) { return a + m.impact; }, 0);   // 静的な潰れを各モードに配分する重みの合計
   let jellyDepthDeg = 0;                     // 現在の押し込み量（度）。0以下=接触なし
@@ -2375,8 +2376,8 @@ body.stereo .dispbar{opacity:.55}
       let jAccel = -jm.stiffness * hJellyX[ji] - jm.damping * hJellyV[ji];   // 自由な状態：自分の弾性で戻る
       if (jellyContact) {
         const jw = jm.impact / JELLY_WEIGHT_SUM;                       // このモードが受け持つ潰れの割合
-        const jTgt = -jw * jellyS;                                     // 支点の位置（負=潰れる向き）
-        const jTgtV = jellySVel > 0 ? -jw * jellySVel * JELLY_CONTACT_KICK : 0;   // 押し込む速さ（離れる時は引きずらない）
+        const jTgt = JELLY_PUSH_DIR * jw * jellyS;                     // 支点の位置（押された向き）
+        const jTgtV = jellySVel > 0 ? JELLY_PUSH_DIR * jw * jellySVel * JELLY_CONTACT_KICK : 0;   // 押し込む速さ（離れる時は引きずらない）
         jAccel = -jm.stiffness * (hJellyX[ji] - jTgt) - jm.damping * (hJellyV[ji] - jTgtV);
       }
       hJellyV[ji] += jAccel * dt;

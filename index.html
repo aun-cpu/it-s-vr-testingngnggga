@@ -2188,7 +2188,6 @@ body.stereo .dispbar{opacity:.55}
       if (o.morphTargetInfluences && o.morphTargetInfluences.length) t.morphTargets = true;
       if (H_SPLIT_ON) { try { t.onBeforeCompile = makeHSplitHook(makeHSplitInfo(o)); } catch (err) { console.warn('[split] 材質への左右分割の揺れの設定に失敗', err); } }   // 左右分割の細かい揺れ
       if (skin) {
-        t.extensions.derivatives = true;
         if (m.map) { m.map.magFilter = THREE.LinearFilter; m.map.minFilter = THREE.LinearMipmapLinearFilter; m.map.generateMipmaps = true; m.map.anisotropy = H_SKIN_TEX_ANISO; m.map.needsUpdate = true; }
       }
       if (skin) {   // 揺れの頂点シェーダーはそのままに、フラグメントへ縁の赤みを足す

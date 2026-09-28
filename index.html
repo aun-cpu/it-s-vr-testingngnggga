@@ -416,6 +416,8 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">液体 Z</span><button type="button" class="dpstep" data-k="tboz" data-d="-1" data-step="0.005">−</button><input type="range" id="d-rng-tboz" data-k="tboz" min="-0.5" max="0.5" step="0.005"><button type="button" class="dpstep" data-k="tboz" data-d="1" data-step="0.005">＋</button><span class="pv" id="d-val-tboz">0.00</span></div>
       <div class="prow"><span class="pl">液体 大きさ</span><button type="button" class="dpstep" data-k="tbos" data-d="-1" data-step="0.1">−</button><input type="range" id="d-rng-tbos" data-k="tbos" min="0.3" max="6" step="0.1"><button type="button" class="dpstep" data-k="tbos" data-d="1" data-step="0.1">＋</button><span class="pv" id="d-val-tbos">0.00</span></div>
       <button type="button" class="mini" id="dBtnTubeReset" style="width:100%; margin-top:4px">筒をリセット</button>
+      <button type="button" class="mini on" id="dBtnOozeGuide" style="width:100%; margin-top:6px">液体の位置ガイド: ON</button>
+      <button type="button" class="mini" id="dBtnOozeTest" style="width:100%; margin-top:6px">液体を出す（テスト）</button>
       <p class="postitle" style="margin:10px 0 6px">揺れの球の位置・大きさ（変更中は球を表示）</p>
       <div class="prow"><span class="pl">間隔</span><button type="button" class="dpstep" data-sk="sep" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-sep" data-sk="sep" min="0" max="1.5" step="0.01" value="0.57"><button type="button" class="dpstep" data-sk="sep" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-sep">0.57</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-sk="oy" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-oy" data-sk="oy" min="-1" max="1" step="0.01" value="0"><button type="button" class="dpstep" data-sk="oy" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-oy">0.00</span></div>
@@ -854,6 +856,12 @@ body.stereo .dispbar{opacity:.55}
     for (const k of TAB_KEYS.part) inp[k] = POS_DEFAULT[k];
     syncDispPosUi(); buzz(15);
   });
+  $('#dBtnOozeGuide').addEventListener('click', () => {
+    oozeGuideOn = !oozeGuideOn;
+    $('#dBtnOozeGuide').textContent = '液体の位置ガイド: ' + (oozeGuideOn ? 'ON' : 'OFF');
+    $('#dBtnOozeGuide').classList.toggle('on', oozeGuideOn);
+  });
+  $('#dBtnOozeTest').addEventListener('click', () => { for (let i = 0; i < 3; i++) emitOoze(); buzz(15); });   // 判定に関係なく今すぐ液体を出す
   $('#dBtnTubeReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.tube) inp[k] = POS_DEFAULT[k];
     syncDispPosUi(); buzz(15);
@@ -953,6 +961,7 @@ body.stereo .dispbar{opacity:.55}
   const OOZE_ENTER_RATIO = 0.2;       // plus2の先端が、筒の入口から筒の長さのこの割合以上入ったら「入れた」とみなす
   const OOZE_EXIT_RATIO = 0.05;       // この割合より浅くなったら「抜けた」とみなす（ちらつき防止）
   const OOZE_RADIAL_MAX = 3;          // 先端が筒の中心線からこの倍率×半径以内にある時だけ判定する
+  const OOZE_RADIAL_MIN = 0.03;       // m: 先端が筒の中心線からこの距離以内なら「筒に近い」（筒の半径が小さくても効くように）
   const OOZE_PUMP_SPEED = 0.04;       // m/s: 入っている間、これ以上の速さで奥へ動くたびに追加でにじむ
   const OOZE_COOLDOWN = 0.7;          // 秒: 追加でにじむ間隔の目安
   const OOZE_BURST = 2;               // 入れた瞬間に出す数
@@ -968,6 +977,10 @@ body.stereo .dispbar{opacity:.55}
   const OOZE_STRING_MAX = 0.05;       // m: 糸を引く長さ。これを超えると雫がちぎれて落ちる
   const OOZE_SEE_THROUGH = false;     // true にすると、partなどの後ろに隠れても常に手前に表示する
   const oozes = [];
+  let oozeGuideOn = true;             // 液体の位置ガイド（黄=液体が出る範囲と中心、ピンク=筒。軸: 赤=X右 緑=Y上 青=Z手前）
+  let oozeGuide = null;
+  const oozeDbg = { ratio: 0, radialMM: 0, inside: false, near: false, has: false };
+  let oozeLastKey = '', oozeFlashUntil = 0;
   let oozeGroup = null, oozeInside = false, oozePrevDepth = 0, oozeCool = 0;
   const _oz = { d: new THREE.Vector3(), u: new THREE.Vector3(), w: new THREE.Vector3(), x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0),
                 a: new THREE.Vector3(), b: new THREE.Vector3(), o: new THREE.Vector3(), t: new THREE.Vector3() };
@@ -988,6 +1001,63 @@ body.stereo .dispbar{opacity:.55}
                    off: new THREE.Vector3(), n: new THREE.Vector3(), len: 0, fall: false, fallT: 0, fallV: 0 });
     }
     scene.add(oozeGroup);
+    initOozeGuide(scene);
+  }
+  function ozLabel(text, color) {   // 文字入りのスプライト
+    const c = document.createElement('canvas'); c.width = 256; c.height = 96;
+    const g = c.getContext('2d');
+    g.fillStyle = 'rgba(0,0,0,0.65)'; g.fillRect(0, 0, 256, 96);
+    g.strokeStyle = color; g.lineWidth = 6; g.strokeRect(3, 3, 250, 90);
+    g.fillStyle = color; g.font = 'bold 54px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, 128, 50);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, depthWrite: false }));
+    spr.scale.set(0.07, 0.026, 1); spr.renderOrder = 1002; spr.frustumCulled = false;
+    return spr;
+  }
+  function ozAxis(dir, color, len) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-dir.x * len, -dir.y * len, -dir.z * len, dir.x * len, dir.y * len, dir.z * len], 3));
+    const l = new THREE.Line(g, new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false }));
+    l.renderOrder = 1001; l.frustumCulled = false;
+    return l;
+  }
+  function initOozeGuide(scene) {   // 小さくて見えない液体の位置を、常に手前に描く目印で示す
+    const cyl = new THREE.CylinderGeometry(1, 1, 1, 16, 1, true);
+    const mkWire = function (color) {
+      const w = new THREE.Mesh(cyl, new THREE.MeshBasicMaterial({ color: color, wireframe: true, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false }));
+      w.rotation.x = Math.PI / 2; w.renderOrder = 1000; w.frustumCulled = false;
+      return w;
+    };
+    const tubeG = new THREE.Group(), tubeW = mkWire(0xff6fa8);   // 筒（ピンク）
+    tubeG.add(tubeW);
+    const liqG = new THREE.Group(), liqW = mkWire(0xf2ff3a);      // 液体が出る範囲（黄）：筒と同じ形を、液体の位置のズレぶん動かしたもの
+    liqG.add(liqW);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xf2ff3a, transparent: true, opacity: 0.85, depthTest: false, depthWrite: false }));
+    dot.scale.setScalar(0.006); dot.renderOrder = 1001; dot.frustumCulled = false;   // 液体の中心（点）
+    liqG.add(dot);
+    liqG.add(ozAxis(new THREE.Vector3(1, 0, 0), 0xff4040, 0.06));
+    liqG.add(ozAxis(new THREE.Vector3(0, 1, 0), 0x40ff70, 0.06));
+    liqG.add(ozAxis(new THREE.Vector3(0, 0, 1), 0x4a8bff, 0.06));
+    const lblL = ozLabel('液体', '#f2ff3a'); lblL.position.set(0, 0.05, 0); liqG.add(lblL);
+    const lblT = ozLabel('筒', '#ff8fb8'); lblT.position.set(0, -0.045, 0); tubeG.add(lblT);
+    oozeGuide = { tube: tubeG, tubeW: tubeW, liq: liqG, liqW: liqW };
+    tubeG.visible = liqG.visible = false;
+    scene.add(tubeG); scene.add(liqG);
+  }
+  function updateOozeGuide(now) {
+    if (!oozeGuide || !R || !R.tube) return;
+    // 液体まわりの操作値が動いたら、ガイドをOFFにしていても少しの間だけ表示する
+    const key = [inp.tbx, inp.tby, inp.tbz, inp.tbr, inp.tbl, inp.tbt, inp.tbox, inp.tboy, inp.tboz, inp.tbos].join(',');
+    if (key !== oozeLastKey) { if (oozeLastKey !== '') oozeFlashUntil = now + 3000; oozeLastKey = key; }
+    const on = oozeGuideOn || now < oozeFlashUntil;
+    oozeGuide.tube.visible = oozeGuide.liq.visible = on;
+    if (!on) return;
+    const tp = R.tube.position, r = Math.max(0.004, inp.tbr), L = Math.max(0.002, inp.tbl), tr = inp.tbt * Math.PI / 180;
+    oozeGuide.tube.position.copy(tp); oozeGuide.tube.rotation.x = tr;
+    oozeGuide.tubeW.scale.set(r, L, r);
+    oozeGuide.liq.position.set(tp.x + inp.tbox, tp.y + inp.tboy, tp.z + inp.tboz); oozeGuide.liq.rotation.x = tr;
+    oozeGuide.liqW.scale.set(r * 1.4, L * (OOZE_AXIAL_MAX - OOZE_AXIAL_MIN), r * 1.4);   // 液体が出る軸方向の範囲
+    oozeGuide.liqW.position.set(0, 0, L * (OOZE_AXIAL_MIN + OOZE_AXIAL_MAX) / 2);   // 出る範囲の軸方向の中心へ
   }
   function emitOoze() {
     let o = null;
@@ -1020,6 +1090,7 @@ body.stereo .dispbar{opacity:.55}
   function updateOoze(dt) {
     if (!OOZE_ON || !oozeGroup || !R || !R.tube) return;
     const e = _oz, tp = R.tube.position;
+    updateOozeGuide(performance.now());
     // ---- plus2の先端が筒に入ったかを、アニメどおりの姿勢（筒に合わせて曲げる前）で判定する ----
     if (plus2Rod && R.plus2 && dt > 0) {
       const full = Math.max(0.002, inp.tbl), tt = inp.tbt * Math.PI / 180;
@@ -1033,7 +1104,7 @@ body.stereo .dispbar{opacity:.55}
       const depth = axial + full / 2;                              // 入口からの深さ（負なら筒の手前）
       const radial = e.b.addScaledVector(e.u, -axial).length();
       const ratio = depth / full;
-      const near = radial <= Math.max(0.0003, inp.tbr * OOZE_RADIAL_MAX);
+      const near = radial <= Math.max(OOZE_RADIAL_MIN, inp.tbr * OOZE_RADIAL_MAX);   // 筒が細くても、最低でもOOZE_RADIAL_MIN(m)までは「近い」とみなす
       const inside = near && (oozeInside ? ratio > OOZE_EXIT_RATIO : ratio >= OOZE_ENTER_RATIO);
       const speed = (depth - oozePrevDepth) / dt;
       oozeCool -= dt;
@@ -1045,6 +1116,7 @@ body.stereo .dispbar{opacity:.55}
         oozeCool = OOZE_COOLDOWN * (0.7 + Math.random() * 0.6);
       }
       oozeInside = inside; oozePrevDepth = depth;
+      oozeDbg.ratio = ratio; oozeDbg.radialMM = radial * 1000; oozeDbg.inside = inside; oozeDbg.near = near; oozeDbg.has = true;
     }
     // ---- にじみ・垂れ・糸引き・ちぎれ ----
     for (let i = 0; i < oozes.length; i++) {
@@ -3707,6 +3779,7 @@ body.stereo .dispbar{opacity:.55}
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + plusRodInfo + (plusRod ? '（曲げ ' + Math.round(plusRod.bend) + '°）' : '') + '\n' +
         'playerplus2.glb: ' + plus2State + plus2Anim + plus2RodInfo + (plus2Rod ? '（曲げ ' + Math.round(plus2Rod.bend) + '°）' : '') + '\n' +
+        '液体: ' + (oozeDbg.has ? (oozeDbg.inside ? '筒に入った判定' : '入っていない') + '  深さ' + Math.round(oozeDbg.ratio * 100) + '%（' + Math.round(OOZE_ENTER_RATIO * 100) + '%以上で出る）  中心線から' + oozeDbg.radialMM.toFixed(0) + 'mm' : 'plus2なし') + '  出ている' + oozes.filter(function (o) { return o.on; }).length + '個\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +

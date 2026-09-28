@@ -1230,7 +1230,8 @@ body.stereo .dispbar{opacity:.55}
   let hBigTargets = [];              // {mesh, idx}: partの「大」モーフ
   const H_SMALL_RE = /^\s*小\s*$/;      // partの「小」モーフ名（完全一致）
   let hSmallTargets = [];            // {mesh, idx}: partの「小」モーフ
-  let hSmallAmt = 0;                 // 2action中の「小」の量（-7°で1 → 0°(最大)で0）。導入中は0
+  const H_SMALL_AT_MIN = 1.5;        // -7°での「小」の値（0°(最大)では0）
+  let hSmallAmt = 0;                 // 2action中の「小」の量（-7°でH_SMALL_AT_MIN → 0°(最大)で0）。導入中は0
   let hBigIntroAmt = 0;              // 導入(2action0)中の「大」の量（0〜1）。導入の角度に連動する
   let hBlinkHeld = false;            // action3/4の終了後、まばたきを0へ戻す減衰中はtrue
   const BLINK_RELEASE_TAU = 0.35;    // 秒: action3/4終了後、まばたきモーフが1→0へ戻る速さ（大きいほどゆっくり）
@@ -3039,7 +3040,7 @@ body.stereo .dispbar{opacity:.55}
         t = tEnd + (tPress - tEnd) * clamp((tiltRaw - ANIM_ANGLE_MAX) / (ACTION3_DEG - ANIM_ANGLE_MAX), 0, 1);
       }
       playerAct.time = clamp(t, 0, duration);
-      hSmallAmt = 1 - clamp((tiltRaw - ANIM_ANGLE_MIN) / (ANIM_ANGLE_MAX - ANIM_ANGLE_MIN), 0, 1);   // 「小」モーフ：-7°で1、最大(0°)で0
+      hSmallAmt = H_SMALL_AT_MIN * (1 - clamp((tiltRaw - ANIM_ANGLE_MIN) / (ANIM_ANGLE_MAX - ANIM_ANGLE_MIN), 0, 1));   // 「小」モーフ：-7°で1.5、最大(0°)で0
       mixer.update(0);
       playerProg = '  再生位置 ' + t.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
       }

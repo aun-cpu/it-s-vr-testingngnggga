@@ -1017,6 +1017,8 @@ body.stereo .dispbar{opacity:.55}
   const WET_STRING_LIFE = [0.25, 0.6];   // 秒: 糸が張ってから、伸びきってちぎれるまで（一瞬）
   const WET_STRING_WAIT = [0.6, 2.0];    // 秒: ちぎれてから、次に張るまでの待ち
   const WET_BURST_TIME = 0.7;     // 秒: plus2を素早く動かした時、糸がいっせいに張られる時間
+  const WET_TOUCH_DEG = 6;        // 度: この角度（6°〜7°）まで動いたら確実に接触している。ここまで動いてから戻った（この角度を下回った）瞬間に糸を出す
+  let wetTiltDeg = NaN;           // 今の角度（角度データなし・導入中・強制ループ中はNaN）
   const WET_STRING_AMBIENT = 0;   // 素早く動かしていなくても、ときどき張る糸の本数
   const WET_ALPHA = OOZE_ALPHA;
   const WET_RECOIL_MIN = 0.15, WET_RECOIL_MAX = 0.32;   // 秒: ちぎれた糸が縮みきるまで
@@ -1345,8 +1347,9 @@ body.stereo .dispbar{opacity:.55}
       if (near && wetPrimed) wetK = Math.min(1, wetK + Math.min(0.04, Math.abs(speed) * dt * WET_GAIN + (inside ? WET_SEEP * dt : 0)));   // 動かすほど濡れる
       wetPrimed = true;
       wetBurstCd -= dt;
-      const touchNow = inside || (near && depth > -0.02);   // 先端が筒に当たっている
-      if (wetTouch && !touchNow && wetBurstCd <= 0 && wetK >= WET_STRING_FIRST) {   // 当たってから離れた瞬間だけ、糸がいっせいに張られる
+      const angOk = wetTiltDeg === wetTiltDeg;               // NaN（角度データなし・導入中・強制ループ中）でない
+      const touchNow = angOk && wetTiltDeg >= WET_TOUCH_DEG;   // 角度がWET_TOUCH_DEG以上＝確実に接触している
+      if (wetTouch && angOk && !touchNow && wetBurstCd <= 0 && wetK >= WET_STRING_FIRST) {   // 当たってから離れた瞬間だけ、糸がいっせいに張られる
         wetBurstT = WET_BURST_TIME; wetBurstCd = 0.3 + Math.random() * 0.3;
         for (let j = 0; j < wetStrands.length; j++) if (wetStrands[j].state === 0) wetStrands[j].wait = Math.min(wetStrands[j].wait, Math.random() * 0.25);
       }
@@ -4045,6 +4048,7 @@ body.stereo .dispbar{opacity:.55}
       R.tube.rotation.x = inp.tbt * Math.PI / 180;
       R.tubeMesh.scale.set(Math.max(0.001, inp.tbr), Math.max(0.001, inp.tbl), Math.max(0.001, inp.tbr));
     }
+    wetTiltDeg = (tiltLive && !frontIntro && !forcedLoopActive) ? tiltSmooth + introOffset : NaN;   // 糸の発動に使う角度（2actionと同じ基準）
     updateOoze(dt);   // plus2の先端が筒に入ったかを（曲げる前の姿勢で）判定し、粘液のにじみ・垂れを更新
     updatePlusRod(plusRod, R.plus, dt);     // plus / plus2 の突起（pe1〜pe4）を、同じように、しなる棒として筒の中へ向ける
     updatePlusRod(plus2Rod, R.plus2, dt);
@@ -4132,7 +4136,7 @@ body.stereo .dispbar{opacity:.55}
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + plusRodInfo + (plusRod ? '（曲げ ' + Math.round(plusRod.bend) + '°）' : '') + '\n' +
         'playerplus2.glb: ' + plus2State + plus2Anim + plus2RodInfo + (plus2Rod ? '（曲げ ' + Math.round(plus2Rod.bend) + '°）' : '') + '\n' +
-        '液体: ' + (oozeDbg.has ? (oozeDbg.inside ? '筒に入った判定' : '入っていない') + '  深さ' + Math.round(oozeDbg.ratio * 100) + '%（' + Math.round(OOZE_ENTER_RATIO * 100) + '%以上で出る）  中心線から' + oozeDbg.radialMM.toFixed(0) + 'mm' : 'plus2なし') + '  出ている' + oozes.filter(function (o) { return o.on; }).length + '個  糸' + wetStrands.filter(function (q) { return q.state === 1; }).length + '本 ' + (wetTouch ? '接触中' : '離れ') + '  糸の距離' + oozeDbg.strandD.toFixed(0) + 'cm（' + Math.round(WET_STRING_MAX * 100) + 'cmでちぎれる）\n' +
+        '液体: ' + (oozeDbg.has ? (oozeDbg.inside ? '筒に入った判定' : '入っていない') + '  深さ' + Math.round(oozeDbg.ratio * 100) + '%（' + Math.round(OOZE_ENTER_RATIO * 100) + '%以上で出る）  中心線から' + oozeDbg.radialMM.toFixed(0) + 'mm' : 'plus2なし') + '  出ている' + oozes.filter(function (o) { return o.on; }).length + '個  糸' + wetStrands.filter(function (q) { return q.state === 1; }).length + '本 ' + (wetTouch ? '接触中' : '離れ') + ' 角度' + (wetTiltDeg === wetTiltDeg ? wetTiltDeg.toFixed(1) + '°' : '--') + '  糸の距離' + oozeDbg.strandD.toFixed(0) + 'cm（' + Math.round(WET_STRING_MAX * 100) + 'cmでちぎれる）\n' +
         '水滴位置 (' + inp.px.toFixed(2) + ', ' + inp.py.toFixed(2) + ', ' + inp.pz.toFixed(2) + ')\n' +
         '向き ' + yawDeg.toFixed(0) + '°\n' +
         'ハートボタン: ' + (actionButtonVisible ? (gazeOnButton ? '注視中 ' + Math.round(gazeDwell / GAZE_DWELL_SEC * 100) + '%' : '表示中（未注視）') : '非表示') + '\n' +

@@ -1226,6 +1226,9 @@ body.stereo .dispbar{opacity:.55}
   const H_SMILE_EYE_RE = /笑い目|笑いめ|目.*笑い|smile.?eye|eye.?smile/i;   // hの「笑い目」モーフ名
   let hBlinkTargets = [];            // {mesh, idx}: hのまばたきモーフ
   let hSmileEyeTargets = [];         // {mesh, idx}: hの「笑い目」モーフ
+  const H_BIG_RE = /^\s*大\s*$/;        // partの「大」モーフ名（完全一致）
+  let hBigTargets = [];              // {mesh, idx}: partの「大」モーフ
+  let hBigIntroAmt = 0;              // 導入(2action0)中の「大」の量（0〜1）。導入の角度に連動する
   let hBlinkHeld = false;            // action3/4の終了後、まばたきを0へ戻す減衰中はtrue
   const BLINK_RELEASE_TAU = 0.35;    // 秒: action3/4終了後、まばたきモーフが1→0へ戻る速さ（大きいほどゆっくり）
   const BLINK_CLOSE_TAU = 0.05;      // 秒: action3/4開始時、まばたきモーフが0→1へ閉じる速さ（人のまばたきの閉じ動作くらいの速さ）
@@ -2376,6 +2379,7 @@ body.stereo .dispbar{opacity:.55}
       // まばたきモーフ・話す動き用の母音モーフ（シェイプキー）を探す
       hBlinkTargets = [];
       hSmileEyeTargets = [];
+      hBigTargets = [];
       hMouthTargets = {};
       MOUTH_NAMES.forEach(function (n) { hMouthTargets[n] = []; });
       model.traverse(function (o) {
@@ -2383,6 +2387,7 @@ body.stereo .dispbar{opacity:.55}
         Object.keys(o.morphTargetDictionary).forEach(function (k) {
           if (H_BLINK_RE.test(k)) hBlinkTargets.push({ mesh: o, idx: o.morphTargetDictionary[k] });
           if (H_SMILE_EYE_RE.test(k)) hSmileEyeTargets.push({ mesh: o, idx: o.morphTargetDictionary[k] });
+          if (H_BIG_RE.test(k)) hBigTargets.push({ mesh: o, idx: o.morphTargetDictionary[k] });
           if (hMouthTargets[k]) hMouthTargets[k].push({ mesh: o, idx: o.morphTargetDictionary[k] });
         });
       });
@@ -2830,6 +2835,14 @@ body.stereo .dispbar{opacity:.55}
         st.mesh.morphTargetInfluences[st.idx] = hSmileEyeAmt;
       }
     }
+    // partの「大」モーフ: 2action0中は角度に連動して増減し、最大（0°）で1に達する。2actionに入ったらそのまま1を維持する
+    {
+      const bigAmt = frontIntro ? hBigIntroAmt : 1;
+      for (let i = 0; i < hBigTargets.length; i++) {
+        const bt = hBigTargets[i];
+        bt.mesh.morphTargetInfluences[bt.idx] = bigAmt;
+      }
+    }
     // action3/4の再生中は、まばたきモーフを1にし続ける。終了後はゆっくり0へ戻す（mixerの更新後に上書きする）
     {
       const hold = !!(hCurAct && (hCurAct === hAct3 || hCurAct === hAct4));
@@ -2999,6 +3012,7 @@ body.stereo .dispbar{opacity:.55}
         const d0 = playerAct0.getClip().duration;
         t = d0 * clamp((tiltRaw - INTRO_MIN_DEG) / (INTRO_MAX_DEG - INTRO_MIN_DEG), 0, 1);
         playerAct0.time = t;
+        hBigIntroAmt = clamp((tiltRaw - INTRO_MIN_DEG) / (INTRO_MAX_DEG - INTRO_MIN_DEG), 0, 1);   // 「大」モーフ：角度に合わせて増減（0°で1）
         mixer.update(0);
         playerProg = '  導入 ' + t.toFixed(2) + 's / ' + d0.toFixed(2) + 's';
       } else {

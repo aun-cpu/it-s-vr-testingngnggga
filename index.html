@@ -2683,6 +2683,91 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     });
   }
   // モデルの色合いを少し薄く・光沢を少し加える（PBR/Phong どちらのマテリアルでも効くように分岐）
+  // ---- 「pubic」「恥」を含む名前のplayerメッシュの輪郭をぼかす（縁に向かって透明にフェードさせる） ----
+  const SOFT_EDGE_RE = /pubic|恥/i;   // ぼかすメッシュの名前（メッシュ名・材質名・親ノード名のどれか）。足したい名前はここに
+  const SOFT_EDGE_WIDTH = 0.6;        // ぼかす幅（メッシュ内側へ向かう最大距離に対する割合。0.3=やや / 0.6=かなり / 1.0=中心以外ほぼ全部）
+  const SOFT_EDGE_POWER = 1.6;        // 大きいほど縁が「より透明」になり、輪郭が溶ける（1.0=直線的）
+  const SOFT_EDGE_VIEW = 0.35;        // 視線に対して斜めの面（シルエット）を透かす強さ。0で無効
+  function softEdgeMatch(o) {
+    if (SOFT_EDGE_RE.test(o.name || '')) return true;
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    for (let i = 0; i < ms.length; i++) if (ms[i] && SOFT_EDGE_RE.test(ms[i].name || '')) return true;
+    for (let p = o.parent; p; p = p.parent) if (SOFT_EDGE_RE.test(p.name || '')) return true;
+    return false;
+  }
+  function buildSoftEdgeAttr(geo) {   // 各頂点に「メッシュの縁（開いた辺）までの距離」を入れる。0=縁 / 1=縁から最も遠い
+    if (geo.attributes.seDist) return true;
+    const pos = geo.attributes.position; if (!pos) return false;
+    const n = pos.count, idx = geo.index ? geo.index.array : null, triN = idx ? idx.length : n;
+    const key = new Array(n), q = 1e5, canon = new Map(), cid = new Int32Array(n);
+    for (let i = 0; i < n; i++) {   // UVの継ぎ目などで分かれた同位置の頂点は同一視する
+      const k = Math.round(pos.getX(i) * q) + ',' + Math.round(pos.getY(i) * q) + ',' + Math.round(pos.getZ(i) * q);
+      let c = canon.get(k); if (c === undefined) { c = canon.size; canon.set(k, c); } cid[i] = c;
+    }
+    const edgeCnt = new Map(), edges = [];
+    for (let t = 0; t + 2 < triN; t += 3) {
+      const a = cid[idx ? idx[t] : t], b = cid[idx ? idx[t + 1] : t + 1], c = cid[idx ? idx[t + 2] : t + 2];
+      [[a, b], [b, c], [c, a]].forEach(function (e) {
+        if (e[0] === e[1]) return;
+        const k = e[0] < e[1] ? e[0] + '_' + e[1] : e[1] + '_' + e[0];
+        edgeCnt.set(k, (edgeCnt.get(k) || 0) + 1);
+      });
+    }
+    const bnd = new Uint8Array(canon.size);
+    edgeCnt.forEach(function (cnt, k) { if (cnt === 1) { const s = k.split('_'); bnd[+s[0]] = 1; bnd[+s[1]] = 1; } });
+    const bp = [];
+    const rep = new Int32Array(canon.size).fill(-1);
+    for (let i = 0; i < n; i++) if (rep[cid[i]] < 0) rep[cid[i]] = i;
+    for (let c = 0; c < canon.size; c++) if (bnd[c] && rep[c] >= 0) bp.push(rep[c]);
+    if (!bp.length) return false;   // 閉じたメッシュ（縁が無い）は視線方向のフェードだけにする
+    const step = Math.max(1, Math.floor(bp.length / 600));   // 縁の頂点が多すぎるときは間引いて計算を軽くする
+    const bx = [], by = [], bz = [];
+    for (let i = 0; i < bp.length; i += step) { bx.push(pos.getX(bp[i])); by.push(pos.getY(bp[i])); bz.push(pos.getZ(bp[i])); }
+    const d = new Float32Array(n); let mx = 0;
+    for (let i = 0; i < n; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i); let best = 1e9;
+      for (let j = 0; j < bx.length; j++) { const dx = x - bx[j], dy = y - by[j], dz = z - bz[j], dd = dx * dx + dy * dy + dz * dz; if (dd < best) best = dd; }
+      d[i] = Math.sqrt(best); if (d[i] > mx) mx = d[i];
+    }
+    if (mx > 0) for (let i = 0; i < n; i++) d[i] = Math.min(1, d[i] / (mx * SOFT_EDGE_WIDTH));
+    geo.setAttribute('seDist', new THREE.BufferAttribute(d, 1));
+    return true;
+  }
+  function applySoftEdge(o) {
+    if (!o.isMesh || !o.material || !o.geometry || o.userData.__softEdge) return;
+    if (!softEdgeMatch(o)) return;
+    o.userData.__softEdge = true;
+    let hasAttr = false;
+    try { hasAttr = buildSoftEdgeAttr(o.geometry); } catch (err) { console.warn('[softEdge] 縁の計算に失敗', err); }
+    const conv = function (m0) {
+      if (!m0 || !(m0.isMeshStandardMaterial || m0.isMeshPhongMaterial || m0.isMeshLambertMaterial || m0.isMeshToonMaterial)) return m0;
+      const m = m0.clone(); m.name = m0.name;   // 他のメッシュと共有している材質に影響しないよう複製する
+      m.transparent = true; m.depthWrite = false;
+      const prev = m0.onBeforeCompile;
+      m.onBeforeCompile = function (shader, renderer) {
+        if (prev) prev.call(this, shader, renderer);
+        if (hasAttr) {
+          shader.vertexShader = shader.vertexShader
+            .replace('#include <common>', '#include <common>\nattribute float seDist;\nvarying float vSeDist;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeDist = seDist;');
+        }
+        const view = SOFT_EDGE_VIEW.toFixed(3), pw = SOFT_EDGE_POWER.toFixed(3);
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\n' + (hasAttr ? 'varying float vSeDist;\n' : ''))
+          .replace('#include <dithering_fragment>',
+            '{ float seA = 1.0;\n' +
+            (hasAttr ? 'float seE = clamp(vSeDist, 0.0, 1.0); seA *= pow(seE * seE * (3.0 - 2.0 * seE), ' + pw + ');\n' : '') +
+            '#ifndef FLAT_SHADED\n' +
+            'if (' + view + ' > 0.0) seA *= mix(1.0 - ' + view + ', 1.0, smoothstep(0.0, 0.6, abs(dot(normalize(vNormal), normalize(vViewPosition)))));\n' +
+            '#endif\n' +
+            'gl_FragColor.a *= seA; }\n#include <dithering_fragment>');
+      };
+      m.needsUpdate = true;
+      return m;
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
+    o.renderOrder = Math.max(o.renderOrder || 0, 1);   // 半透明なので体より後に描く
+  }
   function applyGloss(o) {
     if (!o.isMesh || !o.material) return;
     const list = Array.isArray(o.material) ? o.material : [o.material];
@@ -2694,6 +2779,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       if (m.specular && m.specular.isColor) m.specular.setScalar(0.3);
       m.needsUpdate = true;
     });
+    try { applySoftEdge(o); } catch (err) { console.warn('[softEdge] 失敗', err); }
   }
   // hをトゥーン(セルシェード)調にする（濃淡3段階のグラデーションマップを使う）
   const H_COLOR_LIGHTEN = 0.25;      // hの色を白に近づける割合（0=元の色 / 1=白）。色を薄くする

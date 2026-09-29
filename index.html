@@ -1666,6 +1666,177 @@ body.stereo .dispbar{opacity:.55}
     });
   }
 
+  // ---- h.glbの質感：肌・ブラウス・髪を材質ごとに判定し、単色に見えないよう細かな濃淡・凹凸・光沢を足す ----
+  // 材質名（と、メッシュ名）から「肌 / 髪 / 服」を判定する。名前で決まらない時は色で推測する。
+  // 判定結果はHUDの「h.glb材質」に出る（間違っていたら、下の正規表現に名前を足す）。
+  const HGL_ON = true;                 // false: h.glbは従来どおり（材質に手を加えない）
+  const HGL_EMISSIVE_KEEP = 0.35;      // 発光(emissive)で単色に見えている材質は、この割合だけ残す（0〜1。1で従来どおり）
+  const HGL_EXCLUDE_RE = /eye|目|眉|brow|lash|睫|mouth|口|teeth|歯|tongue|舌|nail|爪|shoe|靴|glass|眼鏡|pupil|iris|瞳|highlight|ハイライト/i;   // 合えば何も足さない
+  const HGL_HAIR_RE = /hair|髪|kami|毛/i;
+  const HGL_CLOTH_RE = /cloth|服|blouse|ブラウス|shirt|シャツ|dress|ドレス|skirt|スカート|wear|tops|fuku|uniform|制服|ribbon|リボン|tie|sleeve|袖|collar|襟/i;
+  const HGL_SKIN_RE = /skin|肌|body|体|flesh|face|顔|hada|皮|head|頭|hand|手|arm|腕|leg|足|neck|首/i;
+  const HGL_ROUGH = { skin: 0.55, hair: 0.45, cloth: 0.85 };   // 表面の粗さ（小さいほどテカる）
+  const hgLookNames = [];              // 材質名と判定結果（HUD表示用）
+  const HGL_LABEL = { skin: '肌', hair: '髪', cloth: '服', none: '対象外' };
+  function hgKindOf(m, o) {
+    const nm = (m.name || '') + ' ' + (o.name || '');
+    if (HGL_EXCLUDE_RE.test(nm)) return 'none';
+    if (HGL_HAIR_RE.test(nm)) return 'hair';
+    if (HGL_CLOTH_RE.test(nm)) return 'cloth';
+    if (HGL_SKIN_RE.test(nm)) return 'skin';
+    if (m.map || !m.color) return 'none';   // 名前で判定できず、テクスチャ付きなら手を加えない
+    const c = m.color;
+    const lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
+    const sat = Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+    if (c.r >= c.g && c.g >= c.b && lum > 0.45 && (c.r - c.b) > 0.05 && (c.r - c.b) < 0.5) return 'skin';   // 明るい暖色
+    if (lum < 0.3) return 'hair';                                                                          // 暗い色
+    if (lum > 0.6 && sat < 0.25) return 'cloth';                                                           // 白っぽい色
+    return 'none';
+  }
+  // 座標はUVでなく、メッシュの静止位置（モデルの高さを1とした値）から作る3Dノイズ。UVが密集していても粗くならず、アニメーションしても模様が体に張り付く
+  const HGL_FDECL = `
+varying vec3 vLkP;
+float lkHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float lkNoise(vec3 x) {
+  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(lkHash(i), lkHash(i + vec3(1,0,0)), f.x), mix(lkHash(i + vec3(0,1,0)), lkHash(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(lkHash(i + vec3(0,0,1)), lkHash(i + vec3(1,0,1)), f.x), mix(lkHash(i + vec3(0,1,1)), lkHash(i + vec3(1,1,1)), f.x), f.y), f.z);
+}
+float lkFbm(vec3 p) { return lkNoise(p) * 0.5 + lkNoise(p * 2.03 + 1.7) * 0.3 + lkNoise(p * 4.11 + 3.1) * 0.2; }
+float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 / freq); }   // 1ピクセルより細かい模様は消してチラつきを防ぐ
+`;
+  // 表面の高さ(モデルの高さ=1の単位)から法線を傾ける（three.jsのバンプと同じ計算）
+  function hgBump(hExpr) {
+    return `{
+  float lkPf = length(dFdx(vLkP)) + length(dFdy(vLkP)) + 1.0e-7;
+  vec3 lkVP = -vViewPosition;
+  vec3 lkDx = dFdx(lkVP), lkDy = dFdy(lkVP);
+  float lkUnit = (length(lkDx) + length(lkDy)) / lkPf;
+  float lkHh = (${hExpr}) * lkUnit;
+  vec3 lkR1 = cross(lkDy, normal), lkR2 = cross(normal, lkDx);
+  float lkDet = dot(lkDx, lkR1);
+  vec3 lkG = sign(lkDet) * (dFdx(lkHh) * lkR1 + dFdy(lkHh) * lkR2);
+  normal = normalize(abs(lkDet) * normal - lkG);
+}
+`;
+  }
+  const HGL_CHUNK = {
+    skin: {
+      // 色ムラ・ほんのりした赤み
+      color: `{
+  float lkT = lkFbm(vLkP * 28.0);
+  float lkB = lkNoise(vLkP * 9.0);
+  diffuseColor.rgb *= vec3(1.0) + (lkT - 0.5) * 0.14 * vec3(0.5, -1.1, -1.4);
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.06, 0.93, 0.92), smoothstep(0.45, 0.72, lkB) * 0.6);
+}
+`,
+      rough: `roughnessFactor = clamp(roughnessFactor + (lkNoise(vLkP * 90.0) - 0.5) * 0.2, 0.3, 0.8);\n`,
+      // 毛穴・キメと、なだらかな凹凸
+      normal: hgBump('0.0002 * lkFade(500.0, lkPf) * (lkNoise(vLkP * 500.0) - 0.5) + 0.0006 * lkFade(50.0, lkPf) * (lkNoise(vLkP * 50.0) - 0.5)'),
+      // 輪郭付近の赤み（皮下散乱風）
+      post: `{
+  vec3 lkN = normalize(vNormal);
+  float lkNV = clamp(abs(dot(lkN, normalize(vViewPosition))), 0.0, 1.0);
+  float lkRim = pow(1.0 - lkNV, 2.5);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * vec3(1.12, 0.80, 0.74) + vec3(0.03, 0.008, 0.005), lkRim * 0.5);
+}
+`
+    },
+    hair: {
+      // 縦に長い毛束の濃淡（根元寄りは暗く、束の間に明暗）
+      color: `{
+  vec3 lkQ = vLkP * vec3(650.0, 55.0, 650.0);
+  float lkPf = length(dFdx(vLkP)) + length(dFdy(vLkP)) + 1.0e-7;
+  float lkS = mix(0.5, lkNoise(lkQ) * 0.6 + lkNoise(lkQ * vec3(2.3, 1.7, 2.3) + 7.1) * 0.4, lkFade(650.0, lkPf));   // 細かすぎる距離では平均へ
+  float lkC = lkFbm(vLkP * vec3(60.0, 14.0, 60.0));
+  float lkX = clamp(lkS * 0.6 + lkC * 0.6 - 0.07, 0.0, 1.0);
+  diffuseColor.rgb = mix(diffuseColor.rgb * 0.6, diffuseColor.rgb * 1.4 + vec3(0.025, 0.02, 0.015), lkX);
+}
+`,
+      rough: `roughnessFactor = clamp(roughnessFactor * 0.95 + (lkNoise(vLkP * vec3(500.0, 40.0, 500.0)) - 0.5) * 0.35, 0.22, 0.75);\n`,
+      normal: hgBump('0.0005 * lkFade(650.0, lkPf) * (lkNoise(vLkP * vec3(650.0, 55.0, 650.0)) - 0.5)'),
+      // 天使の輪（画面上で一定の高さに出るツヤの帯）と、縁のやわらかい明るさ
+      post: `{
+  vec3 lkN = normalize(vNormal);
+  float lkRing = smoothstep(0.42, 0.6, lkN.y) * (1.0 - smoothstep(0.6, 0.82, lkN.y));
+  lkRing *= 0.5 + 0.9 * lkNoise(vLkP * vec3(500.0, 30.0, 500.0));
+  gl_FragColor.rgb += (diffuseColor.rgb * 0.8 + vec3(0.04)) * lkRing * 0.5;
+  float lkNV = clamp(abs(dot(lkN, normalize(vViewPosition))), 0.0, 1.0);
+  gl_FragColor.rgb += diffuseColor.rgb * pow(1.0 - lkNV, 3.0) * 0.22;
+}
+`
+    },
+    cloth: {
+      // 大きなシワの濃淡と、布のざらつき
+      color: `{
+  float lkPf = length(dFdx(vLkP)) + length(dFdy(vLkP)) + 1.0e-7;
+  float lkFold = lkFbm(vLkP * 9.0);
+  float lkFuzz = lkNoise(vLkP * 700.0);
+  diffuseColor.rgb *= 0.92 + lkFold * 0.16;
+  diffuseColor.rgb *= 1.0 + (lkFuzz - 0.5) * 0.08 * lkFade(700.0, lkPf);
+}
+`,
+      rough: `roughnessFactor = clamp(roughnessFactor + (lkNoise(vLkP * 200.0) - 0.5) * 0.1, 0.6, 1.0);\n`,
+      // 布目のような細かい凹凸と、シワの凹凸
+      normal: hgBump('0.0004 * lkFade(900.0, lkPf) * (lkNoise(vLkP * 900.0) - 0.5) + 0.0009 * lkFade(90.0, lkPf) * (lkNoise(vLkP * 90.0) - 0.5)'),
+      // 縁が明るくなる布のうぶ毛と、折れ目のごく軽い陰
+      post: `{
+  vec3 lkN = normalize(vNormal);
+  float lkNV = clamp(abs(dot(lkN, normalize(vViewPosition))), 0.0, 1.0);
+  gl_FragColor.rgb += diffuseColor.rgb * pow(1.0 - lkNV, 3.0) * 0.2;
+  float lkCv = length(fwidth(lkN));
+  gl_FragColor.rgb *= 1.0 - clamp(lkCv * 1.6, 0.0, 0.15);
+}
+`
+    }
+  };
+  function hgLookMaterial(m0, kind, k) {
+    let m = m0;
+    if (!m0.isMeshStandardMaterial) {   // 発光しないフラット材質（unlitなど）は、光の当たり方が出る材質に置き換える
+      if (!m0.color || !(m0.isMeshBasicMaterial || m0.isMeshLambertMaterial || m0.isMeshPhongMaterial || m0.isMeshToonMaterial)) return m0;
+      m = new THREE.MeshStandardMaterial({ color: m0.color.clone(), map: m0.map || null, transparent: m0.transparent, opacity: m0.opacity, side: m0.side, alphaTest: m0.alphaTest, vertexColors: m0.vertexColors });
+      m.name = m0.name; m.morphTargets = m0.morphTargets; m.morphNormals = m0.morphNormals;
+    } else {
+      m = m0.clone();
+    }
+    m.userData = m.userData || {};
+    m.userData.__hgLook = true;
+    if (!m.metalnessMap) m.metalness = 0;
+    if (!m.roughnessMap) m.roughness = HGL_ROUGH[kind];
+    if (m.emissive && !m.emissiveMap && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.06) m.emissive.multiplyScalar(HGL_EMISSIVE_KEEP);   // 発光で塗りつぶされた単色をやめる
+    if (m.map) { m.map.magFilter = THREE.LinearFilter; m.map.minFilter = THREE.LinearMipmapLinearFilter; m.map.generateMipmaps = true; m.map.anisotropy = 8; m.map.needsUpdate = true; }
+    const ch = HGL_CHUNK[kind];
+    m.extensions = m.extensions || {};
+    m.extensions.derivatives = true;
+    m.customProgramCacheKey = function () { return 'hgLook_' + kind; };   // 同じ関数でも種類ごとに別のシェーダーにする
+    m.onBeforeCompile = function (sh) {
+      sh.uniforms.uLkK = { value: k };
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uLkK;\nvarying vec3 vLkP;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLkP = vec3(position) * uLkK;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\n' + HGL_FDECL)
+        .replace('#include <color_fragment>', '#include <color_fragment>\n' + ch.color)
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + ch.rough)
+        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + ch.normal)
+        .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' + ch.post);
+    };
+    m.needsUpdate = true;
+    return m;
+  }
+  function applyHgLook(o, refH) {
+    if (!HGL_ON || !o.isMesh || !o.material) return;
+    const k = o.matrixWorld.getMaxScaleOnAxis() / Math.max(refH, 1e-6);   // メッシュの座標 → モデルの高さを1とした座標
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    const made = list.map(function (m0) {
+      const kind = m0.userData && m0.userData.__hgLook ? 'none' : hgKindOf(m0, o);
+      const label = HGL_LABEL[kind] + ':' + (m0.name || o.name || '無名');
+      if (hgLookNames.indexOf(label) < 0) hgLookNames.push(label);
+      return kind === 'none' ? m0 : hgLookMaterial(m0, kind, k);
+    });
+    o.material = Array.isArray(o.material) ? made : made[0];
+  }
+
   // ---- h.glb（idleをループ再生するだけの追加モデル。位置・サイズ・傾きは操作側/表示側のパネルで調整） ----
   const HG_URL = 'h.glb?' + ASSET_VERSION;            // index.html と同じ場所に置く
   let hgState = '未読込';
@@ -1680,7 +1851,10 @@ body.stereo .dispbar{opacity:.55}
       const c = box.getCenter(new THREE.Vector3());
       // 足元が地面、水平の中心がグループの原点になるようにそろえる
       model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
-      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true; } });
+      model.updateMatrixWorld(true);
+      const hgSize = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+      const hgRef = Math.max(hgSize.x, hgSize.y, hgSize.z, 1e-3);   // 質感の細かさの基準（モデルの大きさ）
+      model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true; try { applyHgLook(o, hgRef); } catch (err) { console.warn('[hgLook] 質感の設定に失敗', err); } } });
       group.add(model);
       hgState = '表示中';
       const clips = gltf.animations || [];
@@ -3438,6 +3612,7 @@ body.stereo .dispbar{opacity:.55}
         'ジャイロ: ' + (GYRO_LABEL[gyro.state] || gyro.state) + '\n' +
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         'h.glb: ' + hgState + hgAnim + '\n' +
+        'h.glb材質: ' + (hgLookNames.length ? hgLookNames.join(', ') : '未読込') + '\n' +
         'part.glb: ' + hState + hAnim + (hSplitBoneCount ? '  骨' + hSplitBoneCount + '本' : '') + (partPushLen > 0.0005 ? '  押し出し ' + (partPushLen * 100).toFixed(1) + 'cm' : '') + '\n' +
         'part材質: ' + (hSkinNames.length ? hSkinNames.join(', ') : '未読込') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +

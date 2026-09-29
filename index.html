@@ -3954,10 +3954,10 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const WATER_LOW_COUNT = [1, 2];     // 1回の水音で鳴らす「ぐちゃっ」の数（連続させず、少数だけ）。前へ動く時は1回、後ろへ引く時は1〜2回
   const WATER_LOW_LEN = [0.16, 0.3];  // 秒: 「ぐちゃっ」1回の長さ（この間に細かい気泡が大量に弾ける）
   const WATER_LOW_GAP = [0.06, 0.14]; // 秒: 「ぐちゃっ」どうしの間隔
-  const WATER_LOW_BUBBLES = 140;      // 1秒あたりの気泡の数（多いほど細かく詰まって粘っこくなる）
-  const WATER_LOW_HZ = [260, 1500];   // 気泡の音の高さの範囲(Hz)。大きな泡ほど低い
-  const WATER_LOW_RISE = [1.25, 1.9]; // 気泡が弾ける時に音程が上がる倍率（小さいほど粘っこく鈍い）
-  const WATER_LOW_BODY = 0.16;        // 気泡の下に流れる、ぐちゅぐちゅした低いうねり（ノイズ）の音量。0で無し
+  const WATER_LOW_BUBBLES = 180;      // 1秒あたりの気泡（クリック）の数（多いほど細かく詰まって粘っこくなる）
+  const WATER_LOW_HZ = [300, 1600];   // 気泡クリックの高さの範囲(Hz)。大きな泡ほど低い
+  const WATER_LOW_CLICK_LIFE = [0.003, 0.012]; // 秒: 気泡1個の「チッ」の長さ（短いほど乾いたクリック、長いほど鈍い「ぷつ」）
+  const WATER_LOW_BODY = 0.1;         // 気泡の下に流れる、ぐちゅぐちゅした低いうねり（ノイズ）の音量。0で無し（クリックだけになる）
   let waterCtx = null, waterNoise = null, waterLastAt = 0;
   const wStroke = { dir: 0, lo: 0, hi: 0, init: false };
   function waterEnsure() {
@@ -4044,24 +4044,20 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
           ns.connect(bp); bp.connect(lp); lp.connect(g); g.connect(lowOut);
           ns.start(lt, Math.random() * 0.25); ns.stop(lt + L + 0.03);
         }
-        // 3-b) 小さな気泡が大量に弾ける音：短い正弦波の「ぷつ」を、短い間にぎっしり不規則に並べる
+        // 3-b) 小さな気泡が大量に弾ける音：現実の気泡の音はクリックに近いので、高いクリックと同じ作りの短い「チッ」を、低めの高さで短い間にぎっしり不規則に並べる
         const nb = Math.round(L * WATER_LOW_BUBBLES);
         for (let b = 0; b < nb; b++) {
           const x = Math.random();
           const bt = lt + x * L * 0.95;
           const f0 = WATER_LOW_HZ[0] * Math.pow(WATER_LOW_HZ[1] / WATER_LOW_HZ[0], Math.random());
-          const f1 = f0 * rr(WATER_LOW_RISE);
-          const life = 0.015 + Math.random() * 0.03;
-          const amp = (0.02 + 0.06 * Math.pow(Math.random(), 2)) * (0.4 + 0.6 * env(x)) * (0.6 + 0.4 * pw);
-          const osc = ctx.createOscillator(); osc.type = 'sine';
-          osc.frequency.setValueAtTime(f0, bt);
-          osc.frequency.exponentialRampToValueAtTime(f1, bt + 0.012 + Math.random() * 0.012);
-          const og = ctx.createGain();
-          og.gain.setValueAtTime(0.0001, bt);
-          og.gain.linearRampToValueAtTime(amp, bt + 0.002);
-          og.gain.exponentialRampToValueAtTime(0.0001, bt + life);
-          osc.connect(og); og.connect(lowOut);
-          osc.start(bt); osc.stop(bt + life + 0.01);
+          const life = rr(WATER_LOW_CLICK_LIFE);
+          const amp = (0.08 + 0.5 * Math.pow(Math.random(), 4)) * (0.4 + 0.6 * env(x)) * (0.6 + 0.4 * pw);   // 多くは小さく、時々大きい
+          const cs = ctx.createBufferSource(); cs.buffer = waterNoise;
+          const cb = ctx.createBiquadFilter(); cb.type = 'bandpass'; cb.frequency.value = f0; cb.Q.value = 3;
+          const cg = ctx.createGain();
+          cg.gain.setValueAtTime(0.0001, bt); cg.gain.linearRampToValueAtTime(amp, bt + 0.0006); cg.gain.exponentialRampToValueAtTime(0.0001, bt + life);
+          cs.connect(cb); cb.connect(cg); cg.connect(lowOut);
+          cs.start(bt, Math.random() * 0.45); cs.stop(bt + life + 0.01);
         }
         lt += L + rr(WATER_LOW_GAP);
       }

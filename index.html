@@ -427,6 +427,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">回転</span><button type="button" class="dpstep" data-k="aor" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-aor" data-k="aor" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="aor" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-aor">0.00</span></div>
       <button type="button" class="mini" id="dBtnArmReset" style="width:100%; margin-top:4px">腕をリセット</button>
       <button type="button" class="mini on" id="dBtnArmColl" style="width:100%; margin-top:6px">腕の物理判定: ON</button>
+      <button type="button" class="mini on" id="dBtnArmHide" style="width:100%; margin-top:6px">腕の見た目: 非表示</button>
       <button type="button" class="mini on" id="dBtnArmVis" style="width:100%; margin-top:6px">腕の調整: 見た目のみ（判定は初期位置）</button>
       <p class="postitle" style="margin:10px 0 6px">part.glbの位置・サイズ・傾き調整（player本体との差）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="hox" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hox" data-k="hox" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hox" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hox">0.00</span></div>
@@ -936,6 +937,11 @@ body.stereo .dispbar{opacity:.55}
     ARM_COLLIDE_ON = !ARM_COLLIDE_ON;   // 判定リストは次フレームで自動的に作り直される
     $('#dBtnArmColl').textContent = '腕の物理判定: ' + (ARM_COLLIDE_ON ? 'ON' : 'OFF');
     $('#dBtnArmColl').classList.toggle('on', ARM_COLLIDE_ON);
+  });
+  $('#dBtnArmHide').addEventListener('click', () => {
+    ARM_HIDDEN = !ARM_HIDDEN;
+    $('#dBtnArmHide').textContent = '腕の見た目: ' + (ARM_HIDDEN ? '非表示' : '表示');
+    $('#dBtnArmHide').classList.toggle('on', ARM_HIDDEN);
   });
   $('#dBtnArmVis').addEventListener('click', () => {
     ARM_ADJUST_VISUAL_ONLY = !ARM_ADJUST_VISUAL_ONLY;
@@ -2258,6 +2264,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let partCollList = null, partCollKey = '', partCollPts = null;
   const _cp = { v: new THREE.Vector3(), inv: new THREE.Matrix4(), t: new THREE.Vector3(), best: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), prev: new THREE.Vector3(), bp: new THREE.Vector3(), bp0: new THREE.Vector3(), sum: new THREE.Vector3() };
   let ARM_COLLIDE_ON = true;           // true: 腕(playerarm)をpartの物理判定に含める／false: 含めない
+  let ARM_HIDDEN = true;               // true: 腕(playerarm)の見た目だけ非表示（当たり判定は残る）／false: 表示
   let ARM_ADJUST_VISUAL_ONLY = true;   // true: 腕の位置調整(aox/aoy/aoz/aor)は見た目だけ動かし、判定は初期値(POS_DEFAULT)の位置のまま／false: 判定も一緒に動く        // false: 腕(playerarm)をpartとの物理判定（押し出し）から外す／true: 従来どおり判定に含める
   function collectPartCollideMeshes() {
     const list = [];
@@ -3980,7 +3987,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       R.plus2.rotation.y = R.player.rotation.y;
     }
     if (R.arm) {
-      R.arm.visible = true;
+      R.arm.visible = !ARM_HIDDEN;   // 非表示でも当たり判定・アニメ・追従はそのまま動く
       // 角度を反映した瞬間（手動角度をONにした時／操作側を接続した時）のpartの押し出し量を基準にして、そこからのpartの前後（Z）の動きにだけ追従する。角度が反映されていない間は追従しない
       { const target = armFollowLive ? (partOff.z - armRefZ) * ARM_FOLLOW_Z : 0;
         armFollowOff = armFollowLive ? target : armFollowOff + (target - armFollowOff) * (1 - Math.exp(-dt / 0.25)); }   // 切断・手動OFFの時は、なめらかに元の位置へ戻す

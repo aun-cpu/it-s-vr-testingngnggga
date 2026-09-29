@@ -2349,6 +2349,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const JELLY_MAX = 0.16;             // 全モード合計の変位（つぶれ・伸び）の上限（現実的な範囲に抑える）
   const JELLY_ROT_MAX = 1.5 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
   const JELLY_BOB_MAX = 0.012;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
+  const ARM_FOLLOW_Z = 1.0;            // playerarmが、partの押し出し（前後=Z方向のみ）に追従する割合。0=追従しない／1=partと同じだけ前後に動く／0.5=半分
   const HG_FOLLOW = 0.3;              // partはhの部位。partのゼリー揺れ・押し出しを、この割合だけh.glb全体にも反映する（0=反映しない／1=partと同じ強さ）
   // ---- playerplus.glb（playerと同じ位置・同じ読み込み。playerと同じ名前の動き「2action」を、playerと同じ再生位置で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb?' + ASSET_VERSION; // index.html と同じ場所に置く
@@ -3940,7 +3941,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     }
     if (R.arm) {
       R.arm.visible = true;
-      R.arm.position.set(inp.aox, inp.aoy, inp.aoz);   // playerと同じ位置（固定）に追従（＋操作側からのズレ調整）
+      R.arm.position.set(inp.aox, inp.aoy, inp.aoz + partOff.z * ARM_FOLLOW_Z);   // 初期位置（playerと同じ位置＋操作側からのズレ調整）を基準に、partが押し出されたら前後（Z）だけ一緒に動く
       R.arm.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
     }
     if (armMixer) armMixer.update(dt);

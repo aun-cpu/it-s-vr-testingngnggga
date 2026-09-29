@@ -1009,8 +1009,9 @@ body.stereo .dispbar{opacity:.55}
   // 板を超えた回数＝濡れの強さ（層の数）。板の手前から超えた時だけ1回と数え、ずっと超えたままの所は数えない。
   // ある点が板を超えると、その点から先端までが塗られるので、その点の回数は先端側にも伝わる（真ん中が2回超えたら、真ん中から先端までが2層）
   const WET_ROD_ON = true;
-  const WET_PLATE_OFFSET = 0;     // m: 板の位置。筒の入口から筒の奥へ向かって測る（0=筒の入口 / +で奥 / −で手前）
-  const WET_ROD_LAYERS = 4;       // 重ねられる最大の層数（超えた回数の上限）
+  const WET_PLATE_OFFSET = 0;     // m: 板の位置の微調整。板は液体用の筒（黄）の中心の高さ（筒の軸方向の位置）に置く（0=ちょうどその位置 / +で筒の奥側 / −で手前側）
+  const WET_ROD_LAYERS = 12;      // この回数だけ板を超えると、濡れが最大になる（多いほど、何度も通らないと最大にならない）
+  const WET_ROD_MAX_WET = 1.6;    // 最大の時の濡れの強さ（1回ごとに、この値の 1/回数 ずつ増える）
   const WET_ROD_HYST = 0.003;     // m: 板を超えた／戻ったと数えるまでの余裕（板の近くで細かく震えても、何度も数えないため）
   const WET_ROD_BINS = 128;       // 棒を長さ方向に区切る数（多いほど、濡れの境目が細かくなる）
   const WET_ROD_RADIUS = 0.05;    // m: 棒の中心線からこの距離より離れた表面は濡れない
@@ -1041,11 +1042,9 @@ body.stereo .dispbar{opacity:.55}
     '  }',
     '  float n = wtN(q * 45.0) * 0.65 + wtN(q * 130.0) * 0.35;',
     '  float u = clamp((bs + (n - 0.5) * ' + WET_ROD_EDGE.toFixed(4) + ') / max(tot, 1.0e-4), 0.0, 1.0);',
-    '  float lv = texture2D(uRB, vec2(u, 0.5)).r * ' + WET_ROD_LAYERS.toFixed(1) + ';',   // 層の数
-    '  float cov = smoothstep(0.0, 0.6, lv);',                                                 // 1層目：濡れているか
-    '  float thick = clamp((lv - 1.0) / ' + Math.max(1, WET_ROD_LAYERS - 1).toFixed(1) + ', 0.0, 1.0);',   // 2層目以降：重なり具合
+    '  float k = texture2D(uRB, vec2(u, 0.5)).r;',   // 超えた回数 / 最大回数（0〜1）。回数が少ないうちは、ほんのり濡れるだけ
     '  float rad = 1.0 - smoothstep(uRR * 0.7, uRR, best);',
-    '  return cov * (1.0 + 0.6 * thick) * rad;',
+    '  return k * ' + WET_ROD_MAX_WET.toFixed(2) + ' * rad;',
     '}'].join('\n') + '\n';
   const WET_COLOR = [
     'float wtW = wtWet(vWetP, vWetQ);',
@@ -2146,7 +2145,8 @@ body.stereo .dispbar{opacity:.55}
     cum[0] = 0;
     for (let i = 1; i < K; i++) cum[i] = cum[i - 1] + pts[i].distanceTo(pts[i - 1]);
     const total = cum[K - 1];
-    const off = -full / 2 + WET_PLATE_OFFSET;                        // 板の位置（筒の中心から挿入方向へ測る）
+    if (R.h) e.t2.set(R.h.position.x + inp.lqx, R.h.position.y + inp.lqy, R.h.position.z + inp.lqz); else e.t2.copy(c);   // 液体用の筒の中心（updateOozeと同じ）
+    const off = e.t2.sub(c).dot(u) + WET_PLATE_OFFSET;               // 板の位置：液体用の筒の中心の、挿入方向（筒の軸）での位置
     rw.plateC.copy(c).addScaledVector(u, off); rw.plateN.copy(u);
     rw.ready = true;
     if (!(total > 1e-6)) return;

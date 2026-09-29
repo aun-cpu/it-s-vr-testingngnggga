@@ -1837,6 +1837,112 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     o.material = Array.isArray(o.material) ? made : made[0];
   }
 
+  // ---- h.glbの髪ボーン：アニメ・h全体の動きに遅れてついてくる（簡易スプリングボーン。軽さ優先） ----
+  // 髪の骨を1本ずつ「先端が遅れて追いかけ、行き過ぎて戻る」ように回すだけ（衝突判定なし・物理エンジンなし）。
+  // 骨は材質と同じく名前で判定する（HUDの「h.glb髪ボーン」に本数が出る。0本なら骨名の一部も出るので、下の正規表現に足す）。
+  const HGH_ON = true;               // false: 髪ボーンはアニメどおりに動くだけ
+  const HGH_BONE_RE = /hair|髪|kami|ponytail|twintail|bangs?|ahoge|前髪|後ろ髪|毛/i;   // 髪ボーンの名前
+  const HGH_EXCLUDE_RE = /brow|eye|眉|睫|lash|目/i;                                   // 合えば髪ボーンにしない
+  const HGH_MAX_BONES = 48;          // 動かす髪ボーンの最大本数（多いほど重い。超えた分は動かさない）
+  const HGH_STIFF = 16;              // 元の姿勢へ戻る強さ（1/秒。大きいほど硬く、小さいほどふわふわ）
+  const HGH_DRAG = 5;                // 動きの減衰（1/秒。小さいほど長く揺れる）
+  const HGH_GRAVITY = 6;             // 重力（m/s²。大きいほど毛先が垂れる）
+  const HGH_MAX_DEG = 40;            // 元の姿勢から曲がってよい最大角度（度）
+  const HGH_MAX_DT = 1 / 30;         // 1回の計算に使う時間の上限（秒。落ちた時に暴れないため）
+  let hgHair = null;                 // {list:[…], n: 髪ボーン数}
+  let hgHairInfo = '未読込';
+  function setupHgHair(model, group) {
+    hgHair = null;
+    const hairSet = new Set();
+    model.traverse(function (o) {
+      if (!o.isBone || hairSet.size >= HGH_MAX_BONES) return;
+      const nm = o.name || '';
+      if (HGH_BONE_RE.test(nm) && !HGH_EXCLUDE_RE.test(nm)) hairSet.add(o);
+    });
+    if (!hairSet.size) {
+      const names = []; model.traverse(function (o) { if (o.isBone && names.length < 12) names.push(o.name || '無名'); });
+      hgHairInfo = '0本（骨名の例: ' + names.join(', ') + '）';
+      return;
+    }
+    // 髪ボーンとその祖先（groupまで）だけを、親→子の順で毎フレーム更新する（モデル全体の行列更新はしない）
+    const need = new Set();
+    hairSet.forEach(function (b) { for (let p = b; p; p = p.parent) { if (need.has(p)) break; need.add(p); if (p === group) break; } });
+    const order = [];
+    (function walk(o) { if (need.has(o)) order.push(o); for (let i = 0; i < o.children.length; i++) walk(o.children[i]); })(group);
+    const index = new Map();
+    const list = order.map(function (o, i) {
+      index.set(o, i);
+      const e = { o: o, hair: hairSet.has(o), par: o === group ? -1 : (index.has(o.parent) ? index.get(o.parent) : -1),
+        wq: new THREE.Quaternion(), q0: o.quaternion.clone(), out: o.quaternion.clone(),
+        tailLocal: new THREE.Vector3(), cur: new THREE.Vector3(), prev: new THREE.Vector3(), init: false };
+      if (e.hair) {   // 骨の先端（この骨の座標系）: 髪の子骨の位置の平均。子がなければ親から伸びてきた向きの延長
+        let n = 0;
+        o.children.forEach(function (c) { if (hairSet.has(c)) { e.tailLocal.add(c.position); n++; } });
+        if (n) e.tailLocal.divideScalar(n);
+        else {
+          const len = o.position.length();
+          e.tailLocal.copy(len > 1e-6 ? o.position : new THREE.Vector3(0, 0.05, 0));
+          e.tailLocal.applyQuaternion(new THREE.Quaternion().copy(o.quaternion).invert());
+          if (len > 1e-6) e.tailLocal.setLength(len);
+        }
+      }
+      return e;
+    });
+    hgHair = { list: list, n: hairSet.size };
+    hgHairInfo = hairSet.size + '本' + (hairSet.size >= HGH_MAX_BONES ? '（上限）' : '');
+  }
+  const _hh = { pos: new THREE.Vector3(), scl: new THREE.Vector3(), head: new THREE.Vector3(), tail: new THREE.Vector3(),
+    da: new THREE.Vector3(), dn: new THREE.Vector3(), nx: new THREE.Vector3(), tmp: new THREE.Vector3(),
+    q1: new THREE.Quaternion(), pq: new THREE.Quaternion(), dq: new THREE.Quaternion(), ident: new THREE.Quaternion() };
+  function updateHgHair(dt) {
+    if (!HGH_ON || !hgHair || !(dt > 0)) return;
+    dt = Math.min(dt, HGH_MAX_DT);
+    const k = 1 - Math.exp(-HGH_STIFF * dt), damp = Math.exp(-HGH_DRAG * dt);
+    const cosMax = Math.cos(HGH_MAX_DEG * Math.PI / 180), sinMax = Math.sin(HGH_MAX_DEG * Math.PI / 180);
+    const H = _hh, list = hgHair.list;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i], o = e.o;
+      if (e.hair && o.quaternion.equals(e.out)) o.quaternion.copy(e.q0);   // アニメが動かしていない骨は元の姿勢から始める（前フレームの揺れを積み上げない）
+      o.updateMatrix();
+      o.matrixWorld.multiplyMatrices(o.parent.matrixWorld, o.matrix);
+      o.matrixWorld.decompose(H.pos, e.wq, H.scl);
+      if (!e.hair) continue;
+      const pq = e.par >= 0 ? list[e.par].wq : H.ident;
+      H.head.copy(H.pos);
+      H.tail.copy(e.tailLocal).applyMatrix4(o.matrixWorld);   // アニメどおりの先端の位置
+      H.da.subVectors(H.tail, H.head);
+      const len = H.da.length();
+      if (len < 1e-6) continue;
+      H.da.divideScalar(len);
+      if (!e.init || e.cur.distanceTo(H.tail) > len * 4) { e.cur.copy(H.tail); e.prev.copy(H.tail); e.init = true; }
+      // 先端の位置を進める: 前フレームの勢い（減衰つき）＋アニメの位置へ引き戻す力＋重力
+      H.nx.subVectors(e.cur, e.prev).multiplyScalar(damp).add(e.cur);
+      H.nx.addScaledVector(H.tmp.subVectors(H.tail, e.cur), k);
+      H.nx.y -= HGH_GRAVITY * dt * dt;
+      // 骨の長さを保ち、アニメの向きから曲がりすぎないようにする
+      H.dn.subVectors(H.nx, H.head);
+      const dl = H.dn.length();
+      if (dl < 1e-6) H.dn.copy(H.da); else H.dn.divideScalar(dl);
+      const cosA = H.da.dot(H.dn);
+      if (cosA < cosMax) {
+        H.tmp.copy(H.dn).addScaledVector(H.da, -cosA);
+        const pl = H.tmp.length();
+        if (pl > 1e-6) H.dn.copy(H.da).multiplyScalar(cosMax).addScaledVector(H.tmp, sinMax / pl); else H.dn.copy(H.da);
+      }
+      H.nx.copy(H.head).addScaledVector(H.dn, len);
+      e.prev.copy(e.cur); e.cur.copy(H.nx);
+      // 向きの差（ワールド）を、この骨のローカル回転へ移して反映
+      H.dq.setFromUnitVectors(H.da, H.dn);
+      H.pq.copy(pq);
+      H.q1.copy(pq).invert().multiply(H.dq).multiply(H.pq).multiply(o.quaternion);
+      o.quaternion.copy(H.q1);
+      e.out.copy(H.q1);
+      e.wq.premultiply(H.dq);
+      o.updateMatrix();
+      o.matrixWorld.multiplyMatrices(o.parent.matrixWorld, o.matrix);   // 子骨の計算のため
+    }
+  }
+
   // ---- h.glb（idleをループ再生するだけの追加モデル。位置・サイズ・傾きは操作側/表示側のパネルで調整） ----
   const HG_URL = 'h.glb?' + ASSET_VERSION;            // index.html と同じ場所に置く
   let hgState = '未読込';
@@ -1856,6 +1962,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       const hgRef = Math.max(hgSize.x, hgSize.y, hgSize.z, 1e-3);   // 質感の細かさの基準（モデルの大きさ）
       model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true; try { applyHgLook(o, hgRef); } catch (err) { console.warn('[hgLook] 質感の設定に失敗', err); } } });
       group.add(model);
+      try { setupHgHair(model, group); } catch (err) { hgHair = null; hgHairInfo = '設定に失敗'; console.warn('[hgHair] 髪ボーンの設定に失敗', err); }
       hgState = '表示中';
       const clips = gltf.animations || [];
       if (clips.length === 0) { hgAnim = '  アニメなし'; if (onDone) onDone(); return; }
@@ -3434,6 +3541,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       R.hg.rotation.x = inp.hgt * Math.PI / 180;
       R.hg.rotation.z = hJellyRotFull * hf;
     }
+    if (R && R.hg) { try { updateHgHair(dt); } catch (err) { hgHair = null; console.warn('[hgHair] 髪ボーンの更新に失敗', err); } }   // 髪ボーン: hの位置・アニメが決まった後に、遅れてついてくる揺れを足す
     if (H_SPLIT_ON) updateHSpheres(dt, jellySVel, softLimit);   // 肉の揺れ（ゼリー揺れと同じ強弱・きっかけで動く）
     // partの「大」モーフ: 2action0中は角度に連動して増減し、最大（0°）で1に達する。2actionに入ったらそのまま1を維持する
     {
@@ -3613,6 +3721,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         'モデル: ' + playerState + playerAnim + playerProg + '\n' +
         'h.glb: ' + hgState + hgAnim + '\n' +
         'h.glb材質: ' + (hgLookNames.length ? hgLookNames.join(', ') : '未読込') + '\n' +
+        'h.glb髪ボーン: ' + hgHairInfo + '\n' +
         'part.glb: ' + hState + hAnim + (hSplitBoneCount ? '  骨' + hSplitBoneCount + '本' : '') + (partPushLen > 0.0005 ? '  押し出し ' + (partPushLen * 100).toFixed(1) + 'cm' : '') + '\n' +
         'part材質: ' + (hSkinNames.length ? hSkinNames.join(', ') : '未読込') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +

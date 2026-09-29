@@ -3814,6 +3814,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let tiltAxis = 'b';
   const TILT_MAX = 7;                        // 角度の測定範囲：基準から ±7° まで
   let tiltRefQ = null;                       // 基準の向き（この向きを0°とする）
+  let armRefZ = null;                        // 角度を反映した瞬間のpart位置Z（armとpartの初期関係の基準）
+  let armRefPending = true;                  // true: 次に角度が反映された瞬間に基準を取り直す
   let tiltZeroPending = true;                // 次に角度データが届いた時点を基準にする
   // 操作側からの角度は約30Hz送信だが描画は60〜120Hzで動くため、そのまま使うと値が数フレーム
   // 据え置かれてから飛ぶ「カクツキ」になる。テンポ（角度→再生位置の対応）は変えず、
@@ -3830,7 +3832,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let tiltManualVal = -7;                    // 手動角度（度）。既定は先頭フレーム（-7°）
   const tiltManualBtn = $('#tiltManualBtn'), tiltManualWrap = $('#tiltManualWrap'),
         tiltManualRng = $('#tiltManualRng'), tiltManualValTxt = $('#tiltManualValTxt');
-  $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; lastTiltKey = ''; });
+  $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; armRefPending = true; lastTiltKey = ''; });
   $('#tiltSel').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-axis]');
     if (!btn) return;
@@ -3840,6 +3842,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   });
   tiltManualBtn.addEventListener('click', () => {
     tiltManual = !tiltManual;
+    armRefPending = true;
     tiltManualBtn.classList.toggle('on', tiltManual);
     tiltManualWrap.classList.toggle('hidden', !tiltManual);
     lastTiltKey = '';
@@ -3951,7 +3954,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     }
     if (R.arm) {
       R.arm.visible = true;
-      R.arm.position.set(inp.aox, inp.aoy, inp.aoz + partOff.z * ARM_FOLLOW_Z);   // 初期位置（playerと同じ位置＋操作側からのズレ調整）を基準に、partが押し出されたら前後（Z）だけ一緒に動く
+      R.arm.position.set(inp.aox, inp.aoy, inp.aoz + (armRefZ === null ? partOff.z : (R.h ? R.h.position.z : 0) - armRefZ) * ARM_FOLLOW_Z);   // 初期位置（playerと同じ位置＋操作側からのズレ調整）を基準に、partが押し出されたら前後（Z）だけ一緒に動く
       R.arm.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
     }
     if (armMixer) armMixer.update(dt);
@@ -3984,8 +3987,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     }
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
     const gyroLive = fresh && inp.ce === 1;
-    const tiltLive = tiltManual || gyroLive;   // 手動モード中は操作側からの受信の有無に関わらず「有効」として扱う
-    if (!linked) { tiltZeroPending = true; tiltSmoothReady = false; }          // 切断中は次の接続で基準・補間を取り直す
+    const tiltLive = tiltManual || gyroLive;
+    // 手動／操作側で角度が反映された瞬間のpart位置を、armとpartの基準関係として記録する
+    if (!tiltLive) { armRefPending = true; armRefZ = null; }
+    else if (armRefPending) { armRefZ = R.h ? R.h.position.z : 0; armRefPending = false; }   // 手動モード中は操作側からの受信の有無に関わらず「有効」として扱う
+    if (!linked) { tiltZeroPending = true; tiltSmoothReady = false; armRefPending = true; }          // 切断中は次の接続で基準・補間を取り直す
     if (gyroLive && tiltZeroPending) {            // 最初のデータ／リセット押下時の向きを0°にする
       tiltRefQ = inp.cq.slice();
       tiltZeroPending = false;

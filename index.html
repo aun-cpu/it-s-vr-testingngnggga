@@ -3285,8 +3285,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const H_SKIN_RE = /skin|肌|body|体|flesh|face|顔|hada|皮/i;             // 材質名がこれに合えば肌
   const H_NONSKIN_RE = /eye|目|眉|brow|hair|髪|mouth|口|teeth|歯|tongue|舌|lash|睫|cloth|服|shoe|靴|nail|爪/i;   // 合えば肌にしない
   const H_SKIN_ROUGH = 0.55;           // 表面の粗さ（小さいほどテカる）
-  const H_SKIN_PORE_FREQ = 300, H_SKIN_PORE_DEPTH = 0.0003;      // 毛穴・キメ: 細かさ(1/m。大きいほど細かい)と深さ(m)
-  const H_SKIN_UNEVEN_FREQ = 80, H_SKIN_UNEVEN_DEPTH = 0.001;    // 肌のなだらかな凹凸
+  const H_SKIN_PORE_FREQ = 900, H_SKIN_PORE_DEPTH = 0.00008;      // 毛穴・キメ: 細かさ(1/m。大きいほど細かい)と深さ(m)
+  const H_SKIN_UNEVEN_FREQ = 220, H_SKIN_UNEVEN_DEPTH = 0.0003;    // 肌のなだらかな凹凸
   const H_SKIN_TONE = 0.06, H_SKIN_TONE_FREQ = 22;                // 赤み・色ムラの強さと細かさ
   const H_SKIN_TEX_ANISO = 8;          // テクスチャがある材質の異方性フィルタ（ドット感の軽減）
   const H_SKIN_SSS = 0.6;              // 輪郭付近の赤み（皮下散乱風）の強さ

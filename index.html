@@ -289,6 +289,7 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" data-tab="tube">筒</button>
       <button type="button" data-tab="lq">液体筒</button>
       <button type="button" data-tab="hg">h.glb</button>
+      <button type="button" data-tab="se">ぼかし部位</button>
     </div>
     <div id="posTab-body">
       <p class="postitle">水滴の位置（表示側の視点からの座標・m）</p>
@@ -327,6 +328,19 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="hgz" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-hgz" data-k="hgz" min="-5" max="5" step="0.01"><button type="button" class="pstep" data-k="hgz" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-hgz">0.00</span></div>
       <div class="prow"><span class="pl">サイズ</span><button type="button" class="pstep" data-k="hgs" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-hgs" data-k="hgs" min="0.1" max="5" step="0.01"><button type="button" class="pstep" data-k="hgs" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-hgs">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="pstep" data-k="hgt" data-d="-1" data-step="1">−</button><input type="range" id="rng-hgt" data-k="hgt" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="hgt" data-d="1" data-step="1">＋</button><span class="pv" id="val-hgt">0.00</span></div>
+    </div>
+    <div id="posTab-se" class="hidden">
+      <p class="postitle">ぼかす部位（pubic系メッシュのみ）の位置・ぼかし調整</p>
+      <div class="prow"><span class="pl">X 左右(cm)</span><button type="button" class="pstep" data-k="sfx" data-d="-1" data-step="0.5">−</button><input type="range" id="rng-sfx" data-k="sfx" min="-30" max="30" step="0.5"><button type="button" class="pstep" data-k="sfx" data-d="1" data-step="0.5">＋</button><span class="pv" id="val-sfx">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下(cm)</span><button type="button" class="pstep" data-k="sfy" data-d="-1" data-step="0.5">−</button><input type="range" id="rng-sfy" data-k="sfy" min="-30" max="30" step="0.5"><button type="button" class="pstep" data-k="sfy" data-d="1" data-step="0.5">＋</button><span class="pv" id="val-sfy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後(cm)</span><button type="button" class="pstep" data-k="sfz" data-d="-1" data-step="0.5">−</button><input type="range" id="rng-sfz" data-k="sfz" min="-30" max="30" step="0.5"><button type="button" class="pstep" data-k="sfz" data-d="1" data-step="0.5">＋</button><span class="pv" id="val-sfz">0.00</span></div>
+      <div class="prow"><span class="pl">大きさ</span><button type="button" class="pstep" data-k="sfs" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-sfs" data-k="sfs" min="0.5" max="2.5" step="0.01"><button type="button" class="pstep" data-k="sfs" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-sfs">0.00</span></div>
+      <div class="prow"><span class="pl">ぼかし幅</span><button type="button" class="pstep" data-k="sfw" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-sfw" data-k="sfw" min="0.1" max="1.5" step="0.01"><button type="button" class="pstep" data-k="sfw" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-sfw">0.00</span></div>
+      <div class="prow"><span class="pl">ぼかし強さ</span><button type="button" class="pstep" data-k="sfp" data-d="-1" data-step="0.1">−</button><input type="range" id="rng-sfp" data-k="sfp" min="0.5" max="6" step="0.1"><button type="button" class="pstep" data-k="sfp" data-d="1" data-step="0.1">＋</button><span class="pv" id="val-sfp">0.00</span></div>
+      <div class="prow"><span class="pl">輪郭の透け</span><button type="button" class="pstep" data-k="sfv" data-d="-1" data-step="0.05">−</button><input type="range" id="rng-sfv" data-k="sfv" min="0" max="1" step="0.05"><button type="button" class="pstep" data-k="sfv" data-d="1" data-step="0.05">＋</button><span class="pv" id="val-sfv">0.00</span></div>
+      <div class="prow"><span class="pl">密度</span><button type="button" class="pstep" data-k="sfd" data-d="-1" data-step="0.05">−</button><input type="range" id="rng-sfd" data-k="sfd" min="0.3" max="4" step="0.05"><button type="button" class="pstep" data-k="sfd" data-d="1" data-step="0.05">＋</button><span class="pv" id="val-sfd">0.00</span></div>
+      <div class="prow"><span class="pl">拡散の広がり(%)</span><button type="button" class="pstep" data-k="sfh" data-d="-1" data-step="0.1">−</button><input type="range" id="rng-sfh" data-k="sfh" min="0" max="15" step="0.1"><button type="button" class="pstep" data-k="sfh" data-d="1" data-step="0.1">＋</button><span class="pv" id="val-sfh">0.00</span></div>
+      <div class="prow"><span class="pl">拡散の濃さ</span><button type="button" class="pstep" data-k="sfa" data-d="-1" data-step="0.05">−</button><input type="range" id="rng-sfa" data-k="sfa" min="0" max="1" step="0.05"><button type="button" class="pstep" data-k="sfa" data-d="1" data-step="0.05">＋</button><span class="pv" id="val-sfa">0.00</span></div>
     </div>
     <div id="posTab-lq" class="hidden">
       <p class="postitle">液体用の筒の位置・大きさ調整（partの位置からの差・m/°。液体はこの筒の中ほどから出る）</p>
@@ -433,6 +447,18 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">サイズ</span><button type="button" class="dpstep" data-k="hgs" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hgs" data-k="hgs" min="0.1" max="5" step="0.01"><button type="button" class="dpstep" data-k="hgs" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hgs">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="hgt" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-hgt" data-k="hgt" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="hgt" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-hgt">0.00</span></div>
       <button type="button" class="mini" id="dBtnHgReset" style="width:100%; margin-top:4px">h.glbをリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">ぼかす部位（pubic系のみ）の位置・ぼかし調整</p>
+      <div class="prow"><span class="pl">X 左右(cm)</span><button type="button" class="dpstep" data-k="sfx" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-sfx" data-k="sfx" min="-30" max="30" step="0.5"><button type="button" class="dpstep" data-k="sfx" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-sfx">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下(cm)</span><button type="button" class="dpstep" data-k="sfy" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-sfy" data-k="sfy" min="-30" max="30" step="0.5"><button type="button" class="dpstep" data-k="sfy" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-sfy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後(cm)</span><button type="button" class="dpstep" data-k="sfz" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-sfz" data-k="sfz" min="-30" max="30" step="0.5"><button type="button" class="dpstep" data-k="sfz" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-sfz">0.00</span></div>
+      <div class="prow"><span class="pl">大きさ</span><button type="button" class="dpstep" data-k="sfs" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-sfs" data-k="sfs" min="0.5" max="2.5" step="0.01"><button type="button" class="dpstep" data-k="sfs" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-sfs">0.00</span></div>
+      <div class="prow"><span class="pl">ぼかし幅</span><button type="button" class="dpstep" data-k="sfw" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-sfw" data-k="sfw" min="0.1" max="1.5" step="0.01"><button type="button" class="dpstep" data-k="sfw" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-sfw">0.00</span></div>
+      <div class="prow"><span class="pl">ぼかし強さ</span><button type="button" class="dpstep" data-k="sfp" data-d="-1" data-step="0.1">−</button><input type="range" id="d-rng-sfp" data-k="sfp" min="0.5" max="6" step="0.1"><button type="button" class="dpstep" data-k="sfp" data-d="1" data-step="0.1">＋</button><span class="pv" id="d-val-sfp">0.00</span></div>
+      <div class="prow"><span class="pl">輪郭の透け</span><button type="button" class="dpstep" data-k="sfv" data-d="-1" data-step="0.05">−</button><input type="range" id="d-rng-sfv" data-k="sfv" min="0" max="1" step="0.05"><button type="button" class="dpstep" data-k="sfv" data-d="1" data-step="0.05">＋</button><span class="pv" id="d-val-sfv">0.00</span></div>
+      <div class="prow"><span class="pl">密度</span><button type="button" class="dpstep" data-k="sfd" data-d="-1" data-step="0.05">−</button><input type="range" id="d-rng-sfd" data-k="sfd" min="0.3" max="4" step="0.05"><button type="button" class="dpstep" data-k="sfd" data-d="1" data-step="0.05">＋</button><span class="pv" id="d-val-sfd">0.00</span></div>
+      <div class="prow"><span class="pl">拡散の広がり(%)</span><button type="button" class="dpstep" data-k="sfh" data-d="-1" data-step="0.1">−</button><input type="range" id="d-rng-sfh" data-k="sfh" min="0" max="15" step="0.1"><button type="button" class="dpstep" data-k="sfh" data-d="1" data-step="0.1">＋</button><span class="pv" id="d-val-sfh">0.00</span></div>
+      <div class="prow"><span class="pl">拡散の濃さ</span><button type="button" class="dpstep" data-k="sfa" data-d="-1" data-step="0.05">−</button><input type="range" id="d-rng-sfa" data-k="sfa" min="0" max="1" step="0.05"><button type="button" class="dpstep" data-k="sfa" data-d="1" data-step="0.05">＋</button><span class="pv" id="d-val-sfa">0.00</span></div>
+      <button type="button" class="mini" id="dBtnSeReset" style="width:100%; margin-top:4px">ぼかす部位をリセット</button>
       <p class="postitle" style="margin:10px 0 6px">bg.glbの位置調整（m）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="bgstep" data-bk="x" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-x" data-bk="x" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="x" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-x">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="bgstep" data-bk="y" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-y" data-bk="y" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="y" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-y">0.00</span></div>
@@ -564,6 +590,7 @@ body.stereo .dispbar{opacity:.55}
     lqx: 0, lqy: 0.27, lqz: 0.13, lqr: 0.02, lql: 0.02, lqt: 3.0, lqs: 1.5,
     lqpr: 0.025,   // 板のまわりの液体溜まり（リング）の最大の半径(m)
     lqwu: 0.45, lqws: 0.75,   // partの濡れ範囲: 上への広がり倍率（小さいほど上に広がらない）・全体の広がり倍率
+    sfx: 0, sfy: 0, sfz: 0, sfs: 1.12, sfw: 1.0, sfp: 2.6, sfv: 0.85, sfd: 1.5, sfh: 3.5, sfa: 0.4,   // pubic系メッシュだけ: 位置(cm)・大きさ・ぼかし幅・ぼかし強さ・輪郭の透け・密度・拡散の広がり(%)・拡散の濃さ
     hgx: 0.01, hgy: -0.27, hgz: 0.03, hgs: 1.14, hgt: -4,   // h.glb（idle再生の追加モデル）: 位置(m)・サイズ（倍率）・傾き（度）
     // 液体用の筒（別の筒）: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度）・液の大きさ倍率
     // 筒: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度、X軸まわり）
@@ -784,7 +811,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.pstep').forEach((b) => {
     b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs', 'lqwu', 'lqws', 'lqpr'], hg: ['hgx', 'hgy', 'hgz', 'hgs', 'hgt'] };
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs', 'lqwu', 'lqws', 'lqpr'], hg: ['hgx', 'hgy', 'hgz', 'hgs', 'hgt'], se: ['sfx', 'sfy', 'sfz', 'sfs', 'sfw', 'sfp', 'sfv', 'sfd', 'sfh', 'sfa'] };
   let posTab = 'body';
   document.querySelectorAll('#posTabs button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -866,6 +893,10 @@ body.stereo .dispbar{opacity:.55}
   });
   document.querySelectorAll('.dpstep:not([data-sk])').forEach((b) => {
     b.addEventListener('click', () => setDispPos(b.dataset.k, inp[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
+  });
+  $('#dBtnSeReset').addEventListener('click', () => {
+    for (const k of TAB_KEYS.se) inp[k] = POS_DEFAULT[k];
+    syncDispPosUi(); buzz(15);
   });
   $('#dBtnHgReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.hg) inp[k] = POS_DEFAULT[k];
@@ -2685,14 +2716,14 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   // モデルの色合いを少し薄く・光沢を少し加える（PBR/Phong どちらのマテリアルでも効くように分岐）
   // ---- 「pubic」「恥」を含む名前のplayerメッシュの輪郭をぼかす（縁に向かって透明にフェードさせる） ----
   const SOFT_EDGE_RE = /pubic|恥/i;   // ぼかすメッシュの名前（メッシュ名・材質名・親ノード名のどれか）。足したい名前はここに
-  const SOFT_EDGE_WIDTH = 1.0;        // ぼかす幅（メッシュ内側へ向かう最大距離に対する割合。0.3=やや / 0.6=かなり / 1.0=中心以外ほぼ全部）
-  const SOFT_EDGE_POWER = 2.6;        // 大きいほど縁が「より透明」になり、輪郭が溶ける（1.0=直線的）
-  const SOFT_EDGE_VIEW = 0.85;        // 視線に対して斜めの面（シルエット）を透かす強さ。0で無効
-  const SOFT_EDGE_SCALE = 1.12;       // 大きさの誇張（中心から外へ拡大する倍率。1.0=そのまま）
-  const SOFT_EDGE_DENSITY = 1.5;      // 密度の誇張（中心部の濃さの倍率。1.0=そのまま、大きいほど中心が濃く詰まって見える）
-  const SOFT_EDGE_SHELLS = 3;         // 輪郭の外側に重ねる拡散層の数（0で無効）。多いほど滲みが広く滑らか
-  const SOFT_EDGE_SHELL_SPREAD = 0.035; // 拡散層1枚ごとの広がり（メッシュの大きさに対する比率）。大きいほど遠くまで拡散する
-  const SOFT_EDGE_SHELL_ALPHA = 0.4;  // 拡散層の濃さ（外側の層ほど薄くなる）
+  const SOFT_EDGE_SHELLS = 3;         // 輪郭の外側に重ねる拡散層の数（0で無効）。位置・ぼかしの強さなどは操作側「ぼかし部位」タブ／表示側パネルのスライダーで調整
+  // スライダーの値をシェーダーへ渡す共有ユニフォーム（毎フレーム updateSoftEdgeUniforms で更新）
+  const SE_U = { off: { value: new THREE.Vector3() }, scale: { value: 1 }, w: { value: 1 }, p: { value: 1 }, view: { value: 0 }, dens: { value: 1 }, spread: { value: 0 }, shellA: { value: 0 } };
+  function updateSoftEdgeUniforms() {
+    SE_U.off.value.set(inp.sfx / 100, inp.sfy / 100, inp.sfz / 100);   // cm → m（ワールド座標）
+    SE_U.scale.value = inp.sfs; SE_U.w.value = inp.sfw; SE_U.p.value = inp.sfp; SE_U.view.value = inp.sfv;
+    SE_U.dens.value = inp.sfd; SE_U.spread.value = inp.sfh / 100; SE_U.shellA.value = inp.sfa;
+  }
   function softEdgeMatch(o) {
     if (SOFT_EDGE_RE.test(o.name || '')) return true;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
@@ -2734,7 +2765,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       for (let j = 0; j < bx.length; j++) { const dx = x - bx[j], dy = y - by[j], dz = z - bz[j], dd = dx * dx + dy * dy + dz * dz; if (dd < best) best = dd; }
       d[i] = Math.sqrt(best); if (d[i] > mx) mx = d[i];
     }
-    if (mx > 0) for (let i = 0; i < n; i++) d[i] = Math.min(1, d[i] / (mx * SOFT_EDGE_WIDTH));
+    if (mx > 0) for (let i = 0; i < n; i++) d[i] = Math.min(1, d[i] / mx);   // 0=縁 / 1=最も奥（ぼかし幅はシェーダー側のスライダーで決める）
     geo.setAttribute('seDist', new THREE.BufferAttribute(d, 1));
     return true;
   }
@@ -2748,8 +2779,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (!geo.boundingBox) geo.computeBoundingBox();
     const bb = geo.boundingBox, ctr = bb.getCenter(new THREE.Vector3()), bsz = bb.getSize(new THREE.Vector3());
     const dim = Math.max(bsz.x, bsz.y, bsz.z) || 1;
-    // 拡大・拡散の見た目を作る材質。off: 法線方向への膨らませ量、am: 濃さの倍率、dens: 中心の濃さ倍率
-    const makeConv = function (off, am, dens) {
+    // k=0: 本体（拡大＋縁フェード）／ k>=1: 外側へ膨らませた拡散層
+    const makeConv = function (k) {
       return function (m0) {
         if (!m0 || !(m0.isMeshStandardMaterial || m0.isMeshPhongMaterial || m0.isMeshLambertMaterial || m0.isMeshToonMaterial)) return m0;
         const m = m0.clone(); m.name = m0.name;   // 他のメッシュと共有している材質に影響しないよう複製する
@@ -2757,36 +2788,45 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         const prev = m0.onBeforeCompile;
         m.onBeforeCompile = function (shader, renderer) {
           if (prev) prev.call(this, shader, renderer);
-          const f = function (v) { return v.toFixed(5); };
-          let vs = shader.vertexShader.replace('#include <common>', '#include <common>\n' + (hasAttr ? 'attribute float seDist;\nvarying float vSeDist;\n' : ''));
-          vs = vs.replace('#include <begin_vertex>',
-            '#include <begin_vertex>\n' + (hasAttr ? 'vSeDist = seDist;\n' : '') +
-            'transformed = vec3(' + f(ctr.x) + ',' + f(ctr.y) + ',' + f(ctr.z) + ') + (transformed - vec3(' + f(ctr.x) + ',' + f(ctr.y) + ',' + f(ctr.z) + ')) * ' + f(SOFT_EDGE_SCALE) + ';\n' +
-            (off > 0 ? 'transformed += normalize(normal) * ' + f(off) + ';\n' : ''));
-          shader.vertexShader = vs;
-          const view = SOFT_EDGE_VIEW.toFixed(3), pw = SOFT_EDGE_POWER.toFixed(3);
+          const U = shader.uniforms;
+          U.uSeOff = SE_U.off; U.uSeScale = SE_U.scale; U.uSeW = SE_U.w; U.uSeP = SE_U.p; U.uSeView = SE_U.view;
+          U.uSeDens = SE_U.dens; U.uSeSpread = SE_U.spread; U.uSeShellA = SE_U.shellA;
+          U.uSeCtr = { value: ctr.clone() }; U.uSeDim = { value: dim }; U.uSeK = { value: k };
+          shader.vertexShader = shader.vertexShader
+            .replace('#include <common>', '#include <common>\nuniform vec3 uSeCtr; uniform vec3 uSeOff; uniform float uSeScale, uSeDim, uSeSpread, uSeK;\n' + (hasAttr ? 'attribute float seDist;\nvarying float vSeDist;\n' : ''))
+            .replace('#include <begin_vertex>',
+              '#include <begin_vertex>\n' + (hasAttr ? 'vSeDist = seDist;\n' : '') +
+              'transformed = uSeCtr + (transformed - uSeCtr) * uSeScale;\n' +
+              'transformed += normalize(normal) * (uSeDim * uSeSpread * uSeK);\n')
+            .replace('#include <project_vertex>',
+              'vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);\n' +
+              'mvPosition.xyz += (viewMatrix * vec4(uSeOff, 0.0)).xyz;   // 位置の調整（ワールド座標のm）\n' +
+              'gl_Position = projectionMatrix * mvPosition;');
           shader.fragmentShader = shader.fragmentShader
-            .replace('#include <common>', '#include <common>\n' + (hasAttr ? 'varying float vSeDist;\n' : ''))
+            .replace('#include <common>', '#include <common>\nuniform float uSeW, uSeP, uSeView, uSeDens, uSeShellA, uSeK;\n' + (hasAttr ? 'varying float vSeDist;\n' : ''))
             .replace('#include <dithering_fragment>',
               '{ float seA = 1.0;\n' +
-              (hasAttr ? 'float seE = clamp(vSeDist, 0.0, 1.0); seA *= pow(seE * seE * (3.0 - 2.0 * seE), ' + pw + ');\n' : '') +
+              (hasAttr ? 'float seE = clamp(vSeDist / max(uSeW, 0.01), 0.0, 1.0); seA *= pow(seE * seE * (3.0 - 2.0 * seE), uSeP);\n' : '') +
               '#ifndef FLAT_SHADED\n' +
-              'if (' + view + ' > 0.0) seA *= mix(1.0 - ' + view + ', 1.0, smoothstep(0.0, 0.6, abs(dot(normalize(vNormal), normalize(vViewPosition)))));\n' +
+              'seA *= mix(1.0 - uSeView, 1.0, smoothstep(0.0, 0.6, abs(dot(normalize(vNormal), normalize(vViewPosition)))));\n' +
               '#endif\n' +
-              'seA = min(1.0, seA * ' + f(dens) + ') * ' + f(am) + ';\n' +
+              'float seDens = uSeK > 0.5 ? 1.0 : uSeDens;\n' +
+              'float seMul = uSeK > 0.5 ? uSeShellA / uSeK : 1.0;\n' +
+              'seA = min(1.0, seA * seDens) * seMul;\n' +
               'gl_FragColor.a *= seA; }\n#include <dithering_fragment>');
         };
+        // three.jsはonBeforeCompileの文字列でプログラムを共有するため、加工の違い（縁データの有無・元の加工）をキーに含める
+        m.customProgramCacheKey = function () { return 'softEdge_' + (hasAttr ? 1 : 0) + '_' + (prev ? prev.toString() : ''); };
         m.needsUpdate = true;
         return m;
       };
     };
     const origMat = o.material;   // 拡散層は加工前の材質から作る（二重に加工されないように）
-    const conv0 = makeConv(0, 1, SOFT_EDGE_DENSITY);
-    o.material = Array.isArray(o.material) ? o.material.map(conv0) : conv0(o.material);
+    const conv0 = makeConv(0);
+    o.material = Array.isArray(origMat) ? origMat.map(conv0) : conv0(origMat);
     o.renderOrder = Math.max(o.renderOrder || 0, 1);   // 半透明なので体より後に描く
-    // 輪郭の外側へ滲む拡散層（同じ形を少しずつ膨らませて薄く重ねる）
     for (let k = 1; k <= SOFT_EDGE_SHELLS; k++) {
-      const cv = makeConv(dim * SOFT_EDGE_SHELL_SPREAD * k, SOFT_EDGE_SHELL_ALPHA / k, 1.0);
+      const cv = makeConv(k);
       const mats = Array.isArray(origMat) ? origMat.map(function (mm) { return cv(mm); }) : cv(origMat);
       let sh;
       if (o.isSkinnedMesh && o.skeleton) { sh = new THREE.SkinnedMesh(geo, mats); sh.bind(o.skeleton, o.bindMatrix); sh.bindMode = o.bindMode; }
@@ -3730,6 +3770,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     if (hgMixer) hgMixer.update(dt);                         // h.glbのidleもループ再生
+    updateSoftEdgeUniforms();   // pubic系メッシュの位置・ぼかし（スライダーの値）
     if (R && R.bg) R.bg.position.set(bgP.x, bgP.y, bgP.z);   // bg.glbの位置（表示側パネルの値）
     if (R && R.hg) {   // h.glbの位置・サイズ・傾き（パネルの値）＋ partの揺れ・押し出しを HG_FOLLOW の割合だけ反映（partはhの部位のため）
       const hf = HG_FOLLOW;

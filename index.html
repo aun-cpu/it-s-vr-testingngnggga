@@ -3940,21 +3940,16 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
 
   let lastVr = 0, lastRc = 0, lastLkUi = 0;
 
-  // ---- 水音（奥まで入れたら低い音／引き抜く時は速さに応じて細かい「ヌチチチッ」。音はブラウザ内で合成するので音声ファイルは不要） ----
+  // ---- 水音（参考音に合わせた、細かいクリックが不規則に続く音。棒が前へ／後ろへ動き出すたびに1回ずつ鳴らす。音はブラウザ内で合成するので音声ファイルは不要） ----
   const WATER_ON = true;
   const WATER_VOL = 1.0;              // 全体の音量（0〜2）
   const WATER_MIN_DEG = -2;           // この角度より奥（押し込み側）に入っている間だけ鳴らす
   const WATER_HYST_DEG = 0.6;         // この角度以上、逆向きに動いたら「向きが変わった」とみなす（手ぶれで鳴りすぎない）
-  const WATER_DEEP_DEG = 4.5;         // この角度以上まで押し込んだら「奥まで入れた」低い音を1回鳴らす
-  const WATER_DEEP_REARM = 2.5;       // この角度より手前に戻ると、次に奥まで入れた時にまた鳴る
-  const WATER_DEEP_VOL = 1.0;         // 低い音の音量
-  const WATER_PULL_MIN_VEL = 3;       // 度/秒: これより速く引き抜いている間だけ「チチチ」を鳴らす
-  const WATER_PULL_SPEED_REF = 60;    // 度/秒: この速さで最も細かくなる
-  const WATER_PULL_RATE_MIN = 7;      // 回/秒: ゆっくり引く時のクリックの回数
-  const WATER_PULL_RATE_MAX = 55;     // 回/秒: 速く引く時のクリックの回数（細かさ）
-  const WATER_PULL_VOL = 1.0;         // 引き抜く音の音量
-  let waterCtx = null, waterNoise = null;
-  let waterDeepArmed = true, waterPulling = false, waterPullAcc = 0, waterPrevSec = 0;
+  const WATER_MIN_GAP = 0.12;         // 秒: 連続して鳴らさない最短の間隔
+  const WATER_CLICK_RATE = 0.55;      // クリックの密度（大きいほど細かく詰まる。0.5〜2）
+  const WATER_BURST_SCALE = 1.0;      // 1回の鳴る長さの倍率
+  const WATER_HISS = 0;               // 背景の高音ざわつき（さらさら音）の音量。0で無し
+  let waterCtx = null, waterNoise = null, waterLastAt = 0;
   const wStroke = { dir: 0, lo: 0, hi: 0, init: false };
   function waterEnsure() {
     try {
@@ -3972,81 +3967,58 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     } catch (e) { return null; }
   }
   ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { document.addEventListener(ev, waterEnsure, { passive: true }); });   // iOSは操作をきっかけに音を有効にする必要がある
-  function waterReady() {
+  function playWater(dir, power) {   // dir: +1=前へ（押し込み） / -1=後ろへ（引き抜き）。参考音（音.mp3）に合わせた、細かい「チッ・チチッ」という不規則なクリックの連続
     const ctx = waterEnsure();
-    return (ctx && ctx.state === 'running' && waterNoise) ? ctx : null;
-  }
-  function playDeep(power) {   // 奥まで入れた時の、低い「ぬぷっ」という音
-    const ctx = waterReady(); if (!ctx) return;
-    const t = ctx.currentTime, pw = clamp(power, 0, 1), dur = 0.34;
+    if (!ctx || ctx.state !== 'running' || !waterNoise) return;
+    const t = ctx.currentTime;
+    const pw = clamp(power, 0, 1);
+    const dur = (dir > 0 ? 0.36 : 0.46) * WATER_BURST_SCALE;   // 引き抜く時は少し長く続く
     const out = ctx.createGain();
-    out.gain.value = clamp(WATER_VOL * WATER_DEEP_VOL * (0.7 + 0.3 * pw), 0, 2.5);
+    out.gain.value = clamp(WATER_VOL * (0.55 + 0.45 * pw) * 1.3, 0, 2.5);
     out.connect(ctx.destination);
-    // 低い胴鳴り（音程が下がる）
-    const o = ctx.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(52, t + dur);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.0001, t); og.gain.linearRampToValueAtTime(0.75, t + 0.02); og.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(og); og.connect(out); o.start(t); o.stop(t + dur + 0.02);
-    // 粘り気のある低いノイズ（もごもごした感じ）
-    const src = ctx.createBufferSource(); src.buffer = waterNoise; src.loop = true;
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 4;
-    lp.frequency.setValueAtTime(420, t); lp.frequency.exponentialRampToValueAtTime(140, t + dur);
-    const am = ctx.createGain(); am.gain.value = 0.5;
-    const lfo = ctx.createOscillator(); lfo.type = 'triangle'; lfo.frequency.value = 22 + Math.random() * 8;
-    const lg = ctx.createGain(); lg.gain.value = 0.4; lfo.connect(lg); lg.connect(am.gain);
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t); ng.gain.linearRampToValueAtTime(0.55, t + 0.03); ng.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(lp); lp.connect(am); am.connect(ng); ng.connect(out);
-    src.start(t, Math.random() * 0.2); src.stop(t + dur + 0.02); lfo.start(t); lfo.stop(t + dur + 0.02);
-  }
-  function playPullStart(power) {   // 引き抜き始めの「ヌ」（低めから上がる短い粘る音）
-    const ctx = waterReady(); if (!ctx) return;
-    const t = ctx.currentTime, pw = clamp(power, 0, 1), dur = 0.1;
-    const src = ctx.createBufferSource(); src.buffer = waterNoise; src.loop = true;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 4;
-    bp.frequency.setValueAtTime(230, t); bp.frequency.exponentialRampToValueAtTime(620, t + dur);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(clamp(WATER_VOL * WATER_PULL_VOL * (0.5 + 0.4 * pw), 0, 2), t + 0.03); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(bp); bp.connect(g); g.connect(ctx.destination);
-    src.start(t, Math.random() * 0.3); src.stop(t + dur + 0.02);
-  }
-  function playPullClick(power) {   // 引き抜き中の細かい「チッ」（速いほど回数が増える）
-    const ctx = waterReady(); if (!ctx) return;
-    const t = ctx.currentTime, pw = clamp(power, 0, 1);
-    const cs = ctx.createBufferSource(); cs.buffer = waterNoise;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
-    bp.frequency.value = 1600 + Math.random() * 2200 + pw * 800; bp.Q.value = 3;
-    const life = 0.004 + Math.random() * 0.006;
-    const amp = clamp(WATER_VOL * WATER_PULL_VOL * (0.18 + 0.45 * pw) * (0.6 + Math.random() * 0.6), 0, 2);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(amp, t + 0.0008); g.gain.exponentialRampToValueAtTime(0.0001, t + life);
-    cs.connect(bp); bp.connect(g); g.connect(ctx.destination);
-    cs.start(t, Math.random() * 0.45); cs.stop(t + life + 0.01);
+    // (1) 背景のかすかな高音のざわつき（6〜9kHz付近）。WATER_HISSが0なら鳴らさない
+    if (WATER_HISS > 0) {
+      const src = ctx.createBufferSource(); src.buffer = waterNoise; src.loop = true;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 7600; bp.Q.value = 1.4;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(WATER_HISS, t + 0.02);
+      for (let k = t + 0.03; k < t + dur; k += 0.012) g.gain.linearRampToValueAtTime(WATER_HISS * (0.35 + Math.random() * 0.9), k);   // 不規則に揺らす
+      g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.04);
+      src.connect(bp); bp.connect(g); g.connect(out);
+      src.start(t, Math.random() * 0.3); src.stop(t + dur + 0.06);
+    }
+    // (2) 不規則な間隔で並ぶクリック。多くは小さく、時々大きい。ほとんどが7〜8kHzの高い「チッ」で、たまに低めの「コッ」が混じる
+    let st = t + Math.random() * 0.012;
+    while (st < t + dur) {
+      const amp = (0.012 + 0.55 * Math.pow(Math.random(), 6)) * (0.6 + 0.4 * pw);
+      const low = Math.random() < 0.12;
+      const cs = ctx.createBufferSource(); cs.buffer = waterNoise;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = low ? 650 + Math.random() * 350 : 7000 + Math.random() * 1200;
+      bp.Q.value = low ? 3 : 2.5;
+      const life = Math.random() < 0.7 ? 0.002 + Math.random() * 0.004 : 0.012 + Math.random() * 0.016;   // 短いものが中心、時々少し長く残る
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.0001, st); cg.gain.linearRampToValueAtTime(amp, st + 0.0006); cg.gain.exponentialRampToValueAtTime(0.0001, st + life);
+      cs.connect(bp); bp.connect(cg); cg.connect(out);
+      cs.start(st, Math.random() * 0.45); cs.stop(st + life + 0.01);
+      // 次のクリックまでの間隔：20ms前後が中心、時々ぱらぱらと詰まったり間が空いたりする
+      st += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / WATER_CLICK_RATE;
+    }
   }
   function updateWaterSound(a, active, vel, nowSec) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒)
     if (!WATER_ON) return;
-    const dt = Math.min(0.1, Math.max(0, nowSec - waterPrevSec)); waterPrevSec = nowSec;
-    if (!active) { wStroke.init = false; wStroke.dir = 0; waterPulling = false; waterPullAcc = 0; waterDeepArmed = true; return; }
-    if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; waterDeepArmed = a < WATER_DEEP_DEG; return; }
+    if (!active) { wStroke.init = false; wStroke.dir = 0; return; }
+    if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; return; }
     if (a > wStroke.hi) wStroke.hi = a;
     if (a < wStroke.lo) wStroke.lo = a;
-    if (wStroke.dir !== 1 && a - wStroke.lo > WATER_HYST_DEG) { wStroke.dir = 1; wStroke.hi = a; wStroke.lo = a; }
-    else if (wStroke.dir !== -1 && wStroke.hi - a > WATER_HYST_DEG) { wStroke.dir = -1; wStroke.hi = a; wStroke.lo = a; }
-    // (1) 奥まで入れたら、低い音を1回
-    if (a >= WATER_DEEP_DEG && waterDeepArmed) { waterDeepArmed = false; playDeep(Math.abs(vel) / 40); }
-    else if (a < WATER_DEEP_REARM) waterDeepArmed = true;
-    // (2) 引き抜いている間、速さに応じた細かさで「ヌチチチッ」
-    const speed = -vel;
-    const pulling = wStroke.dir === -1 && speed > WATER_PULL_MIN_VEL && a >= WATER_MIN_DEG;
-    if (pulling) {
-      const k = clamp(speed / WATER_PULL_SPEED_REF, 0, 1);
-      if (!waterPulling) { waterPulling = true; waterPullAcc = 0.5; playPullStart(k); }
-      waterPullAcc += (WATER_PULL_RATE_MIN + (WATER_PULL_RATE_MAX - WATER_PULL_RATE_MIN) * k) * dt;
-      let n = 0;
-      while (waterPullAcc >= 1 && n < 4) { waterPullAcc -= 1; n++; playPullClick(k); }
-      if (waterPullAcc > 1) waterPullAcc = 1;
-    } else { waterPulling = false; waterPullAcc = 0; }
+    let fire = 0;
+    if (wStroke.dir !== 1 && a - wStroke.lo > WATER_HYST_DEG) { fire = 1; wStroke.dir = 1; wStroke.hi = a; wStroke.lo = a; }
+    else if (wStroke.dir !== -1 && wStroke.hi - a > WATER_HYST_DEG) { fire = -1; wStroke.dir = -1; wStroke.hi = a; wStroke.lo = a; }
+    if (fire && a >= WATER_MIN_DEG - 0 && nowSec - waterLastAt > WATER_MIN_GAP) {
+      waterLastAt = nowSec;
+      playWater(fire, Math.abs(vel) / 40);   // 速く動かすほど大きく
+    }
   }
 
   let lastT = performance.now(), lastHud = 0;

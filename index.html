@@ -128,7 +128,11 @@ body.stereo .disppos{display:none}
   flex:none; width:34px; height:34px; font:inherit; font-size:18px; line-height:1; color:#e8ecf3;
   background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); border-radius:10px; cursor:pointer; touch-action:manipulation;
 }
-.pstep:active{background:rgba(255,255,255,.3)}
+.bgstep{
+  flex:none; width:34px; height:34px; font:inherit; font-size:18px; line-height:1; color:#e8ecf3;
+  background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); border-radius:10px; cursor:pointer; touch-action:manipulation;
+}
+.pstep:active,.bgstep:active{background:rgba(255,255,255,.3)}
 .prow input[type=range]{flex:1; min-width:0; height:34px; margin:0; accent-color:#6b93f0}
 
 /* ---------- 表示（VR） ---------- */
@@ -446,6 +450,11 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">サイズ</span><button type="button" class="dpstep" data-k="hgs" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hgs" data-k="hgs" min="0.1" max="5" step="0.01"><button type="button" class="dpstep" data-k="hgs" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hgs">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="hgt" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-hgt" data-k="hgt" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="hgt" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-hgt">0.00</span></div>
       <button type="button" class="mini" id="dBtnHgReset" style="width:100%; margin-top:4px">h.glbをリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">bg.glbの位置調整（m）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="bgstep" data-bk="x" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-x" data-bk="x" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="x" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-x">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="bgstep" data-bk="y" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-y" data-bk="y" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="y" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-y">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="bgstep" data-bk="z" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-z" data-bk="z" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="z" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-z">0.00</span></div>
+      <button type="button" class="mini" id="dBtnBgReset" style="width:100%; margin-top:4px">bg.glbをリセット</button>
       <p class="postitle" style="margin:10px 0 6px">揺れの球の位置・大きさ（変更中は球を表示）</p>
       <div class="prow"><span class="pl">間隔</span><button type="button" class="dpstep" data-sk="sep" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-sep" data-sk="sep" min="0" max="1.5" step="0.01" value="0.57"><button type="button" class="dpstep" data-sk="sep" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-sep">0.57</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-sk="oy" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-oy" data-sk="oy" min="-1" max="1" step="0.01" value="0"><button type="button" class="dpstep" data-sk="oy" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-oy">0.00</span></div>
@@ -587,6 +596,9 @@ body.stereo .dispbar{opacity:.55}
     // 筒: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度、X軸まわり）
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
+  // bg.glbの位置（表示側パネル専用。操作側とは同期しない）
+  const BG_DEFAULT = { x: -3, y: 0, z: 2.85 };
+  const bgP = Object.assign({}, BG_DEFAULT);
   const inp = Object.assign({ vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0 }, POS_DEFAULT);
   const posv = (v, d) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -200, 200) : d;
 
@@ -904,6 +916,23 @@ body.stereo .dispbar{opacity:.55}
     for (const k of TAB_KEYS.tube) inp[k] = POS_DEFAULT[k];
     syncDispPosUi(); buzz(15);
   });
+  // bg.glbの位置調整（表示側専用）
+  function syncBgUi() {
+    for (const k of ['x', 'y', 'z']) {
+      $('#bg-rng-' + k).value = bgP[k];
+      $('#bg-val-' + k).textContent = bgP[k].toFixed(2);
+    }
+  }
+  function setBgPos(k, v) {
+    const rng = $('#bg-rng-' + k);
+    bgP[k] = clamp(Math.round(v * 1000) / 1000, parseFloat(rng.min), parseFloat(rng.max));
+    syncBgUi();
+  }
+  document.querySelectorAll('input[data-bk]').forEach((r) => r.addEventListener('input', () => setBgPos(r.dataset.bk, parseFloat(r.value))));
+  document.querySelectorAll('button[data-bk]').forEach((b) => b.addEventListener('click', () => setBgPos(b.dataset.bk, bgP[b.dataset.bk] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.05'))));
+  $('#dBtnBgReset').addEventListener('click', () => { Object.assign(bgP, BG_DEFAULT); syncBgUi(); buzz(15); });
+  syncBgUi();
+
   syncDispPosUi();
 
   let stereo = false;
@@ -1809,7 +1838,7 @@ body.stereo .dispbar{opacity:.55}
 
   // ---- bg.glb（背景として置くだけの静的モデル） ----
   const BG_URL = 'bg.glb?' + ASSET_VERSION;           // index.html と同じ場所に置く
-  const BG_POS = { x: -3, y: 0, z: 2.85 };             // 配置位置
+  const BG_POS = BG_DEFAULT;                           // 配置位置の初期値（実際の位置は bgP＝表示側パネルで調整）
   const BG_ROT_Y = -Math.PI / 2;                       // y軸回転（-90°、逆回転）
   let bgState = '未読込';
   function loadBg(group, onDone) {
@@ -3536,7 +3565,7 @@ body.stereo .dispbar{opacity:.55}
 
       // bg.glb（背景として据え置き。y=90°回転、x=36・z=34へ移動）
       const bgGroup = new THREE.Group();
-      bgGroup.position.set(BG_POS.x, BG_POS.y, BG_POS.z);
+      bgGroup.position.set(bgP.x, bgP.y, bgP.z);
       bgGroup.rotation.y = BG_ROT_Y;
       scene.add(bgGroup);
 
@@ -3814,6 +3843,7 @@ body.stereo .dispbar{opacity:.55}
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     if (hgMixer) hgMixer.update(dt);                         // h.glbのidleもループ再生
+    if (R && R.bg) R.bg.position.set(bgP.x, bgP.y, bgP.z);   // bg.glbの位置（表示側パネルの値）
     if (R && R.hg) {   // h.glbの位置・サイズ・傾き（パネルの値をそのまま反映）
       R.hg.position.set(inp.hgx, inp.hgy, inp.hgz);
       R.hg.scale.setScalar(inp.hgs);

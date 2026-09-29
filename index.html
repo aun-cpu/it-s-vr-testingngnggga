@@ -339,6 +339,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">液の大きさ</span><button type="button" class="pstep" data-k="lqs" data-d="-1" data-step="0.1">−</button><input type="range" id="rng-lqs" data-k="lqs" min="0.3" max="6" step="0.1"><button type="button" class="pstep" data-k="lqs" data-d="1" data-step="0.1">＋</button><span class="pv" id="val-lqs">0.00</span></div>
       <div class="prow"><span class="pl">濡れ 上</span><button type="button" class="pstep" data-k="lqwu" data-d="-1" data-step="0.05">−</button><input type="range" id="rng-lqwu" data-k="lqwu" min="0.05" max="2" step="0.05"><button type="button" class="pstep" data-k="lqwu" data-d="1" data-step="0.05">＋</button><span class="pv" id="val-lqwu">0.00</span></div>
       <div class="prow"><span class="pl">濡れ 広さ</span><button type="button" class="pstep" data-k="lqws" data-d="-1" data-step="0.05">−</button><input type="range" id="rng-lqws" data-k="lqws" min="0.1" max="3" step="0.05"><button type="button" class="pstep" data-k="lqws" data-d="1" data-step="0.05">＋</button><span class="pv" id="val-lqws">0.00</span></div>
+      <div class="prow"><span class="pl">溜まり 径</span><button type="button" class="pstep" data-k="lqpr" data-d="-1" data-step="0.005">−</button><input type="range" id="rng-lqpr" data-k="lqpr" min="0.005" max="0.1" step="0.005"><button type="button" class="pstep" data-k="lqpr" data-d="1" data-step="0.005">＋</button><span class="pv" id="val-lqpr">0.00</span></div>
     </div>
   </div>
 
@@ -421,6 +422,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">液の大きさ</span><button type="button" class="dpstep" data-k="lqs" data-d="-1" data-step="0.1">−</button><input type="range" id="d-rng-lqs" data-k="lqs" min="0.3" max="6" step="0.1"><button type="button" class="dpstep" data-k="lqs" data-d="1" data-step="0.1">＋</button><span class="pv" id="d-val-lqs">0.00</span></div>
       <div class="prow"><span class="pl">濡れ 上</span><button type="button" class="dpstep" data-k="lqwu" data-d="-1" data-step="0.05">−</button><input type="range" id="d-rng-lqwu" data-k="lqwu" min="0.05" max="2" step="0.05"><button type="button" class="dpstep" data-k="lqwu" data-d="1" data-step="0.05">＋</button><span class="pv" id="d-val-lqwu">0.00</span></div>
       <div class="prow"><span class="pl">濡れ 広さ</span><button type="button" class="dpstep" data-k="lqws" data-d="-1" data-step="0.05">−</button><input type="range" id="d-rng-lqws" data-k="lqws" min="0.1" max="3" step="0.05"><button type="button" class="dpstep" data-k="lqws" data-d="1" data-step="0.05">＋</button><span class="pv" id="d-val-lqws">0.00</span></div>
+      <div class="prow"><span class="pl">溜まり 径</span><button type="button" class="dpstep" data-k="lqpr" data-d="-1" data-step="0.005">−</button><input type="range" id="d-rng-lqpr" data-k="lqpr" min="0.005" max="0.1" step="0.005"><button type="button" class="dpstep" data-k="lqpr" data-d="1" data-step="0.005">＋</button><span class="pv" id="d-val-lqpr">0.00</span></div>
       <button type="button" class="mini" id="dBtnLqReset" style="width:100%; margin-top:4px">液体筒をリセット</button>
       <button type="button" class="mini" id="dBtnOozeGuide" style="width:100%; margin-top:6px">液体の位置ガイド: OFF</button>
       <button type="button" class="mini" id="dBtnOozeTest" style="width:100%; margin-top:6px">液体を出す（テスト）</button>
@@ -560,7 +562,8 @@ body.stereo .dispbar{opacity:.55}
     hox: 0.01, hoy: 0.6, hoz: 0.11, hos: 0.7, hot: -17,       // part.glb: player本体とのズレ（位置m）・スケール（倍率）・傾き（度）
     tbx: 0, tby: 0.28, tbz: 0.07, tbr: 0.005, tbl: 0.2, tbt: 3.0,
     lqx: 0, lqy: 0.27, lqz: 0.13, lqr: 0.02, lql: 0.02, lqt: 3.0, lqs: 1.5,
-    lqwu: 0.5, lqws: 1,   // partの濡れ範囲: 上への広がり倍率（小さいほど上に広がらない）・全体の広がり倍率
+    lqpr: 0.025,   // 板のまわりの液体溜まり（リング）の最大の半径(m)
+    lqwu: 0.45, lqws: 0.75,   // partの濡れ範囲: 上への広がり倍率（小さいほど上に広がらない）・全体の広がり倍率
     hgx: 0.01, hgy: -0.27, hgz: 0.03, hgs: 1.14, hgt: -4,   // h.glb（idle再生の追加モデル）: 位置(m)・サイズ（倍率）・傾き（度）
     // 液体用の筒（別の筒）: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度）・液の大きさ倍率
     // 筒: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度、X軸まわり）
@@ -781,7 +784,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.pstep').forEach((b) => {
     b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs', 'lqwu', 'lqws'], hg: ['hgx', 'hgy', 'hgz', 'hgs', 'hgt'] };
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs', 'lqwu', 'lqws', 'lqpr'], hg: ['hgx', 'hgy', 'hgz', 'hgs', 'hgt'] };
   let posTab = 'body';
   document.querySelectorAll('#posTabs button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -1035,7 +1038,40 @@ body.stereo .dispbar{opacity:.55}
     const P = [], pts = [];
     for (let i = 0; i < 6; i++) { P.push(new THREE.Vector3()); pts.push(new THREE.Vector3()); }
     return { id: ++wetRodSeq, NB: NB, lv: new Float32Array(NB), cnt: new Float32Array(NB), ins: new Uint8Array(NB), init: false, data: data, tex: tex, P: { value: P }, B: { value: tex }, R: { value: WET_ROD_RADIUS },
-             pts: pts, cum: new Float32Array(7), plateC: new THREE.Vector3(), plateN: new THREE.Vector3(0, 0, 1), ready: false };
+             pts: pts, cum: new Float32Array(7), sp: new Float32Array(7), plateC: new THREE.Vector3(), plateN: new THREE.Vector3(0, 0, 1), ready: false,
+             pool: null, poolA: 0, poolK: 0, poolP: new THREE.Vector3(), poolQ: new THREE.Quaternion() };
+  }
+  // ---- 板を基準にした液体溜まり：板の位置を穴の口とみて、棒が板を貫く所のまわりに、液体が溢れて溜まっているリングを出す ----
+  const WET_POOL_ON = true;
+  const WET_POOL_HEIGHT = 0.3;    // 溜まりの盛り上がり（半径に対する高さの比。棒に近いほど高く、外へなだらかに下がる）
+  const WET_POOL_BASE = 0.55;     // 濡れ0回の時の大きさ・濃さの割合（板を超えた回数が増えるほど、1に近づく）
+  const WET_POOL_HOLE = 0.1;      // 中心の穴（棒が通る所）の大きさ（外径に対する比）
+  function poolAlphaTex() {   // 中心は濃く、外へなだらかに消える（境目をはっきりさせない）
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgb(255,255,255)'); gr.addColorStop(0.3, 'rgb(235,235,235)'); gr.addColorStop(0.55, 'rgb(130,130,130)');
+    gr.addColorStop(0.8, 'rgb(38,38,38)'); gr.addColorStop(1, 'rgb(0,0,0)');
+    g.fillStyle = '#000'; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+  function makeWetPool() {
+    const geo = new THREE.RingGeometry(WET_POOL_HOLE, 1, 48, 10);   // XY平面の輪。あとで z を盛り上げる
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const r = Math.hypot(pos.getX(i), pos.getY(i));
+      const k = clamp((r - WET_POOL_HOLE) / (1 - WET_POOL_HOLE), 0, 1);
+      pos.setZ(i, Math.pow(1 - k, 2));                               // 棒のそばが一番高く、外へ向かってなだらかに下がる
+    }
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({ color: OOZE_COLOR, emissive: 0x30343c, roughness: 0.05, metalness: 0.04, envMap: oozeEnv, envMapIntensity: 1.4,
+                                                 transparent: true, opacity: 0, depthWrite: false, depthTest: !OOZE_SEE_THROUGH, side: THREE.DoubleSide, alphaMap: poolAlphaTex() });
+    const m = new THREE.Mesh(geo, mat);
+    m.visible = false; m.frustumCulled = false;
+    if (OOZE_SEE_THROUGH) m.renderOrder = 999;
+    R.scene.add(m);
+    return m;
   }
   const WET_ROD_FDECL = WET_FBASE + [
     'uniform vec3 uRP[6];', 'uniform sampler2D uRB;', 'uniform float uRR;',
@@ -2153,9 +2189,10 @@ body.stereo .dispbar{opacity:.55}
     rod.bend = 0;
     for (let i = 0; i < n; i++) rod.bend += used[i] * 180 / Math.PI;
     group.updateMatrixWorld(true);
-    rodWetUpdate(rod, e.c, e.u, full);
+    rodWetUpdate(rod, e.c, e.u, full, dt);
   }
-  function rodWetUpdate(rod, c, u, full) {   // 板（筒の入口に置いた、挿入方向に垂直な面）を超えた棒の部分に濡れを塗り、超えた回数で強さ（層）を決める
+  const _zAxis = new THREE.Vector3(0, 0, 1);
+  function rodWetUpdate(rod, c, u, full, dt) {   // 板（筒の入口に置いた、挿入方向に垂直な面）を超えた棒の部分に濡れを塗り、超えた回数で強さ（層）を決める
     const rw = rod.wet;
     if (!rw) return;
     const e = _pe, n = rod.bones.length, K = n + 1, NB = rw.NB, pts = rw.pts, cum = rw.cum;
@@ -2171,6 +2208,10 @@ body.stereo .dispbar{opacity:.55}
     rw.plateC.copy(c).addScaledVector(u, off); rw.plateN.copy(u);
     rw.ready = true;
     if (!(total > 1e-6)) return;
+    let cross = -1, ct = 0;                                          // 棒が板を貫く位置（根元側から数えて最初に、板の手前→板の奥へ変わる所）
+    for (let i = 0; i < K; i++) rw.sp[i] = e.t3.subVectors(pts[i], c).dot(u) - off;
+    for (let i = 0; i < K - 1; i++) if (cross < 0 && rw.sp[i] <= 0 && rw.sp[i + 1] > 0) { cross = i; ct = -rw.sp[i] / (rw.sp[i + 1] - rw.sp[i]); }
+    const tipS = rw.sp[K - 1];
     let seg = 0, changed = false;
     for (let b = 0; b < NB; b++) {
       const target = (b + 0.5) / NB * total;                          // このマスの、棒に沿った位置
@@ -2190,6 +2231,30 @@ body.stereo .dispbar{opacity:.55}
       if (m !== rw.lv[b]) { rw.lv[b] = m; rw.data[b * 4] = Math.round(m / WET_ROD_LAYERS * 255); changed = true; }
     }
     if (changed) rw.tex.needsUpdate = true;
+    if (WET_POOL_ON) {   // 液体溜まり：貫く位置に置き、濡れの回数に合わせて大きく・濃くなる。棒が板を貫いていない間は消える
+      if (!rw.pool && R && R.scene) rw.pool = makeWetPool();
+      const pl = rw.pool;
+      if (pl) {
+        const target = cross >= 0 ? clamp(tipS / 0.01, 0, 1) : 0;
+        rw.poolA += (target - rw.poolA) * (dt > 0 ? 1 - Math.exp(-dt * 10) : 1);
+        if (cross >= 0) {
+          rw.poolP.lerpVectors(pts[cross], pts[cross + 1], ct);
+          const bs = cum[cross] + (cum[cross + 1] - cum[cross]) * ct;
+          rw.poolK = rw.lv[clamp(Math.floor(bs / total * NB), 0, NB - 1)] / WET_ROD_LAYERS;   // 貫く位置の濡れ回数
+          e.t2.copy(u).negate();                                                            // 溜まりは板の手前側（棒が来る側）へ盛り上がる
+          rw.poolQ.setFromUnitVectors(_zAxis, e.t2);
+        }
+        const a = rw.poolA;
+        pl.visible = a > 0.01;
+        if (pl.visible) {
+          const size = WET_POOL_BASE + (1 - WET_POOL_BASE) * clamp(rw.poolK, 0, 1);
+          const rr = Math.max(0.002, inp.lqpr) * size;
+          pl.position.copy(rw.poolP); pl.quaternion.copy(rw.poolQ);
+          pl.scale.set(rr, rr, rr * WET_POOL_HEIGHT);
+          pl.material.opacity = OOZE_ALPHA * a * (0.6 + 0.4 * size);
+        }
+      }
+    }
   }
   // ---- playerarm.glb（playerと同じ読み込み。「2action2」の0フレーム目で止めて既定ポーズにする） ----
   const ARM_URL = 'playerarm.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く

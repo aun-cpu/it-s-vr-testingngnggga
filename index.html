@@ -3940,6 +3940,73 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
 
   let lastVr = 0, lastRc = 0, lastLkUi = 0;
 
+  // ---- 水音（棒が前へ／後ろへ動き出すたびに1回ずつ鳴らす。音はブラウザ内で合成するので音声ファイルは不要） ----
+  const WATER_ON = true;
+  const WATER_VOL = 1.0;              // 全体の音量（0〜2）
+  const WATER_MIN_DEG = -2;           // この角度より奥（押し込み側）に入っている間だけ鳴らす
+  const WATER_HYST_DEG = 0.6;         // この角度以上、逆向きに動いたら「向きが変わった」とみなす（手ぶれで鳴りすぎない）
+  const WATER_MIN_GAP = 0.09;         // 秒: 連続して鳴らさない最短の間隔
+  let waterCtx = null, waterNoise = null, waterLastAt = 0;
+  const wStroke = { dir: 0, lo: 0, hi: 0, init: false };
+  function waterEnsure() {
+    try {
+      if (!waterCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        waterCtx = new AC();
+        const len = Math.floor(waterCtx.sampleRate * 0.6);
+        waterNoise = waterCtx.createBuffer(1, len, waterCtx.sampleRate);
+        const d = waterNoise.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      }
+      if (waterCtx.state === 'suspended') waterCtx.resume();
+      return waterCtx;
+    } catch (e) { return null; }
+  }
+  ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { document.addEventListener(ev, waterEnsure, { passive: true }); });   // iOSは操作をきっかけに音を有効にする必要がある
+  function playWater(dir, power) {   // dir: +1=前へ（押し込み） / -1=後ろへ（引き抜き）
+    const ctx = waterEnsure();
+    if (!ctx || ctx.state !== 'running' || !waterNoise) return;
+    const t = ctx.currentTime;
+    const out = ctx.createGain();
+    out.gain.value = clamp(WATER_VOL * (0.35 + 0.65 * clamp(power, 0, 1)), 0, 2);
+    out.connect(ctx.destination);
+    // ぴちゃっという水しぶき（帯域を絞ったノイズ）。前へは低めから高く、後ろへは高めから低く
+    const src = ctx.createBufferSource(); src.buffer = waterNoise;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.3;
+    bp.frequency.setValueAtTime(dir > 0 ? 900 : 1800, t);
+    bp.frequency.exponentialRampToValueAtTime(dir > 0 ? 2400 : 700, t + 0.14);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.55, t + 0.012); g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    src.connect(bp); bp.connect(g); g.connect(out);
+    src.start(t, Math.random() * 0.3); src.stop(t + 0.24);
+    // ぷくっという小さな泡（正弦波が急に高くなる）
+    const n = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const st = t + 0.004 + i * (0.02 + Math.random() * 0.035);
+      const f0 = (dir > 0 ? 240 : 360) * (0.75 + Math.random() * 0.9);
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f0, st); o.frequency.exponentialRampToValueAtTime(f0 * 2.4, st + 0.075);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, st); og.gain.linearRampToValueAtTime(0.32, st + 0.006); og.gain.exponentialRampToValueAtTime(0.001, st + 0.1);
+      o.connect(og); og.connect(out); o.start(st); o.stop(st + 0.12);
+    }
+  }
+  function updateWaterSound(a, active, vel, nowSec) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒)
+    if (!WATER_ON) return;
+    if (!active) { wStroke.init = false; wStroke.dir = 0; return; }
+    if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; return; }
+    if (a > wStroke.hi) wStroke.hi = a;
+    if (a < wStroke.lo) wStroke.lo = a;
+    let fire = 0;
+    if (wStroke.dir !== 1 && a - wStroke.lo > WATER_HYST_DEG) { fire = 1; wStroke.dir = 1; wStroke.hi = a; wStroke.lo = a; }
+    else if (wStroke.dir !== -1 && wStroke.hi - a > WATER_HYST_DEG) { fire = -1; wStroke.dir = -1; wStroke.hi = a; wStroke.lo = a; }
+    if (fire && a >= WATER_MIN_DEG - 0 && nowSec - waterLastAt > WATER_MIN_GAP) {
+      waterLastAt = nowSec;
+      playWater(fire, Math.abs(vel) / 40);   // 速く動かすほど大きく
+    }
+  }
+
   let lastT = performance.now(), lastHud = 0;
   let lastTiltKey = '';
   const tiltPhone = $('#tiltPhone'), tiltVal = $('#tiltVal');
@@ -4150,6 +4217,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     // 触れる勢い（角速度）＝tiltSmoothの1フレームあたりの変化量。ゼリー揺れの強さの元になる
     tiltSmoothVel = dt > 0 ? (tiltSmooth - tiltSmoothPrev) / dt : 0;
     tiltSmoothPrev = tiltSmooth;
+    updateWaterSound(tiltSmooth + introOffset, tiltLive && !frontIntro, tiltSmoothVel, now / 1000);   // 棒が前／後ろへ動き出したら水音
     // 接触の深さ（次フレームの揺れの計算で使う）。導入中・角度データが無い間は接触なし
     jellyDepthDeg = (tiltLive && !frontIntro) ? Math.max(0, tiltSmooth + introOffset - CONTACT_START_DEG) : 0;
     // 2action: 選んだ軸の角度で再生位置を決める。-20°=先頭フレーム／0°=5フレーム目／8°=最終フレーム（区分線形）

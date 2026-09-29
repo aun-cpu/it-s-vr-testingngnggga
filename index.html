@@ -1752,6 +1752,7 @@ body.stereo .dispbar{opacity:.55}
   const JELLY_MAX = 0.16;             // 全モード合計の変位（つぶれ・伸び）の上限（現実的な範囲に抑える）
   const JELLY_ROT_MAX = 1.5 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
   const JELLY_BOB_MAX = 0.012;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
+  const HG_FOLLOW = 0.3;              // partはhの部位。partのゼリー揺れ・押し出しを、この割合だけh.glb全体にも反映する（0=反映しない／1=partと同じ強さ）
   // ---- playerplus.glb（playerと同じ位置・同じ読み込み。playerと同じ名前の動き「2action」を、playerと同じ再生位置で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb?' + ASSET_VERSION; // index.html と同じ場所に置く
   const PLUS_HEIGHT = PLAYER_HEIGHT; // playerと同じ身長にそろえる。元のサイズのままなら null
@@ -3037,11 +3038,13 @@ body.stereo .dispbar{opacity:.55}
       hJellySumRaw += hJellyX[ji];
     }
     const hJellySum = softLimit(hJellySumRaw, JELLY_MAX);
+    // 高次モード（速く細かい揺れ）だけを取り出して、左右への傾き（sway）と上下の沈み込みに使う（骨格用に抑える前の値。h.glbへの反映にも使う）
+    const hJellyRotFull = softLimit(hJellyX[1] * 1.3 + hJellyX[2] * 1.6, 1) * JELLY_ROT_MAX;
+    const hJellyBobFull = softLimit(-hJellySum, 1) * JELLY_BOB_MAX;
     if (R.h) {
-      // 高次モード（速く細かい揺れ）だけを取り出して、左右への傾き（sway）と上下の沈み込みに使う
       // → 体全体が均一に伸縮するだけでなく、揺れながら少し傾いたり沈んだりするので波打って見える
-      const hJellyRot = softLimit(hJellyX[1] * 1.3 + hJellyX[2] * 1.6, 1) * JELLY_ROT_MAX * H_SKELETON_SHAKE;   // 骨格の傾きは抑える（肉の揺れはシェーダー側）
-      const hJellyBob = softLimit(-hJellySum, 1) * JELLY_BOB_MAX * H_SKELETON_SHAKE;
+      const hJellyRot = hJellyRotFull * H_SKELETON_SHAKE;   // 骨格の傾きは抑える（肉の揺れはシェーダー側）
+      const hJellyBob = hJellyBobFull * H_SKELETON_SHAKE;
       partBase.set(inp.hox, inp.hoy + hJellyBob, inp.hoz);
       R.h.position.copy(partBase).add(partOff);
       // 縦(Y)がつぶれる/伸びるのに合わせて横(X,Z)を逆位相にふくらませ、ゼリーのような質感にする
@@ -3070,10 +3073,12 @@ body.stereo .dispbar{opacity:.55}
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     if (hgMixer) hgMixer.update(dt);                         // h.glbのidleもループ再生
     if (R && R.bg) R.bg.position.set(bgP.x, bgP.y, bgP.z);   // bg.glbの位置（表示側パネルの値）
-    if (R && R.hg) {   // h.glbの位置・サイズ・傾き（パネルの値をそのまま反映）
-      R.hg.position.set(inp.hgx, inp.hgy, inp.hgz);
-      R.hg.scale.setScalar(inp.hgs);
+    if (R && R.hg) {   // h.glbの位置・サイズ・傾き（パネルの値）＋ partの揺れ・押し出しを HG_FOLLOW の割合だけ反映（partはhの部位のため）
+      const hf = HG_FOLLOW;
+      R.hg.position.set(inp.hgx + partOff.x * hf, inp.hgy + hJellyBobFull * hf + partOff.y * hf, inp.hgz + partOff.z * hf);
+      R.hg.scale.set(inp.hgs * (1 - hJellySum * 0.5 * hf), inp.hgs * (1 + hJellySum * hf), inp.hgs * (1 - hJellySum * 0.5 * hf));
       R.hg.rotation.x = inp.hgt * Math.PI / 180;
+      R.hg.rotation.z = hJellyRotFull * hf;
     }
     if (H_SPLIT_ON) updateHSpheres(dt, jellySVel, softLimit);   // 肉の揺れ（ゼリー揺れと同じ強弱・きっかけで動く）
     // partの「大」モーフ: 2action0中は角度に連動して増減し、最大（0°）で1に達する。2actionに入ったらそのまま1を維持する

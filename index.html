@@ -3949,6 +3949,10 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const WATER_CLICK_RATE = 0.55;      // クリックの密度（大きいほど細かく詰まる。0.5〜2）
   const WATER_BURST_SCALE = 1.0;      // 1回の鳴る長さの倍率
   const WATER_HISS = 0;               // 背景の高音ざわつき（さらさら音）の音量。0で無し
+  const WATER_LOW_ON = true;          // 低い音（「コッ」）を、高いクリックとは別の層として重ねる
+  const WATER_LOW_VOL = 1.8;          // 低い音の層の音量（高いクリックに対する倍率。1=同じ / 大きいほど低い音が目立つ）
+  const WATER_LOW_RATE = 1.0;         // 低い音の密度（大きいほど多く詰まる。1で1回あたり6〜8個前後）
+  const WATER_LOW_HZ = [550, 1000];   // 低い音の中心周波数の範囲(Hz)
   let waterCtx = null, waterNoise = null, waterLastAt = 0;
   const wStroke = { dir: 0, lo: 0, hi: 0, init: false };
   function waterEnsure() {
@@ -3992,11 +3996,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     let st = t + Math.random() * 0.012;
     while (st < t + dur) {
       const amp = (0.012 + 0.55 * Math.pow(Math.random(), 6)) * (0.6 + 0.4 * pw);
-      const low = Math.random() < 0.12;
+      const low = false;   // 低い音は下の別の層で鳴らす
       const cs = ctx.createBufferSource(); cs.buffer = waterNoise;
       const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
-      bp.frequency.value = low ? 650 + Math.random() * 350 : 7000 + Math.random() * 1200;
-      bp.Q.value = low ? 3 : 2.5;
+      bp.frequency.value = 7000 + Math.random() * 1200;
+      bp.Q.value = 2.5;
       const life = Math.random() < 0.7 ? 0.002 + Math.random() * 0.004 : 0.012 + Math.random() * 0.016;   // 短いものが中心、時々少し長く残る
       const cg = ctx.createGain();
       cg.gain.setValueAtTime(0.0001, st); cg.gain.linearRampToValueAtTime(amp, st + 0.0006); cg.gain.exponentialRampToValueAtTime(0.0001, st + life);
@@ -4004,6 +4008,26 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       cs.start(st, Math.random() * 0.45); cs.stop(st + life + 0.01);
       // 次のクリックまでの間隔：20ms前後が中心、時々ぱらぱらと詰まったり間が空いたりする
       st += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / WATER_CLICK_RATE;
+    }
+    // (3) 低い音の層。高いクリックとは別のタイミング・別の音量で「コッ・コココッ」と重ねる（少し大きめ・多め）
+    if (WATER_LOW_ON) {
+      const lowOut = ctx.createGain();
+      lowOut.gain.value = WATER_LOW_VOL;
+      lowOut.connect(out);
+      let lt = t + Math.random() * 0.02;
+      while (lt < t + dur) {
+        const amp = (0.05 + 0.5 * Math.pow(Math.random(), 3)) * (0.6 + 0.4 * pw);
+        const cs = ctx.createBufferSource(); cs.buffer = waterNoise;
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+        bp.frequency.value = WATER_LOW_HZ[0] + Math.random() * (WATER_LOW_HZ[1] - WATER_LOW_HZ[0]);
+        bp.Q.value = 3;
+        const life = 0.008 + Math.random() * 0.022;   // 高い音より少し長く残して、低い響きが聞こえるように
+        const cg = ctx.createGain();
+        cg.gain.setValueAtTime(0.0001, lt); cg.gain.linearRampToValueAtTime(amp, lt + 0.001); cg.gain.exponentialRampToValueAtTime(0.0001, lt + life);
+        cs.connect(bp); bp.connect(cg); cg.connect(lowOut);
+        cs.start(lt, Math.random() * 0.45); cs.stop(lt + life + 0.01);
+        lt += (0.03 + Math.pow(Math.random(), 1.5) * 0.07) / WATER_LOW_RATE;
+      }
     }
   }
   function updateWaterSound(a, active, vel, nowSec) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒)

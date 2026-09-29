@@ -420,7 +420,13 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" class="foldbtn" id="dPosFold" aria-expanded="false"><span class="arr">▼</span></button>
     </div>
     <div class="dpos-body" id="dPosBody">
-      <p class="postitle" style="margin:0 0 6px">part.glbの位置・サイズ・傾き調整（player本体との差）</p>
+      <p class="postitle" style="margin:0 0 6px">腕（playerarm）の位置・回転調整（player本体との差・m/°）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="aox" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-aox" data-k="aox" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="aox" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-aox">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="aoy" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-aoy" data-k="aoy" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="aoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-aoy">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="aoz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-aoz" data-k="aoz" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="aoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-aoz">0.00</span></div>
+      <div class="prow"><span class="pl">回転</span><button type="button" class="dpstep" data-k="aor" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-aor" data-k="aor" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="aor" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-aor">0.00</span></div>
+      <button type="button" class="mini" id="dBtnArmReset" style="width:100%; margin-top:4px">腕をリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">part.glbの位置・サイズ・傾き調整（player本体との差）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="hox" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hox" data-k="hox" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hox" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hox">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="hoy" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoy" data-k="hoy" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoy">0.00</span></div>
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="hoz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoz" data-k="hoz" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoz">0.00</span></div>
@@ -922,6 +928,10 @@ body.stereo .dispbar{opacity:.55}
   });
   $('#dBtnHgReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.hg) inp[k] = POS_DEFAULT[k];
+    syncDispPosUi(); buzz(15);
+  });
+  $('#dBtnArmReset').addEventListener('click', () => {
+    for (const k of TAB_KEYS.arm) inp[k] = POS_DEFAULT[k];
     syncDispPosUi(); buzz(15);
   });
   $('#dBtnPosReset').addEventListener('click', () => {
@@ -2350,9 +2360,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const JELLY_ROT_MAX = 1.5 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
   const JELLY_BOB_MAX = 0.012;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
   const ARM_FOLLOW_Z = 1.0;            // playerarmが、partの押し出し（前後=Z方向のみ）に追従する割合。0=追従しない／1=partと同じだけ前後に動く／0.5=半分
-  let armFollowLive = false;           // 角度が反映されている間（手動角度をONにした／操作側を接続した）true
-  let armRefZ = 0;                     // 角度の反映が始まった瞬間の、partの押し出し量（前後）。armはここからの変化分だけ追従する
-  let armFollowOff = 0;                // armに足している前後のずれ（m）
   const HG_FOLLOW = 0.3;              // partはhの部位。partのゼリー揺れ・押し出しを、この割合だけh.glb全体にも反映する（0=反映しない／1=partと同じ強さ）
   // ---- playerplus.glb（playerと同じ位置・同じ読み込み。playerと同じ名前の動き「2action」を、playerと同じ再生位置で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb?' + ASSET_VERSION; // index.html と同じ場所に置く
@@ -3944,10 +3951,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     }
     if (R.arm) {
       R.arm.visible = true;
-      // 角度を反映した瞬間（手動角度をONにした時／操作側を接続した時）のpartの押し出し量を基準にして、そこからのpartの前後（Z）の動きにだけ追従する。角度が反映されていない間は追従しない
-      { const target = armFollowLive ? (partOff.z - armRefZ) * ARM_FOLLOW_Z : 0;
-        armFollowOff = armFollowLive ? target : armFollowOff + (target - armFollowOff) * (1 - Math.exp(-dt / 0.25)); }   // 切断・手動OFFの時は、なめらかに元の位置へ戻す
-      R.arm.position.set(inp.aox, inp.aoy, inp.aoz + armFollowOff);   // 位置はplayerと同じ位置＋操作側からのズレ調整（aox/aoy/aoz）のまま、前後だけ加算
+      R.arm.position.set(inp.aox, inp.aoy, inp.aoz + partOff.z * ARM_FOLLOW_Z);   // 初期位置（playerと同じ位置＋操作側からのズレ調整）を基準に、partが押し出されたら前後（Z）だけ一緒に動く
       R.arm.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
     }
     if (armMixer) armMixer.update(dt);
@@ -3981,8 +3985,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
     const gyroLive = fresh && inp.ce === 1;
     const tiltLive = tiltManual || gyroLive;   // 手動モード中は操作側からの受信の有無に関わらず「有効」として扱う
-    if (tiltLive && !armFollowLive) armRefZ = partOff.z;   // 角度の反映が始まった瞬間：この時点のpartの押し出しを、armの追従の基準にする
-    armFollowLive = !!tiltLive;
     if (!linked) { tiltZeroPending = true; tiltSmoothReady = false; }          // 切断中は次の接続で基準・補間を取り直す
     if (gyroLive && tiltZeroPending) {            // 最初のデータ／リセット押下時の向きを0°にする
       tiltRefQ = inp.cq.slice();

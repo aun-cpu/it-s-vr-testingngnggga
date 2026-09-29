@@ -981,7 +981,7 @@ body.stereo .dispbar{opacity:.55}
   const wetZero = new THREE.Vector3();
   let wetBurstT = 0, wetBurstCd = 0, wetTouch = false;   // wetTouch: plus2の先端が筒に当たっている間 true
   let wetAnchorOk = false;
-  const WETU = { P: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, K: { value: WET_BASE }, R: { value: WET_REACH }, env: { value: null } };
+  const WETU = { P: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, K: { value: 0 }, I: { value: 0 }, R: { value: WET_REACH }, env: { value: null } };
   let wetK = WET_BASE, wetSide = 1, wetPrimed = false;
   const WET_VDECL = 'varying vec3 vWetP;\nvarying vec3 vWetQ;\n';
   const WET_VPOS = '\nvWetP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWetQ = (modelMatrix * vec4(position, 1.0)).xyz;\n';
@@ -996,13 +996,13 @@ body.stereo .dispbar{opacity:.55}
     'float wtSeg(vec3 p, vec3 a, vec3 b) { vec3 ab = b - a; float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1.0e-8), 0.0, 1.0); return length(p - (a + ab * t)); }',
   ].join('\n') + '\n';
   const WET_FDECL = WET_FBASE + [
-    'uniform vec3 uWP[3];', 'uniform float uWK;', 'uniform float uWR;',
+    'uniform vec3 uWP[3];', 'uniform float uWK;', 'uniform float uWR;', 'uniform float uWI;',
     'float wtWet(vec3 p, vec3 q) {',   // 口→筒の入口→筒の奥 の線からの距離で決め、縁はノイズで不規則にする
     '  float d = min(wtSeg(p, uWP[0], uWP[1]), wtSeg(p, uWP[1], uWP[2]));',
     '  float n = wtN(q * 45.0) * 0.65 + wtN(q * 130.0) * 0.35;',
     '  float reach = uWR * (0.12 + 0.88 * uWK);',
     '  float w = 1.0 - smoothstep(reach * 0.25, reach, d + (n - 0.5) * reach * 0.6);',
-    '  return w * smoothstep(0.02, 0.2, uWK);',
+    '  return w * uWI;',
     '}'].join('\n') + '\n';
   // ---- plus / plus2 の濡れ：板を配置し、その板を超えた棒の部分に濡れを塗り重ねる ----
   // 棒（pe〜pe4のボーン列）に沿って濡れを覚えておく。板を超えた深さ＝どこが濡れるか（超えた部分が塗られ、一度塗った所は残る）
@@ -1077,7 +1077,7 @@ body.stereo .dispbar{opacity:.55}
     m.onBeforeCompile = function (sh) {
       if (prev) prev.call(this, sh);
       if (rw) { sh.uniforms.uRP = rw.P; sh.uniforms.uRB = rw.B; sh.uniforms.uRR = rw.R; }
-      else { sh.uniforms.uWP = WETU.P; sh.uniforms.uWK = WETU.K; sh.uniforms.uWR = WETU.R; }
+      else { sh.uniforms.uWP = WETU.P; sh.uniforms.uWK = WETU.K; sh.uniforms.uWR = WETU.R; sh.uniforms.uWI = WETU.I; }
       sh.uniforms.uWEnv = WETU.env;
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WET_VDECL).replace('#include <project_vertex>', '#include <project_vertex>' + WET_VPOS);
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + (rw ? WET_ROD_FDECL : WET_FDECL))
@@ -1093,7 +1093,7 @@ body.stereo .dispbar{opacity:.55}
     rod.wet = makeRodWet();
     model.traverse(function (o) { if (o.isMesh && o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { wetInject(m, rod.wet); }); });
   }
-  function wetMatsOf(o) { if (o.isMesh && o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(wetInject); }
+  function wetMatsOf(o) { if (o.isMesh && o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { wetInject(m); }); }
   let oozeGuideOn = false;            // 液体の位置ガイド（黄=液体が出る範囲と中心、ピンク=筒。軸: 赤=X右 緑=Y上 青=Z手前）
   let oozeGuide = null;
   const oozeDbg = { strandD: 0, ratio: 0, radialMM: 0, inside: false, near: false, has: false };
@@ -1390,7 +1390,17 @@ body.stereo .dispbar{opacity:.55}
       WETU.P.value[0].copy(lp);                                                     // 液体の口
       WETU.P.value[1].copy(tp).addScaledVector(e.d, wetSide * fullT / 2);           // 筒の入口
       WETU.P.value[2].copy(tp).addScaledVector(e.d, -wetSide * fullT / 2);          // 筒の奥
-      WETU.K.value = wetK;
+      {   // partの表面の濡れ：plus / plus2 の棒が板を超えた回数（濡れの強さ）と同じタイミング・同じ強さで増える。広がりも回数に合わせて大きくなる
+        let cntMax = 0, hasRod = false;
+        [plusRod, plus2Rod].forEach(function (r) {
+          if (!r || !r.wet) return;
+          hasRod = true;
+          const v = r.wet.lv[r.wet.NB - 1];
+          if (v > cntMax) cntMax = v;
+        });
+        if (hasRod) { const kp = cntMax / WET_ROD_LAYERS; WETU.K.value = kp; WETU.I.value = kp * WET_ROD_MAX_WET; }
+        else { WETU.K.value = wetK; WETU.I.value = clamp((wetK - 0.02) / 0.18, 0, 1); }   // 棒のボーンが無い時は従来どおり
+      }
       // ---- partの口とplayerの間：細い糸がたくさん、一瞬だけ自分で伸びて、ぷつっと消える ----
       const rnd = function (a, b) { return a + Math.random() * (b - a); };
       const ez = function (k) { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };

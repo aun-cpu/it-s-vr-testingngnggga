@@ -1027,6 +1027,8 @@ body.stereo .dispbar{opacity:.55}
   const STEAM_SIZE = [0.03, 0.09];     // m: 湯気の大きさ（出た時 → 広がりきった時）
   const STEAM_LIFE = [1.4, 2.4];       // 秒: 湯気が消えるまで
   const STEAM_RISE = [0.03, 0.07];     // m/秒: 立ちのぼる速さ
+  const STEAM_FRONT = 0.08;            // m: 湯気の出る位置を、カメラ（見ている側）へ寄せる量。大きいほど手前に出る（マイナスで奥）
+  const _stDir = new THREE.Vector3();
   const STEAM_DRIFT = 0.02;            // m/秒: ゆらゆら横に流れる速さ
   const wetSteam = [];
   let steamTex = null;
@@ -1060,7 +1062,9 @@ body.stereo .dispbar{opacity:.55}
       st.vx = (Math.random() - 0.5) * STEAM_DRIFT * 2; st.vz = (Math.random() - 0.5) * STEAM_DRIFT * 2;
       st.s0 = STEAM_SIZE[0] * (0.7 + Math.random() * 0.6); st.s1 = STEAM_SIZE[1] * (0.7 + Math.random() * 0.6);
       st.a = 0.6 + 0.4 * clamp(wet, 0, 1); st.ph = Math.random() * 6.28;
-      st.spr.position.copy(pos); st.spr.material.rotation = Math.random() * 6.28;
+      st.spr.position.copy(pos);
+      if (STEAM_FRONT && R && R.camera) { R.camera.getWorldPosition(_stDir); _stDir.sub(pos); const dl = _stDir.length(); if (dl > 1e-4) st.spr.position.addScaledVector(_stDir, STEAM_FRONT / dl); }   // カメラの方向へ手前に寄せる
+      st.spr.material.rotation = Math.random() * 6.28;
       st.spr.scale.setScalar(st.s0); st.spr.visible = true;
       return;
     }

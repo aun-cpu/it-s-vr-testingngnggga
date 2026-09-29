@@ -290,6 +290,7 @@ body.stereo .dispbar{opacity:.55}
       <button type="button" data-tab="lq">液体筒</button>
       <button type="button" data-tab="hg">h.glb</button>
       <button type="button" data-tab="se">ぼかし部位</button>
+      <button type="button" data-tab="st">湯気</button>
     </div>
     <div id="posTab-body">
       <p class="postitle">水滴の位置（表示側の視点からの座標・m）</p>
@@ -329,6 +330,13 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="hgz" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-hgz" data-k="hgz" min="-5" max="5" step="0.01"><button type="button" class="pstep" data-k="hgz" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-hgz">0.00</span></div>
       <div class="prow"><span class="pl">サイズ</span><button type="button" class="pstep" data-k="hgs" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-hgs" data-k="hgs" min="0.1" max="5" step="0.01"><button type="button" class="pstep" data-k="hgs" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-hgs">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="pstep" data-k="hgt" data-d="-1" data-step="1">−</button><input type="range" id="rng-hgt" data-k="hgt" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="hgt" data-d="1" data-step="1">＋</button><span class="pv" id="val-hgt">0.00</span></div>
+    </div>
+    <div id="posTab-st" class="hidden">
+      <p class="postitle">湯気の出る位置（糸の口側の付け根からのズレ。新しく出る湯気から反映）</p>
+      <div class="prow"><span class="pl">X 左右(cm)</span><button type="button" class="pstep" data-k="stx" data-d="-1" data-step="0.5">−</button><input type="range" id="rng-stx" data-k="stx" min="-30" max="30" step="0.5"><button type="button" class="pstep" data-k="stx" data-d="1" data-step="0.5">＋</button><span class="pv" id="val-stx">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下(cm)</span><button type="button" class="pstep" data-k="sty" data-d="-1" data-step="0.5">−</button><input type="range" id="rng-sty" data-k="sty" min="-30" max="30" step="0.5"><button type="button" class="pstep" data-k="sty" data-d="1" data-step="0.5">＋</button><span class="pv" id="val-sty">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後(cm)</span><button type="button" class="pstep" data-k="stz" data-d="-1" data-step="0.5">−</button><input type="range" id="rng-stz" data-k="stz" min="-30" max="30" step="0.5"><button type="button" class="pstep" data-k="stz" data-d="1" data-step="0.5">＋</button><span class="pv" id="val-stz">0.00</span></div>
+      <div class="prow"><span class="pl">手前(cm)</span><button type="button" class="pstep" data-k="stf" data-d="-1" data-step="0.5">−</button><input type="range" id="rng-stf" data-k="stf" min="-30" max="40" step="0.5"><button type="button" class="pstep" data-k="stf" data-d="1" data-step="0.5">＋</button><span class="pv" id="val-stf">0.00</span></div>
     </div>
     <div id="posTab-se" class="hidden">
       <p class="postitle">ぼかす部位（pubic系メッシュのみ）の位置・ぼかし調整</p>
@@ -461,6 +469,12 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">拡散の広がり(%)</span><button type="button" class="dpstep" data-k="sfh" data-d="-1" data-step="0.1">−</button><input type="range" id="d-rng-sfh" data-k="sfh" min="0" max="15" step="0.1"><button type="button" class="dpstep" data-k="sfh" data-d="1" data-step="0.1">＋</button><span class="pv" id="d-val-sfh">0.00</span></div>
       <div class="prow"><span class="pl">拡散の濃さ</span><button type="button" class="dpstep" data-k="sfa" data-d="-1" data-step="0.05">−</button><input type="range" id="d-rng-sfa" data-k="sfa" min="0" max="1" step="0.05"><button type="button" class="dpstep" data-k="sfa" data-d="1" data-step="0.05">＋</button><span class="pv" id="d-val-sfa">0.00</span></div>
       <button type="button" class="mini" id="dBtnSeReset" style="width:100%; margin-top:4px">ぼかす部位をリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">湯気の出る位置（糸の口側の付け根からのズレ）</p>
+      <div class="prow"><span class="pl">X 左右(cm)</span><button type="button" class="dpstep" data-k="stx" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-stx" data-k="stx" min="-30" max="30" step="0.5"><button type="button" class="dpstep" data-k="stx" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-stx">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下(cm)</span><button type="button" class="dpstep" data-k="sty" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-sty" data-k="sty" min="-30" max="30" step="0.5"><button type="button" class="dpstep" data-k="sty" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-sty">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後(cm)</span><button type="button" class="dpstep" data-k="stz" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-stz" data-k="stz" min="-30" max="30" step="0.5"><button type="button" class="dpstep" data-k="stz" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-stz">0.00</span></div>
+      <div class="prow"><span class="pl">手前(cm)</span><button type="button" class="dpstep" data-k="stf" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-stf" data-k="stf" min="-30" max="40" step="0.5"><button type="button" class="dpstep" data-k="stf" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-stf">0.00</span></div>
+      <button type="button" class="mini" id="dBtnStReset" style="width:100%; margin-top:4px">湯気の位置をリセット</button>
       <p class="postitle" style="margin:10px 0 6px">bg.glbの位置調整（m）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="bgstep" data-bk="x" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-x" data-bk="x" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="x" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-x">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="bgstep" data-bk="y" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-y" data-bk="y" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="y" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-y">0.00</span></div>
@@ -592,6 +606,7 @@ body.stereo .dispbar{opacity:.55}
     lqx: 0, lqy: 0.27, lqz: 0.13, lqr: 0.02, lql: 0.02, lqt: 3.0, lqs: 1.5,
     lqpr: 0.025,   // 板のまわりの液体溜まり（リング）の最大の半径(m)
     lqwu: 0.45, lqws: 0.75,   // partの濡れ範囲: 上への広がり倍率（小さいほど上に広がらない）・全体の広がり倍率
+    stx: 0, sty: 0, stz: 0, stf: 8,   // 湯気の出る位置: 液体筒の口のまわりからのズレ(cm、ワールド座標)・カメラ側へ寄せる量(cm)
     pth: 0.3,   // part.glbの「材質2か3（番号の大きい方）」の細さ（1=そのまま、小さいほど細い）
     sfx: 0.5, sfy: 6.5, sfz: 1.0, sfs: 1.0, sfw: 1.5, sfp: 0.5, sfv: 1.0, sfd: 0.3, sfh: 0.3, sfa: 0.3,   // pubic系メッシュだけ: 位置(cm)・大きさ・ぼかし幅・ぼかし強さ・輪郭の透け・密度・拡散の広がり(%)・拡散の濃さ
     hgx: 0.01, hgy: -0.27, hgz: 0.03, hgs: 1.14, hgt: -4,   // h.glb（idle再生の追加モデル）: 位置(m)・サイズ（倍率）・傾き（度）
@@ -814,7 +829,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.pstep').forEach((b) => {
     b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot', 'pth'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs', 'lqwu', 'lqws', 'lqpr'], hg: ['hgx', 'hgy', 'hgz', 'hgs', 'hgt'], se: ['sfx', 'sfy', 'sfz', 'sfs', 'sfw', 'sfp', 'sfv', 'sfd', 'sfh', 'sfa'] };
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot', 'pth'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs', 'lqwu', 'lqws', 'lqpr'], hg: ['hgx', 'hgy', 'hgz', 'hgs', 'hgt'], st: ['stx', 'sty', 'stz', 'stf'], se: ['sfx', 'sfy', 'sfz', 'sfs', 'sfw', 'sfp', 'sfv', 'sfd', 'sfh', 'sfa'] };
   let posTab = 'body';
   document.querySelectorAll('#posTabs button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -896,6 +911,10 @@ body.stereo .dispbar{opacity:.55}
   });
   document.querySelectorAll('.dpstep:not([data-sk])').forEach((b) => {
     b.addEventListener('click', () => setDispPos(b.dataset.k, inp[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
+  });
+  $('#dBtnStReset').addEventListener('click', () => {
+    for (const k of TAB_KEYS.st) inp[k] = POS_DEFAULT[k];
+    syncDispPosUi(); buzz(15);
   });
   $('#dBtnSeReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.se) inp[k] = POS_DEFAULT[k];
@@ -1027,7 +1046,6 @@ body.stereo .dispbar{opacity:.55}
   const STEAM_SIZE = [0.03, 0.09];     // m: 湯気の大きさ（出た時 → 広がりきった時）
   const STEAM_LIFE = [1.4, 2.4];       // 秒: 湯気が消えるまで
   const STEAM_RISE = [0.03, 0.07];     // m/秒: 立ちのぼる速さ
-  const STEAM_FRONT = 0.08;            // m: 湯気の出る位置を、カメラ（見ている側）へ寄せる量。大きいほど手前に出る（マイナスで奥）
   const _stDir = new THREE.Vector3();
   const STEAM_DRIFT = 0.02;            // m/秒: ゆらゆら横に流れる速さ
   const wetSteam = [];
@@ -1063,7 +1081,8 @@ body.stereo .dispbar{opacity:.55}
       st.s0 = STEAM_SIZE[0] * (0.7 + Math.random() * 0.6); st.s1 = STEAM_SIZE[1] * (0.7 + Math.random() * 0.6);
       st.a = 0.6 + 0.4 * clamp(wet, 0, 1); st.ph = Math.random() * 6.28;
       st.spr.position.copy(pos);
-      if (STEAM_FRONT && R && R.camera) { R.camera.getWorldPosition(_stDir); _stDir.sub(pos); const dl = _stDir.length(); if (dl > 1e-4) st.spr.position.addScaledVector(_stDir, STEAM_FRONT / dl); }   // カメラの方向へ手前に寄せる
+      st.spr.position.x += inp.stx / 100; st.spr.position.y += inp.sty / 100; st.spr.position.z += inp.stz / 100;   // 位置のズレ（スライダー）
+      if (inp.stf && R && R.camera) { R.camera.getWorldPosition(_stDir); _stDir.sub(st.spr.position); const dl = _stDir.length(); if (dl > 1e-4) st.spr.position.addScaledVector(_stDir, (inp.stf / 100) / dl); }   // カメラの方向へ手前に寄せる
       st.spr.material.rotation = Math.random() * 6.28;
       st.spr.scale.setScalar(st.s0); st.spr.visible = true;
       return;

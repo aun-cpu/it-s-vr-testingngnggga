@@ -2688,6 +2688,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const SOFT_EDGE_WIDTH = 1.0;        // ぼかす幅（メッシュ内側へ向かう最大距離に対する割合。0.3=やや / 0.6=かなり / 1.0=中心以外ほぼ全部）
   const SOFT_EDGE_POWER = 2.6;        // 大きいほど縁が「より透明」になり、輪郭が溶ける（1.0=直線的）
   const SOFT_EDGE_VIEW = 0.85;        // 視線に対して斜めの面（シルエット）を透かす強さ。0で無効
+  const SOFT_EDGE_SCALE = 1.12;       // 大きさの誇張（中心から外へ拡大する倍率。1.0=そのまま）
+  const SOFT_EDGE_DENSITY = 1.5;      // 密度の誇張（中心部の濃さの倍率。1.0=そのまま、大きいほど中心が濃く詰まって見える）
+  const SOFT_EDGE_SHELLS = 3;         // 輪郭の外側に重ねる拡散層の数（0で無効）。多いほど滲みが広く滑らか
+  const SOFT_EDGE_SHELL_SPREAD = 0.035; // 拡散層1枚ごとの広がり（メッシュの大きさに対する比率）。大きいほど遠くまで拡散する
+  const SOFT_EDGE_SHELL_ALPHA = 0.4;  // 拡散層の濃さ（外側の層ほど薄くなる）
   function softEdgeMatch(o) {
     if (SOFT_EDGE_RE.test(o.name || '')) return true;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
@@ -2737,36 +2742,63 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (!o.isMesh || !o.material || !o.geometry || o.userData.__softEdge) return;
     if (!softEdgeMatch(o)) return;
     o.userData.__softEdge = true;
+    const geo = o.geometry;
     let hasAttr = false;
-    try { hasAttr = buildSoftEdgeAttr(o.geometry); } catch (err) { console.warn('[softEdge] 縁の計算に失敗', err); }
-    const conv = function (m0) {
-      if (!m0 || !(m0.isMeshStandardMaterial || m0.isMeshPhongMaterial || m0.isMeshLambertMaterial || m0.isMeshToonMaterial)) return m0;
-      const m = m0.clone(); m.name = m0.name;   // 他のメッシュと共有している材質に影響しないよう複製する
-      m.transparent = true; m.depthWrite = false;
-      const prev = m0.onBeforeCompile;
-      m.onBeforeCompile = function (shader, renderer) {
-        if (prev) prev.call(this, shader, renderer);
-        if (hasAttr) {
-          shader.vertexShader = shader.vertexShader
-            .replace('#include <common>', '#include <common>\nattribute float seDist;\nvarying float vSeDist;')
-            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeDist = seDist;');
-        }
-        const view = SOFT_EDGE_VIEW.toFixed(3), pw = SOFT_EDGE_POWER.toFixed(3);
-        shader.fragmentShader = shader.fragmentShader
-          .replace('#include <common>', '#include <common>\n' + (hasAttr ? 'varying float vSeDist;\n' : ''))
-          .replace('#include <dithering_fragment>',
-            '{ float seA = 1.0;\n' +
-            (hasAttr ? 'float seE = clamp(vSeDist, 0.0, 1.0); seA *= pow(seE * seE * (3.0 - 2.0 * seE), ' + pw + ');\n' : '') +
-            '#ifndef FLAT_SHADED\n' +
-            'if (' + view + ' > 0.0) seA *= mix(1.0 - ' + view + ', 1.0, smoothstep(0.0, 0.6, abs(dot(normalize(vNormal), normalize(vViewPosition)))));\n' +
-            '#endif\n' +
-            'gl_FragColor.a *= seA; }\n#include <dithering_fragment>');
+    try { hasAttr = buildSoftEdgeAttr(geo); } catch (err) { console.warn('[softEdge] 縁の計算に失敗', err); }
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    const bb = geo.boundingBox, ctr = bb.getCenter(new THREE.Vector3()), bsz = bb.getSize(new THREE.Vector3());
+    const dim = Math.max(bsz.x, bsz.y, bsz.z) || 1;
+    // 拡大・拡散の見た目を作る材質。off: 法線方向への膨らませ量、am: 濃さの倍率、dens: 中心の濃さ倍率
+    const makeConv = function (off, am, dens) {
+      return function (m0) {
+        if (!m0 || !(m0.isMeshStandardMaterial || m0.isMeshPhongMaterial || m0.isMeshLambertMaterial || m0.isMeshToonMaterial)) return m0;
+        const m = m0.clone(); m.name = m0.name;   // 他のメッシュと共有している材質に影響しないよう複製する
+        m.transparent = true; m.depthWrite = false;
+        const prev = m0.onBeforeCompile;
+        m.onBeforeCompile = function (shader, renderer) {
+          if (prev) prev.call(this, shader, renderer);
+          const f = function (v) { return v.toFixed(5); };
+          let vs = shader.vertexShader.replace('#include <common>', '#include <common>\n' + (hasAttr ? 'attribute float seDist;\nvarying float vSeDist;\n' : ''));
+          vs = vs.replace('#include <begin_vertex>',
+            '#include <begin_vertex>\n' + (hasAttr ? 'vSeDist = seDist;\n' : '') +
+            'transformed = vec3(' + f(ctr.x) + ',' + f(ctr.y) + ',' + f(ctr.z) + ') + (transformed - vec3(' + f(ctr.x) + ',' + f(ctr.y) + ',' + f(ctr.z) + ')) * ' + f(SOFT_EDGE_SCALE) + ';\n' +
+            (off > 0 ? 'transformed += normalize(normal) * ' + f(off) + ';\n' : ''));
+          shader.vertexShader = vs;
+          const view = SOFT_EDGE_VIEW.toFixed(3), pw = SOFT_EDGE_POWER.toFixed(3);
+          shader.fragmentShader = shader.fragmentShader
+            .replace('#include <common>', '#include <common>\n' + (hasAttr ? 'varying float vSeDist;\n' : ''))
+            .replace('#include <dithering_fragment>',
+              '{ float seA = 1.0;\n' +
+              (hasAttr ? 'float seE = clamp(vSeDist, 0.0, 1.0); seA *= pow(seE * seE * (3.0 - 2.0 * seE), ' + pw + ');\n' : '') +
+              '#ifndef FLAT_SHADED\n' +
+              'if (' + view + ' > 0.0) seA *= mix(1.0 - ' + view + ', 1.0, smoothstep(0.0, 0.6, abs(dot(normalize(vNormal), normalize(vViewPosition)))));\n' +
+              '#endif\n' +
+              'seA = min(1.0, seA * ' + f(dens) + ') * ' + f(am) + ';\n' +
+              'gl_FragColor.a *= seA; }\n#include <dithering_fragment>');
+        };
+        m.needsUpdate = true;
+        return m;
       };
-      m.needsUpdate = true;
-      return m;
     };
-    o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
+    const origMat = o.material;   // 拡散層は加工前の材質から作る（二重に加工されないように）
+    const conv0 = makeConv(0, 1, SOFT_EDGE_DENSITY);
+    o.material = Array.isArray(o.material) ? o.material.map(conv0) : conv0(o.material);
     o.renderOrder = Math.max(o.renderOrder || 0, 1);   // 半透明なので体より後に描く
+    // 輪郭の外側へ滲む拡散層（同じ形を少しずつ膨らませて薄く重ねる）
+    for (let k = 1; k <= SOFT_EDGE_SHELLS; k++) {
+      const cv = makeConv(dim * SOFT_EDGE_SHELL_SPREAD * k, SOFT_EDGE_SHELL_ALPHA / k, 1.0);
+      const mats = Array.isArray(origMat) ? origMat.map(function (mm) { return cv(mm); }) : cv(origMat);
+      let sh;
+      if (o.isSkinnedMesh && o.skeleton) { sh = new THREE.SkinnedMesh(geo, mats); sh.bind(o.skeleton, o.bindMatrix); sh.bindMode = o.bindMode; }
+      else sh = new THREE.Mesh(geo, mats);
+      sh.name = (o.name || 'mesh') + '_softShell' + k;
+      sh.position.copy(o.position); sh.quaternion.copy(o.quaternion); sh.scale.copy(o.scale);
+      sh.frustumCulled = false; sh.castShadow = false; sh.receiveShadow = false;
+      sh.renderOrder = (o.renderOrder || 1) + k;
+      sh.userData.__outline = true; sh.userData.__softEdge = true;   // 当たり判定・再帰処理の対象外にする目印
+      if (o.morphTargetInfluences) { sh.morphTargetInfluences = o.morphTargetInfluences; sh.morphTargetDictionary = o.morphTargetDictionary; }
+      if (o.parent) o.parent.add(sh);
+    }
   }
   function applyGloss(o) {
     if (!o.isMesh || !o.material) return;

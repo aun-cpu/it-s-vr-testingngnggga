@@ -1845,12 +1845,16 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const HGH_EXCLUDE_RE = /brow|eye|眉|睫|lash|目/i;                                   // 合えば髪ボーンにしない
   const HGH_MAX_BONES = 48;          // 動かす髪ボーンの最大本数（多いほど重い。超えた分は動かさない）
   const HGH_STIFF = 16;              // 元の姿勢へ戻る強さ（1/秒。大きいほど硬く、小さいほどふわふわ）
-  const HGH_DRAG = 5;                // 動きの減衰（1/秒。小さいほど長く揺れる）
+  const HGH_DRAG = 7;                // 動きの減衰（1/秒。小さいほど長く揺れる。大きいほど早く収まる）
   const HGH_GRAVITY = 6;             // 重力（m/s²。大きいほど毛先が垂れる）
   const HGH_MAX_DEG = 40;            // 元の姿勢から曲がってよい最大角度（度）
   const HGH_MAX_DT = 1 / 30;         // 1回の計算に使う時間の上限（秒。落ちた時に暴れないため）
+  const HGH_SWAY_GAIN = 2;           // hの揺れ（partの揺れ・押し出しがh全体へ伝わった動き）に髪が遅れてついてくる強さ。大きいほどhの揺れに大きく反応。0で無効
+  const HGH_SWAY_DEADZONE = 0.12;    // m/s: hの揺れの速さがこれより小さい間は髪を反応させない（partのゆるい揺れが続いている間に、髪までずっと揺れないため）。これを超えた分だけ反応する
   let hgHair = null;                 // {list:[…], n: 髪ボーン数}
   let hgHairInfo = '未読込';
+  const _hhPrevG = new THREE.Matrix4(), _hhRel = new THREE.Matrix4();   // 前フレームのh全体の行列 / 「今の位置→前フレームの位置」への変換
+  let _hhHasPrev = false;
   function setupHgHair(model, group) {
     hgHair = null;
     const hairSet = new Set();
@@ -1906,6 +1910,10 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       o.updateMatrix();
       o.matrixWorld.multiplyMatrices(o.parent.matrixWorld, o.matrix);
       o.matrixWorld.decompose(H.pos, e.wq, H.scl);
+      if (i === 0) {   // h全体（グループ）: 今回の動き（位置・伸び縮み・傾き）が、前フレームからどれだけ変わったかを求める
+        if (_hhHasPrev) _hhRel.copy(o.matrixWorld).invert().premultiply(_hhPrevG); else _hhRel.identity();
+        _hhPrevG.copy(o.matrixWorld); _hhHasPrev = true;
+      }
       if (!e.hair) continue;
       const pq = e.par >= 0 ? list[e.par].wq : H.ident;
       H.head.copy(H.pos);
@@ -1919,6 +1927,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       H.nx.subVectors(e.cur, e.prev).multiplyScalar(damp).add(e.cur);
       H.nx.addScaledVector(H.tmp.subVectors(H.tail, e.cur), k);
       H.nx.y -= HGH_GRAVITY * dt * dt;
+      if (HGH_SWAY_GAIN > 0) {   // hの揺れでこの骨の付け根が動いた分（アニメの動きは含まない）だけ、先端を逆向きへ置いていく → 揺れに合わせて髪が遅れて振れる
+        H.tmp.copy(H.head).applyMatrix4(_hhRel).sub(H.head);   // = 前フレームのh全体の位置なら付け根はどこにあったか − 今の付け根
+        const swV = H.tmp.length() / dt;                        // 付け根がhの揺れで動いた速さ（m/s）
+        if (swV > HGH_SWAY_DEADZONE) H.nx.addScaledVector(H.tmp, HGH_SWAY_GAIN * (1 - HGH_SWAY_DEADZONE / swV));   // ゆるい揺れは無視し、しきい値を超えた分だけ反映
+      }
       // 骨の長さを保ち、アニメの向きから曲がりすぎないようにする
       H.dn.subVectors(H.nx, H.head);
       const dl = H.dn.length();

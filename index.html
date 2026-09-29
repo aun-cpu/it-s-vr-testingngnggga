@@ -139,15 +139,6 @@ body.stereo .disppos{display:none}
 #cv{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
 #seam{position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:#000; display:none; pointer-events:none}
 body.stereo #seam{display:block}
-/* リアル描画：カメラっぽい周辺減光（ビネット）と、ごく薄い粒子ノイズ。canvasの上・UIの下に重ねるだけ */
-#realfx{position:absolute; inset:0; pointer-events:none; z-index:1; display:none}
-body.realon #realfx{display:block}
-#realfx .vig{position:absolute; inset:0; background:radial-gradient(ellipse at center, rgba(10,7,4,0) 52%, rgba(10,7,4,var(--vig,.4)) 100%)}
-body.stereo #realfx .vig{
-  background:
-    radial-gradient(ellipse at center, rgba(10,7,4,0) 52%, rgba(10,7,4,var(--vig,.4)) 100%) left top/50% 100% no-repeat,
-    radial-gradient(ellipse at center, rgba(10,7,4,0) 52%, rgba(10,7,4,var(--vig,.4)) 100%) right top/50% 100% no-repeat}
-#realfx .grain{position:absolute; inset:0; background-repeat:repeat; opacity:var(--grain,.5)}
 .hudwrap{
   z-index:5; position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px); top:calc(env(safe-area-inset-top,0px) + 8px);
   max-width:calc(100vw - 170px); pointer-events:none;
@@ -385,7 +376,6 @@ body.stereo .dispbar{opacity:.55}
 <div id="disp" class="screen dark hidden">
   <canvas id="cv"></canvas>
   <div id="seam"></div>
-  <div id="realfx"><div class="vig"></div><div class="grain"></div></div>
   <div class="wait" id="wait">
     <div class="tilthead">
       <p class="tiltcap" style="margin:0">接続コード</p>
@@ -494,6 +484,19 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後(cm)</span><button type="button" class="dpstep" data-k="stz" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-stz" data-k="stz" min="-30" max="30" step="0.5"><button type="button" class="dpstep" data-k="stz" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-stz">0.00</span></div>
       <div class="prow"><span class="pl">手前(cm)</span><button type="button" class="dpstep" data-k="stf" data-d="-1" data-step="0.5">−</button><input type="range" id="d-rng-stf" data-k="stf" min="-30" max="40" step="0.5"><button type="button" class="dpstep" data-k="stf" data-d="1" data-step="0.5">＋</button><span class="pv" id="d-val-stf">0.00</span></div>
       <button type="button" class="mini" id="dBtnStReset" style="width:100%; margin-top:4px">湯気の位置をリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">動かせる光源（全モデル・背景に当たる）</p>
+      <div class="prow"><span class="pl">X 左右</span><button type="button" class="lkstep" data-lk="x" data-d="-1" data-step="0.05">−</button><input type="range" id="lk-rng-x" data-lk="x" min="-10" max="10" step="0.01"><button type="button" class="lkstep" data-lk="x" data-d="1" data-step="0.05">＋</button><span class="pv" id="lk-val-x">0.00</span></div>
+      <div class="prow"><span class="pl">Y 上下</span><button type="button" class="lkstep" data-lk="y" data-d="-1" data-step="0.05">−</button><input type="range" id="lk-rng-y" data-lk="y" min="-5" max="10" step="0.01"><button type="button" class="lkstep" data-lk="y" data-d="1" data-step="0.05">＋</button><span class="pv" id="lk-val-y">0.00</span></div>
+      <div class="prow"><span class="pl">Z 前後</span><button type="button" class="lkstep" data-lk="z" data-d="-1" data-step="0.05">−</button><input type="range" id="lk-rng-z" data-lk="z" min="-10" max="10" step="0.01"><button type="button" class="lkstep" data-lk="z" data-d="1" data-step="0.05">＋</button><span class="pv" id="lk-val-z">0.00</span></div>
+      <div class="prow"><span class="pl">強さ</span><button type="button" class="lkstep" data-lk="i" data-d="-1" data-step="0.1">−</button><input type="range" id="lk-rng-i" data-lk="i" min="0" max="6" step="0.05"><button type="button" class="lkstep" data-lk="i" data-d="1" data-step="0.1">＋</button><span class="pv" id="lk-val-i">0.00</span></div>
+      <div class="prow"><span class="pl">届く距離</span><button type="button" class="lkstep" data-lk="d" data-d="-1" data-step="0.5">−</button><input type="range" id="lk-rng-d" data-lk="d" min="0.5" max="40" step="0.5"><button type="button" class="lkstep" data-lk="d" data-d="1" data-step="0.5">＋</button><span class="pv" id="lk-val-d">0.00</span></div>
+      <div class="prow"><span class="pl">追従距離</span><button type="button" class="lkstep" data-lk="fd" data-d="-1" data-step="0.05">−</button><input type="range" id="lk-rng-fd" data-lk="fd" min="0.2" max="4" step="0.05"><button type="button" class="lkstep" data-lk="fd" data-d="1" data-step="0.05">＋</button><span class="pv" id="lk-val-fd">0.00</span></div>
+      <div class="prow"><span class="pl">光の色</span><input type="color" id="lk-color" value="#fff4e0" style="flex:1; height:32px; border:none; background:none"></div>
+      <button type="button" class="mini" id="dBtnLkFollow" style="width:100%; margin-top:4px">光源を視線に追従: OFF</button>
+      <button type="button" class="mini" id="dBtnLkHere" style="width:100%; margin-top:6px">光源を今の視点の前に置く</button>
+      <button type="button" class="mini on" id="dBtnLkMarker" style="width:100%; margin-top:6px">光源マーカー: ON</button>
+      <button type="button" class="mini" id="dBtnLkShadow" style="width:100%; margin-top:6px">光源の影: OFF（重い）</button>
+      <button type="button" class="mini" id="dBtnLkReset" style="width:100%; margin-top:6px">光源をリセット</button>
       <p class="postitle" style="margin:10px 0 6px">bg.glbの位置調整（m）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="bgstep" data-bk="x" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-x" data-bk="x" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="x" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-x">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="bgstep" data-bk="y" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-y" data-bk="y" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="y" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-y">0.00</span></div>
@@ -515,8 +518,6 @@ body.stereo .dispbar{opacity:.55}
       <button class="mini" id="dispVr">VR分割 切替</button>
       <button class="mini" id="dispReset">視点リセット</button>
       <button class="mini" id="dispSph">球表示: OFF</button>
-      <button class="mini on" id="dispReal">リアル: 標準</button>
-      <button class="mini" id="dispRealAx">木目の向き: 縦</button>
     </div>
   </div>
     </div>
@@ -638,6 +639,9 @@ body.stereo .dispbar{opacity:.55}
   // bg.glbの位置（表示側パネル専用。操作側とは同期しない）
   const BG_DEFAULT = { x: -2.9, y: 0, z: 2.45 };
   const bgP = Object.assign({}, BG_DEFAULT);
+  // 動かせる光源（表示側パネル専用。操作側とは同期しない）
+  const LIGHT_DEFAULT = { x: 0.35, y: 1.3, z: -0.25, i: 1.5, d: 6, fd: 0.6 };   // 位置(m)・強さ・届く距離(m)・視線追従の距離(m)
+  const lightP = Object.assign({ color: '#fff4e0', follow: false, marker: true, shadow: false }, LIGHT_DEFAULT);
   const inp = Object.assign({ vr: 0, rc: 0, ce: 0, cq: [0, 0, 0, 1], csa: 0 }, POS_DEFAULT);
   const posv = (v, d) => (typeof v === 'number' && isFinite(v)) ? clamp(v, -200, 200) : d;
 
@@ -998,6 +1002,45 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('button[data-bk]').forEach((b) => b.addEventListener('click', () => setBgPos(b.dataset.bk, bgP[b.dataset.bk] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.05'))));
   $('#dBtnBgReset').addEventListener('click', () => { Object.assign(bgP, BG_DEFAULT); syncBgUi(); buzz(15); });
   syncBgUi();
+
+  // ---- 動かせる光源（表示側専用） ----
+  const LK_FIXED = { x: 2, y: 2, z: 2, i: 2, d: 1, fd: 2 };
+  function syncLightUi() {
+    for (const k of Object.keys(LK_FIXED)) {
+      const r = document.getElementById('lk-rng-' + k), v = document.getElementById('lk-val-' + k);
+      if (r) r.value = lightP[k];
+      if (v) v.textContent = lightP[k].toFixed(LK_FIXED[k]);
+    }
+    $('#lk-color').value = lightP.color;
+    $('#dBtnLkFollow').textContent = '光源を視線に追従: ' + (lightP.follow ? 'ON' : 'OFF');
+    $('#dBtnLkFollow').classList.toggle('on', lightP.follow);
+    $('#dBtnLkMarker').textContent = '光源マーカー: ' + (lightP.marker ? 'ON' : 'OFF');
+    $('#dBtnLkMarker').classList.toggle('on', lightP.marker);
+    $('#dBtnLkShadow').textContent = '光源の影: ' + (lightP.shadow ? 'ON（重い）' : 'OFF（重い）');
+    $('#dBtnLkShadow').classList.toggle('on', lightP.shadow);
+  }
+  function setLightVal(k, v) {
+    const rng = $('#lk-rng-' + k);
+    lightP[k] = clamp(Math.round(v * 1000) / 1000, parseFloat(rng.min), parseFloat(rng.max));
+    syncLightUi();
+  }
+  document.querySelectorAll('input[data-lk]').forEach((r) => r.addEventListener('input', () => setLightVal(r.dataset.lk, parseFloat(r.value))));
+  document.querySelectorAll('button[data-lk]').forEach((b) => b.addEventListener('click', () => setLightVal(b.dataset.lk, lightP[b.dataset.lk] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.05'))));
+  $('#lk-color').addEventListener('input', (e) => { lightP.color = e.target.value; });
+  $('#dBtnLkFollow').addEventListener('click', () => { lightP.follow = !lightP.follow; syncLightUi(); buzz(15); });
+  $('#dBtnLkMarker').addEventListener('click', () => { lightP.marker = !lightP.marker; syncLightUi(); });
+  $('#dBtnLkShadow').addEventListener('click', () => { lightP.shadow = !lightP.shadow; syncLightUi(); });
+  $('#dBtnLkHere').addEventListener('click', () => {
+    if (!R) return;
+    const f = new THREE.Vector3(0, 0, -1).applyQuaternion(R.camera.quaternion);
+    lightP.follow = false;
+    lightP.x = clamp(R.camera.position.x + f.x * lightP.fd, -10, 10);
+    lightP.y = clamp(R.camera.position.y + f.y * lightP.fd, -5, 10);
+    lightP.z = clamp(R.camera.position.z + f.z * lightP.fd, -10, 10);
+    syncLightUi(); buzz(15);
+  });
+  $('#dBtnLkReset').addEventListener('click', () => { Object.assign(lightP, LIGHT_DEFAULT, { color: '#fff4e0', follow: false, marker: true, shadow: false }); syncLightUi(); buzz(15); });
+  syncLightUi();
 
   syncDispPosUi();
 
@@ -1807,235 +1850,23 @@ body.stereo .dispbar{opacity:.55}
   }
 
 
-  // ================= リアル描画（背景 bg.glb を、実物の写真に近い質感にする） =================
-  // ・木っぽい材質（名前 or 茶色系の色で判定）に、木目・年輪・板の継ぎ目・板ごとの色差・細かな凹凸を足す（床は板張り）
-  // ・すべての背景材質に、色のむら・光沢のむら・周囲の映り込み（疑似環境マップ）・少しの彩度落とし・低い所の暗がりを足す
-  // ・画面全体に、うっすらビネットと粒子ノイズ（CSSの重ね）
-  // 人物などの他モデルの見た目・光源は変えない。ボタン「リアル」でOFF/弱/標準/強を切替（OFFは元の材質に完全に戻る）
-  const REAL_LEVELS = [ { label: 'OFF', k: 0 }, { label: '弱', k: 0.6 }, { label: '標準', k: 1 }, { label: '強', k: 1.5 } ];
-  let realLevel = 2;
-  const REAL_ENV_INT = 0.3;            // 周囲の映り込みの強さ（大きいほど床・机が光る。明るすぎたら下げる）
-  const REAL_WOOD_RE = /wood|木|floor|床|flooring|フロア|フローリング|desk|机|table|テーブル|plank|板|oak|parquet/i;
-  const REAL_FLOOR_RE = /floor|床|flooring|フロア|フローリング|parquet/i;
-  const REAL_NOT_WOOD_RE = /wall|壁|ceiling|天井|door|ドア|glass|ガラス|window|窓|metal|金属|steel|iron|paper|紙|cloth|布|skin|hair/i;
-  const REAL_SKIP_RE = /glass|ガラス|window|窓|screen|monitor|display|画面|light|照明|lamp/i;   // 透明・発光するものは触らない
-  const REALU = { k: { value: 1 }, axis: { value: 0 }, floorY: { value: -1000 } };
-  let realRenderer = null, realEnvTex = null, realFloorLocalY = null, realBgGroup = null;
-  const realMeshes = [];
-  let realSummary = '';
-  function realEnvBuild() {   // 室内の疑似環境：明るい天井と蛍光灯の帯、明るめの壁と窓、暗い木の床
-    if (realEnvTex || !realRenderer || !THREE.PMREMGenerator) return realEnvTex;
-    try {
-      const c = document.createElement('canvas'); c.width = 512; c.height = 256;
-      const g = c.getContext('2d');
-      const gr = g.createLinearGradient(0, 0, 0, 256);
-      gr.addColorStop(0, '#f2efe8'); gr.addColorStop(0.3, '#d6d0c4'); gr.addColorStop(0.5, '#a39b8d'); gr.addColorStop(0.6, '#5c4a38'); gr.addColorStop(1, '#241a12');
-      g.fillStyle = gr; g.fillRect(0, 0, 512, 256);
-      g.fillStyle = '#ffffff';
-      for (let i = 0; i < 6; i++) g.fillRect(14 + i * 84, 44, 58, 12);     // 天井の蛍光灯（床に細長い映り込みを作る）
-      g.fillStyle = '#e6f0ff';
-      g.fillRect(120, 92, 84, 34); g.fillRect(330, 92, 96, 34);             // 窓
-      const tex = new THREE.CanvasTexture(c);
-      tex.mapping = THREE.EquirectangularReflectionMapping;
-      const pm = new THREE.PMREMGenerator(realRenderer);
-      const rt = pm.fromEquirectangular(tex);
-      realEnvTex = rt.texture;
-      pm.dispose(); tex.dispose();
-    } catch (err) { console.warn('[real] 環境マップの生成に失敗', err); realEnvTex = null; }
-    return realEnvTex;
-  }
-  function realIsBrown(c) {   // 茶色〜橙の暗〜中間の色 → 木とみなす（壁の白っぽいクリーム色は除く）
-    const hsl = { h: 0, s: 0, l: 0 }; c.getHSL(hsl);
-    return hsl.h >= 0.02 && hsl.h <= 0.13 && hsl.s >= 0.22 && hsl.l >= 0.06 && hsl.l <= 0.62;
-  }
-  const REAL_FDECL = [
-    'varying vec3 vRlP; varying vec3 vRlN;',
-    'uniform float uRlK, uRlAxis, uRlFloorY, uRlWood, uRlFloorAll;',
-    'float rlBump = 0.0; float rlFl = 0.0; float rlPf = 0.01;',
-    'float rlH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }',
-    'float rlN(vec3 x) {',
-    '  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);',
-    '  return mix(mix(mix(rlH(i), rlH(i + vec3(1,0,0)), f.x), mix(rlH(i + vec3(0,1,0)), rlH(i + vec3(1,1,0)), f.x), f.y),',
-    '             mix(mix(rlH(i + vec3(0,0,1)), rlH(i + vec3(1,0,1)), f.x), mix(rlH(i + vec3(0,1,1)), rlH(i + vec3(1,1,1)), f.x), f.y), f.z);',
-    '}',
-    'float rlFbm(vec3 p) { return rlN(p) * 0.55 + rlN(p * 2.07 + 1.7) * 0.3 + rlN(p * 4.3 + 3.1) * 0.15; }'
-  ].join('\n');
-  const REAL_FCOLOR = [
-    '{',
-    '  rlPf = length(dFdx(vRlP)) + length(dFdy(vRlP)) + 1.0e-6;   // 1ピクセルが表す長さ(m)。これより細かい模様は消してチラつきを防ぐ',
-    '  vec3 rlNw = normalize(vRlN);',
-    '  float rlUp = smoothstep(0.7, 0.92, rlNw.y);',
-    '  rlFl = 0.0;',
-    '  if (uRlWood > 0.5) rlFl = max(uRlFloorAll * rlUp, rlUp * (1.0 - smoothstep(uRlFloorY + 0.03, uRlFloorY + 0.12, vRlP.y)));',
-    '  vec2 rlTop = uRlAxis < 0.5 ? vRlP.xz : vRlP.zx;',
-    '  vec2 rlHz = normalize(vec2(-rlNw.z, rlNw.x) + vec2(1.0e-4, 0.0));',
-    '  vec2 rlSide = vec2(dot(vRlP.xz, rlHz), vRlP.y);',
-    '  vec2 rlG = mix(rlSide, rlTop, rlUp);',
-    '  float rlA = uRlK;',
-    '  float rlMot = rlFbm(vRlP * 3.1) - 0.5;',
-    '  diffuseColor.rgb *= 1.0 + rlMot * 0.16 * rlA;',
-    '  float rlFine = rlFbm(vRlP * 38.0) - 0.5;',
-    '  diffuseColor.rgb *= 1.0 + rlFine * 0.10 * rlA * (1.0 - smoothstep(0.006, 0.02, rlPf));',
-    '  if (uRlWood > 0.5) {',
-    '    float al = rlG.x, ac = rlG.y;',
-    '    float rlBand = rlFbm(vec3(al * 1.2, ac * 22.0, 4.0)) - 0.5;',
-    '    float rlStreak = rlFbm(vec3(al * 2.5, ac * 150.0, 9.0)) - 0.5;',
-    '    float fB = 1.0 - smoothstep(0.004, 0.012, rlPf);',
-    '    float fS = 1.0 - smoothstep(0.0012, 0.004, rlPf);',
-    '    diffuseColor.rgb *= 1.0 + (rlBand * 0.34 * fB + rlStreak * 0.38 * fS) * rlA;',
-    '    rlBump = rlStreak * 0.00035 * fS;',
-    '    if (rlFl > 0.001) {',
-    '      float pw = 0.15, pl = 1.3;',
-    '      float pid = floor(ac / pw), pfr = fract(ac / pw);',
-    '      float off = rlH(vec3(pid, 1.7, 5.3)) * pl;',
-    '      float lid = floor((al + off) / pl), lfr = fract((al + off) / pl);',
-    '      float plank = rlH(vec3(pid, lid, 2.9));',
-    '      float gapD = min(min(pfr, 1.0 - pfr) * pw, min(lfr, 1.0 - lfr) * pl);',
-    '      float gapW = max(0.0012, rlPf * 0.8);',
-    '      float gap = 1.0 - smoothstep(gapW * 0.5, gapW * 1.5, gapD);',
-    '      float gapFade = 1.0 - smoothstep(0.004, 0.02, rlPf);',
-    '      diffuseColor.rgb *= mix(1.0, 1.0 + (plank - 0.5) * 0.30 * rlA, rlFl);',
-    '      diffuseColor.rgb *= 1.0 - gap * 0.5 * rlFl * min(1.0, rlA) * (0.4 + 0.6 * gapFade);',
-    '      rlBump -= gap * 0.0006 * rlFl;',
-    '    }',
-    '  }',
-    '  float rlL = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));',
-    '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(rlL), 0.10 * min(rlA, 1.5));',
-    '  diffuseColor.rgb *= mix(1.0, mix(0.8, 1.0, smoothstep(uRlFloorY, uRlFloorY + 0.5, vRlP.y)), (1.0 - rlUp) * min(rlA, 1.0) * 0.6);   // 床に近い縦面（脚・巾木）を少し暗く',
-    '}'
-  ].join('\n');
-  const REAL_FROUGH = 'roughnessFactor = clamp(roughnessFactor * (1.0 + (rlFbm(vRlP * 9.0) - 0.5) * 0.55 * uRlK * (1.0 - smoothstep(0.01, 0.05, rlPf))), 0.04, 1.0);';
-  const REAL_FNORM = [
-    '{',
-    '  vec3 rlSx = dFdx(-vViewPosition), rlSy = dFdy(-vViewPosition);',
-    '  vec3 rlR1 = cross(rlSy, normal), rlR2 = cross(normal, rlSx);',
-    '  float rlDet = dot(rlSx, rlR1);',
-    '  vec3 rlGr = sign(rlDet) * (dFdx(rlBump) * rlR1 + dFdy(rlBump) * rlR2);',
-    '  normal = normalize(abs(rlDet) * normal - rlGr * uRlK);',
-    '}'
-  ].join('\n');
-  function realInject(m, wood, floorNamed) {
-    const prev = m.onBeforeCompile;
-    m.onBeforeCompile = function (shader, renderer) {
-      if (prev) prev.call(this, shader, renderer);
-      const U = shader.uniforms;
-      U.uRlK = REALU.k; U.uRlAxis = REALU.axis; U.uRlFloorY = REALU.floorY;
-      U.uRlWood = { value: wood ? 1 : 0 }; U.uRlFloorAll = { value: floorNamed ? 1 : 0 };
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vRlP; varying vec3 vRlN;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRlP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvRlN = normalize(mat3(modelMatrix) * objectNormal);');
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\n' + REAL_FDECL)
-        .replace('#include <color_fragment>', '#include <color_fragment>\n' + REAL_FCOLOR)
-        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + REAL_FROUGH)
-        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + REAL_FNORM);
-    };
-    m.customProgramCacheKey = function () { return 'realbg_1_' + (prev ? prev.toString() : ''); };
-    m.needsUpdate = true;
-  }
-  const realCache = new Map();
-  const realNames = [];
-  function realMakeMat(m0, o) {
-    const nm = (m0.name || '') + ' ' + (o.name || '');
-    if (!m0.color || m0.isShaderMaterial) return null;
-    if (m0.transparent && m0.opacity < 0.95) return null;
-    if (REAL_SKIP_RE.test(nm)) return null;
-    if (m0.emissive && (m0.emissive.r + m0.emissive.g + m0.emissive.b) > 0.6) return null;
-    let m;
-    if (m0.isMeshStandardMaterial) m = m0.clone();
-    else if (m0.isMeshBasicMaterial || m0.isMeshLambertMaterial || m0.isMeshPhongMaterial || m0.isMeshToonMaterial) {
-      m = new THREE.MeshStandardMaterial({ color: m0.color.clone(), map: m0.map || null, transparent: m0.transparent, opacity: m0.opacity, side: m0.side,
-        alphaTest: m0.alphaTest, vertexColors: m0.vertexColors, normalMap: m0.normalMap || null, aoMap: m0.aoMap || null, roughness: 0.75, metalness: 0 });
-    } else return null;
-    m.name = m0.name;
-    const floorNamed = REAL_FLOOR_RE.test(nm);
-    const wood = !REAL_NOT_WOOD_RE.test(nm) && (REAL_WOOD_RE.test(nm) || (!m.map && realIsBrown(m.color)));
-    if (wood) m.roughness = floorNamed ? 0.42 : 0.55; else m.roughness = Math.min(Math.max(m.roughness, 0.35), 0.9);
-    if (m.metalness > 0.3) m.metalness = 0.3;
-    m.envMap = realEnvTex; m.envMapIntensity = REAL_ENV_INT;
-    realInject(m, wood, floorNamed);
-    realNames.push((m0.name || '(無名)') + '→' + (floorNamed ? '床' : wood ? '木' : '他'));
-    return m;
-  }
-  function realScanFloor(o) {   // 上向きの面のうち、いちばん低い高さ（bgGroup基準）。床の高さとして使う
-    const geo = o.geometry; if (!geo || !geo.attributes.position || !geo.attributes.normal) return Infinity;
-    const pa = geo.attributes.position, na = geo.attributes.normal;
-    const M = o.matrixWorld.clone(); if (realBgGroup) M.premultiply(new THREE.Matrix4().copy(realBgGroup.matrixWorld).invert());
-    const nm3 = new THREE.Matrix3().getNormalMatrix(M);
-    const v = new THREE.Vector3(), n = new THREE.Vector3();
-    let minY = Infinity; const step = Math.max(1, Math.floor(pa.count / 60000));
-    for (let i = 0; i < pa.count; i += step) {
-      const p = readVec3(pa, i), q = readVec3(na, i);
-      n.set(q[0], q[1], q[2]).applyMatrix3(nm3).normalize();
-      if (n.y < 0.9) continue;
-      v.set(p[0], p[1], p[2]).applyMatrix4(M);
-      if (v.y < minY) minY = v.y;
-    }
-    return minY;
-  }
-  function realApplyBg(model, group) {
-    realBgGroup = group;
-    realEnvBuild();
-    model.updateMatrixWorld(true);
-    realCache.clear(); realNames.length = 0;
-    let floorMin = Infinity;
-    model.traverse(function (o) {
+  // 光を無視するフラット材質（MeshBasic／KHR_materials_unlit）を、光に反応する材質へ置き換える。全モデル共通
+  function litifyBasic(root) {
+    root.traverse(function (o) {
       if (!o.isMesh || !o.material) return;
-      const orig = o.material, list = Array.isArray(orig) ? orig : [orig];
-      const made = list.map(function (m0) {
-        if (!m0) return null;
-        if (!realCache.has(m0)) realCache.set(m0, realMakeMat(m0, o));
-        return realCache.get(m0);
-      });
-      if (made.every(function (x) { return !x; })) return;
-      const real = made.map(function (x, i) { return x || list[i]; });
-      o.userData.__realOrig = orig;
-      o.userData.__realMat = Array.isArray(orig) ? real : real[0];
-      realMeshes.push(o);
-      try { floorMin = Math.min(floorMin, realScanFloor(o)); } catch (err) { console.warn('[real] 床の高さの計算に失敗', err); }
+      const conv = function (m) {
+        if (!m || !m.isMeshBasicMaterial || m.wireframe || m.userData.__lit) return m;
+        const n = new THREE.MeshStandardMaterial({ color: m.color.clone(), map: m.map || null, alphaMap: m.alphaMap || null,
+          transparent: m.transparent, opacity: m.opacity, side: m.side, alphaTest: m.alphaTest, vertexColors: m.vertexColors,
+          roughness: 0.8, metalness: 0, depthWrite: m.depthWrite });
+        n.name = m.name; n.userData = Object.assign({}, m.userData, { __lit: true });
+        if ('morphTargets' in m) { n.morphTargets = m.morphTargets; n.morphNormals = m.morphNormals; }
+        if (o.isSkinnedMesh) n.skinning = true;
+        return n;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
     });
-    realFloorLocalY = isFinite(floorMin) ? floorMin : null;
-    const nFloor = realNames.filter(function (s) { return /→床$/.test(s); }).length, nWood = realNames.filter(function (s) { return /→木$/.test(s); }).length;
-    realSummary = '（リアル: 床' + nFloor + '/木' + nWood + '/他' + (realNames.length - nFloor - nWood) + '）';
-    console.log('[real] 背景の材質の判定:', realNames.join(' , '), ' 床の高さ(bg基準)=', realFloorLocalY);
-    realApplyLevel();
   }
-  function realApplyLevel() {
-    const lv = REAL_LEVELS[realLevel], on = lv.k > 0;
-    REALU.k.value = lv.k;
-    realMeshes.forEach(function (o) { o.material = on ? o.userData.__realMat : o.userData.__realOrig; });
-    realCache.forEach(function (m) { if (m) m.envMapIntensity = REAL_ENV_INT * Math.min(1.5, lv.k); });
-    document.body.classList.toggle('realon', on);
-    const fx = document.getElementById('realfx');
-    if (fx) {
-      fx.style.setProperty('--vig', String(Math.min(0.55, 0.4 * lv.k)));
-      fx.style.setProperty('--grain', String(Math.min(0.9, 0.5 * lv.k)));
-    }
-    const b = document.getElementById('dispReal');
-    if (b) { b.textContent = 'リアル: ' + lv.label; b.classList.toggle('on', on); }
-  }
-  function realTick() {   // 毎フレーム：床の高さを、bgの今の位置に合わせる
-    if (realBgGroup && realFloorLocalY != null) REALU.floorY.value = realBgGroup.position.y + realFloorLocalY * realBgGroup.scale.y;
-  }
-  (function realGrainInit() {   // 粒子ノイズ（小さなタイルを繰り返す）
-    try {
-      const c = document.createElement('canvas'); c.width = c.height = 128;
-      const g = c.getContext('2d'), d = g.createImageData(128, 128);
-      for (let i = 0; i < d.data.length; i += 4) {
-        const v = Math.random() < 0.5 ? 0 : 255;
-        d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = Math.floor(Math.random() * 26);
-      }
-      g.putImageData(d, 0, 0);
-      const el = document.querySelector('#realfx .grain');
-      if (el) el.style.backgroundImage = 'url(' + c.toDataURL('image/png') + ')';
-    } catch (err) {}
-  })();
-  document.getElementById('dispReal').addEventListener('click', function () { realLevel = (realLevel + 1) % REAL_LEVELS.length; realApplyLevel(); });
-  document.getElementById('dispRealAx').addEventListener('click', function () {
-    REALU.axis.value = REALU.axis.value ? 0 : 1;
-    this.textContent = '木目の向き: ' + (REALU.axis.value ? '横' : '縦');
-  });
-  // =====================================================================================
 
   // ---- bg.glb（背景として置くだけの静的モデル） ----
   const BG_URL = 'bg.glb?' + ASSET_VERSION;           // index.html と同じ場所に置く
@@ -2046,11 +1877,10 @@ body.stereo .dispbar{opacity:.55}
     if (!THREE.GLTFLoader) { bgState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     bgState = '読込中…';
     new THREE.GLTFLoader().load(BG_URL, function (gltf) {
-      const model = gltf.scene;
+      const model = gltf.scene; litifyBasic(model);
       model.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       group.add(model);
       bgState = '表示中';
-      try { realApplyBg(model, group); bgState += realSummary; } catch (err) { console.warn('[real] リアル描画の適用に失敗（元の見た目のまま表示します）', err); }
       if (onDone) onDone();
     }, undefined, function (err) {
       bgState = '読込失敗（bg.glb を index.html と同じ場所に置く）';
@@ -2417,7 +2247,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (!THREE.GLTFLoader) { hgState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     hgState = '読込中…';
     new THREE.GLTFLoader().load(HG_URL, function (gltf) {
-      const model = gltf.scene;
+      const model = gltf.scene; litifyBasic(model);
       const box = new THREE.Box3().setFromObject(model);
       const c = box.getCenter(new THREE.Vector3());
       // 足元が地面、水平の中心がグループの原点になるようにそろえる
@@ -2656,7 +2486,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     plusState = '読込中…';
     new THREE.GLTFLoader().load(PLUS_URL, function (gltf) {
       (function () {
-      const model = gltf.scene;
+      const model = gltf.scene; litifyBasic(model);
       if (playerScale != null) {
         // player.glbのメッシュを間引いただけでボーンは同じなので、playerと全く同じ縮尺・位置合わせを使う
         model.scale.setScalar(playerScale);
@@ -2740,7 +2570,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     plus2State = '読込中…';
     new THREE.GLTFLoader().load(PLUS2_URL, function (gltf) {
       (function () {
-      const model = gltf.scene;
+      const model = gltf.scene; litifyBasic(model);
       if (playerScale != null) {
         // player.glbのメッシュを間引いただけでボーンは同じなので、playerと全く同じ縮尺・位置合わせを使う
         model.scale.setScalar(playerScale);
@@ -3051,7 +2881,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     armState = '読込中…';
     new THREE.GLTFLoader().load(ARM_URL, function (gltf) {
       (function () {
-      const model = gltf.scene;
+      const model = gltf.scene; litifyBasic(model);
       if (playerScale != null) {
         // player.glbのメッシュを間引いただけでボーンは同じなので、playerと全く同じ縮尺・位置合わせを使う
         model.scale.setScalar(playerScale);
@@ -3788,7 +3618,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     hState = '読込中…';
     new THREE.GLTFLoader().load(H_URL, function (gltf) {
       (function () {
-      const model = gltf.scene;
+      const model = gltf.scene; litifyBasic(model);
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       if (H_HEIGHT && size.y > 0) model.scale.multiplyScalar(H_HEIGHT / size.y);
@@ -3867,7 +3697,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (!THREE.GLTFLoader) { playerState = '読込失敗（GLTFLoaderなし）'; if (onReady) onReady(); return; }
     playerState = '読込中…';
     new THREE.GLTFLoader().load(PLAYER_URL, function (gltf) {
-      const model = gltf.scene;
+      const model = gltf.scene; litifyBasic(model);
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       if (PLAYER_HEIGHT && size.y > 0) model.scale.multiplyScalar(PLAYER_HEIGHT / size.y);
@@ -3950,7 +3780,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      realRenderer = renderer;
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x9cc4ee);
       scene.fog = new THREE.Fog(0x9cc4ee, 25, 95);
@@ -3965,6 +3794,17 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       sun.shadow.normalBias = 0.02;
       sun.shadow.radius = 3;
       scene.add(sun);
+
+      // 動かせる光源（点光源）。位置・強さ・色は表示側パネルで調整。影は既定OFF（重いため）
+      const movLight = new THREE.PointLight(new THREE.Color(lightP.color), lightP.i, lightP.d, 1);
+      movLight.position.set(lightP.x, lightP.y, lightP.z);
+      movLight.shadow.mapSize.set(1024, 1024);
+      movLight.shadow.camera.near = 0.05; movLight.shadow.camera.far = 30;
+      movLight.shadow.bias = -0.0008;
+      scene.add(movLight);
+      const movMarker = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfff4e0, fog: false }));
+      movMarker.frustumCulled = false; movMarker.renderOrder = 8;
+      scene.add(movMarker);
 
       const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
 
@@ -4042,7 +3882,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       initOoze(scene);     // plus2を筒に入れた時、筒の中ほどから粘り気のある液体が少しあふれるエフェクト
 
       R = {
-        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, hg: hgGroup, arm: armGroup, plus: plusGroup, plus2: plus2Group, bg: bgGroup, tube: tubeGroup, tubeMesh: tubeMesh,
+        renderer: renderer, scene: scene, camera: camera, player: playerGroup, h: hGroup, hg: hgGroup, arm: armGroup, plus: plusGroup, plus2: plus2Group, bg: bgGroup, tube: tubeGroup, tubeMesh: tubeMesh, light: movLight, lightMarker: movMarker,
         W: 0, H: 0
       };
       T = {
@@ -4086,7 +3926,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     out.multiply(T.q0.setFromAxisAngle(T.zee, -ang * d));
   }
 
-  let lastVr = 0, lastRc = 0;
+  let lastVr = 0, lastRc = 0, lastLkUi = 0;
 
   let lastT = performance.now(), lastHud = 0;
   let lastTiltKey = '';
@@ -4376,13 +4216,27 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     updatePlusRod(plusRod, R.plus, dt);     // plus / plus2 の突起（pe1〜pe4）を、同じように、しなる棒として筒の中へ向ける
     updatePlusRod(plus2Rod, R.plus2, dt);
 
-    realTick();
     // ---- 描画 ----
     const W = window.innerWidth, H = window.innerHeight;
     if (W !== R.W || H !== R.H) { R.W = W; R.H = H; R.renderer.setSize(W, H, false); }
     const cam = R.camera;
     cam.quaternion.copy(T.camQ);
     const ex = P.x + CAM_OFFSET.x, ey = P.y + 1.6 + CAM_OFFSET.y, ez = P.z + CAM_OFFSET.z;
+    if (R.light) {   // 動かせる光源
+      if (lightP.follow) {   // 視線の先に常に置く（VR分割中でも視線で動かせる）
+        T.fwd.set(0, 0, -1).applyQuaternion(T.camQ);
+        lightP.x = ex + T.fwd.x * lightP.fd; lightP.y = ey + T.fwd.y * lightP.fd; lightP.z = ez + T.fwd.z * lightP.fd;
+        if (now - lastLkUi > 250) { lastLkUi = now; syncLightUi(); }
+      }
+      R.light.position.set(lightP.x, lightP.y, lightP.z);
+      R.light.color.set(lightP.color);
+      R.light.intensity = lightP.i;
+      R.light.distance = lightP.d;
+      if (R.light.castShadow !== lightP.shadow) R.light.castShadow = lightP.shadow;
+      R.lightMarker.position.copy(R.light.position);
+      R.lightMarker.material.color.set(lightP.color);
+      R.lightMarker.visible = lightP.marker && !lightP.follow;
+    }
 
     if (!stereo) {
       R.renderer.setScissorTest(false);

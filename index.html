@@ -985,8 +985,8 @@ body.stereo .dispbar{opacity:.55}
   let wetK = WET_BASE, wetSide = 1, wetPrimed = false;
   const WET_VDECL = 'varying vec3 vWetP;\nvarying vec3 vWetQ;\n';
   const WET_VPOS = '\nvWetP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWetQ = (modelMatrix * vec4(position, 1.0)).xyz;\n';
-  const WET_FDECL = [
-    'varying vec3 vWetP;', 'varying vec3 vWetQ;', 'uniform vec3 uWP[3];', 'uniform float uWK;', 'uniform float uWR;', 'uniform sampler2D uWEnv;',
+  const WET_FBASE = [
+    'varying vec3 vWetP;', 'varying vec3 vWetQ;', 'uniform sampler2D uWEnv;',
     'float wtH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }',
     'float wtN(vec3 x) {',
     '  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);',
@@ -994,12 +994,58 @@ body.stereo .dispbar{opacity:.55}
     '             mix(mix(wtH(i + vec3(0,0,1)), wtH(i + vec3(1,0,1)), f.x), mix(wtH(i + vec3(0,1,1)), wtH(i + vec3(1,1,1)), f.x), f.y), f.z);',
     '}',
     'float wtSeg(vec3 p, vec3 a, vec3 b) { vec3 ab = b - a; float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1.0e-8), 0.0, 1.0); return length(p - (a + ab * t)); }',
+  ].join('\n') + '\n';
+  const WET_FDECL = WET_FBASE + [
+    'uniform vec3 uWP[3];', 'uniform float uWK;', 'uniform float uWR;',
     'float wtWet(vec3 p, vec3 q) {',   // 口→筒の入口→筒の奥 の線からの距離で決め、縁はノイズで不規則にする
     '  float d = min(wtSeg(p, uWP[0], uWP[1]), wtSeg(p, uWP[1], uWP[2]));',
     '  float n = wtN(q * 45.0) * 0.65 + wtN(q * 130.0) * 0.35;',
     '  float reach = uWR * (0.12 + 0.88 * uWK);',
     '  float w = 1.0 - smoothstep(reach * 0.25, reach, d + (n - 0.5) * reach * 0.6);',
     '  return w * smoothstep(0.02, 0.2, uWK);',
+    '}'].join('\n') + '\n';
+  // ---- plus / plus2 の濡れ：板を配置し、その板を超えた棒の部分に濡れを塗り重ねる ----
+  // 棒（pe〜pe4のボーン列）に沿って濡れを覚えておく。板を超えた深さ＝どこが濡れるか（超えた部分が塗られ、一度塗った所は残る）
+  // 板を超えた回数＝濡れの強さ（層の数）。板の手前から超えた時だけ1回と数え、ずっと超えたままの所は数えない。
+  // ある点が板を超えると、その点から先端までが塗られるので、その点の回数は先端側にも伝わる（真ん中が2回超えたら、真ん中から先端までが2層）
+  const WET_ROD_ON = true;
+  const WET_PLATE_OFFSET = 0;     // m: 板の位置。筒の入口から筒の奥へ向かって測る（0=筒の入口 / +で奥 / −で手前）
+  const WET_ROD_LAYERS = 4;       // 重ねられる最大の層数（超えた回数の上限）
+  const WET_ROD_HYST = 0.003;     // m: 板を超えた／戻ったと数えるまでの余裕（板の近くで細かく震えても、何度も数えないため）
+  const WET_ROD_BINS = 128;       // 棒を長さ方向に区切る数（多いほど、濡れの境目が細かくなる）
+  const WET_ROD_RADIUS = 0.05;    // m: 棒の中心線からこの距離より離れた表面は濡れない
+  const WET_ROD_EDGE = 0.012;     // m: 濡れの境目をノイズで不規則にする幅
+  let wetRodSeq = 0;
+  function makeRodWet() {
+    const NB = WET_ROD_BINS, data = new Uint8Array(NB * 4);
+    for (let i = 0; i < NB; i++) data[i * 4 + 3] = 255;
+    const tex = new THREE.DataTexture(data, NB, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+    tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.ClampToEdgeWrapping; tex.needsUpdate = true;
+    const P = [], pts = [];
+    for (let i = 0; i < 6; i++) { P.push(new THREE.Vector3()); pts.push(new THREE.Vector3()); }
+    return { id: ++wetRodSeq, NB: NB, lv: new Float32Array(NB), cnt: new Float32Array(NB), ins: new Uint8Array(NB), init: false, data: data, tex: tex, P: { value: P }, B: { value: tex }, R: { value: WET_ROD_RADIUS },
+             pts: pts, cum: new Float32Array(7), plateC: new THREE.Vector3(), plateN: new THREE.Vector3(0, 0, 1), ready: false };
+  }
+  const WET_ROD_FDECL = WET_FBASE + [
+    'uniform vec3 uRP[6];', 'uniform sampler2D uRB;', 'uniform float uRR;',
+    'float wtWet(vec3 p, vec3 q) {',   // 棒の中心線（根元→先端）上の一番近い点を求め、その位置に記憶された「層の数」を読む
+    '  float best = 1000.0, bs = 0.0, acc = 0.0, tot = 0.0;',
+    '  for (int i = 0; i < 5; i++) tot += length(uRP[i + 1] - uRP[i]);',
+    '  for (int i = 0; i < 5; i++) {',
+    '    vec3 a = uRP[i], ab = uRP[i + 1] - a; float sl = length(ab);',
+    '    float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1.0e-8), 0.0, 1.0);',
+    '    float d = length(p - (a + ab * t));',
+    '    if (d < best) { best = d; bs = acc + t * sl; }',
+    '    acc += sl;',
+    '  }',
+    '  float n = wtN(q * 45.0) * 0.65 + wtN(q * 130.0) * 0.35;',
+    '  float u = clamp((bs + (n - 0.5) * ' + WET_ROD_EDGE.toFixed(4) + ') / max(tot, 1.0e-4), 0.0, 1.0);',
+    '  float lv = texture2D(uRB, vec2(u, 0.5)).r * ' + WET_ROD_LAYERS.toFixed(1) + ';',   // 層の数
+    '  float cov = smoothstep(0.0, 0.6, lv);',                                                 // 1層目：濡れているか
+    '  float thick = clamp((lv - 1.0) / ' + Math.max(1, WET_ROD_LAYERS - 1).toFixed(1) + ', 0.0, 1.0);',   // 2層目以降：重なり具合
+    '  float rad = 1.0 - smoothstep(uRR * 0.7, uRR, best);',
+    '  return cov * (1.0 + 0.6 * thick) * rad;',
     '}'].join('\n') + '\n';
   const WET_COLOR = [
     'float wtW = wtWet(vWetP, vWetQ);',
@@ -1022,22 +1068,30 @@ body.stereo .dispbar{opacity:.55}
     '  vec3 wtE = texture2D(uWEnv, wtRv.xy * 0.5 + 0.5).rgb;',
     '  gl_FragColor.rgb += wtE * wtW * (0.10 + 0.9 * wtFr) * 0.55;',
     '}'].join('\n') + '\n';
-  function wetInject(m) {   // 材質へ濡れを上乗せする（既存の onBeforeCompile の後に重ねる）
+  function wetInject(m, rw) {   // 材質へ濡れを上乗せする（既存の onBeforeCompile の後に重ねる）。rw: plus/plus2 の棒の濡れ（あれば板方式）
     if (!WET_ON || !m || m.userData.__wet) return;
     m.userData.__wet = true;
     const prev = m.onBeforeCompile;
-    m.customProgramCacheKey = function () { return 'wet|' + (prev ? prev.toString() : ''); };
+    const key = rw ? 'rodwet|' : 'wet|';
+    m.customProgramCacheKey = function () { return key + (prev ? prev.toString() : ''); };
     m.onBeforeCompile = function (sh) {
       if (prev) prev.call(this, sh);
-      sh.uniforms.uWP = WETU.P; sh.uniforms.uWK = WETU.K; sh.uniforms.uWR = WETU.R; sh.uniforms.uWEnv = WETU.env;
+      if (rw) { sh.uniforms.uRP = rw.P; sh.uniforms.uRB = rw.B; sh.uniforms.uRR = rw.R; }
+      else { sh.uniforms.uWP = WETU.P; sh.uniforms.uWK = WETU.K; sh.uniforms.uWR = WETU.R; }
+      sh.uniforms.uWEnv = WETU.env;
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WET_VDECL).replace('#include <project_vertex>', '#include <project_vertex>' + WET_VPOS);
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + WET_FDECL)
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + (rw ? WET_ROD_FDECL : WET_FDECL))
         .replace('#include <color_fragment>', '#include <color_fragment>\n' + WET_COLOR)
         .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + WET_ROUGH)
         .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_NORMAL)
         .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' + WET_END);
     };
     m.needsUpdate = true;
+  }
+  function rodWetAttach(model, rod) {   // plus / plus2 の材質に、板方式の濡れを付ける（棒のボーンが無い時だけ従来の濡れ）
+    if (!rod || !WET_ROD_ON) { model.traverse(wetMatsOf); return; }
+    rod.wet = makeRodWet();
+    model.traverse(function (o) { if (o.isMesh && o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { wetInject(m, rod.wet); }); });
   }
   function wetMatsOf(o) { if (o.isMesh && o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(wetInject); }
   let oozeGuideOn = false;            // 液体の位置ガイド（黄=液体が出る範囲と中心、ピンク=筒。軸: 赤=X右 緑=Y上 青=Z手前）
@@ -1228,9 +1282,12 @@ body.stereo .dispbar{opacity:.55}
     liqG.add(ozAxis(new THREE.Vector3(0, 0, 1), 0x4a8bff, 0.06));
     const lblL = ozLabel('液体', '#f2ff3a'); lblL.position.set(0, 0.05, 0); liqG.add(lblL);
     const lblT = ozLabel('筒', '#ff8fb8'); lblT.position.set(0, -0.045, 0); tubeG.add(lblT);
-    oozeGuide = { tube: tubeG, tubeW: tubeW, liq: liqG, liqW: liqW };
-    tubeG.visible = liqG.visible = false;
-    scene.add(tubeG); scene.add(liqG);
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({ color: 0x40e0ff, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+    plate.renderOrder = 999; plate.frustumCulled = false;   // 板（水色）：これを超えた棒の部分が濡れる
+    const lblP = ozLabel('板', '#7fefff'); lblP.position.set(0, 0.17, 0); plate.add(lblP);
+    oozeGuide = { tube: tubeG, tubeW: tubeW, liq: liqG, liqW: liqW, plate: plate };
+    tubeG.visible = liqG.visible = plate.visible = false;
+    scene.add(tubeG); scene.add(liqG); scene.add(plate);
   }
   function updateOozeGuide(now) {
     if (!oozeGuide || !R || !R.tube) return;
@@ -1239,6 +1296,9 @@ body.stereo .dispbar{opacity:.55}
     if (key !== oozeLastKey) { if (oozeLastKey !== '') oozeFlashUntil = now + 3000; oozeLastKey = key; }
     const on = oozeGuideOn || now < oozeFlashUntil;
     oozeGuide.tube.visible = oozeGuide.liq.visible = on;
+    const pw = (plus2Rod && plus2Rod.wet && plus2Rod.wet.ready) ? plus2Rod.wet : ((plusRod && plusRod.wet && plusRod.wet.ready) ? plusRod.wet : null);
+    oozeGuide.plate.visible = on && !!pw;
+    if (pw) { oozeGuide.plate.position.copy(pw.plateC); oozeGuide.plate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), pw.plateN); }
     if (!on) return;
     const tp = R.tube.position, r = Math.max(0.004, inp.tbr), L = Math.max(0.002, inp.tbl), tr = inp.tbt * Math.PI / 180;
     oozeGuide.tube.position.copy(tp); oozeGuide.tube.rotation.x = tr;
@@ -1791,11 +1851,10 @@ body.stereo .dispbar{opacity:.55}
         };
         o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
         applyGloss(o);
-        wetMatsOf(o);
       });
       group.add(model);
       plusState = '表示中';
-      { const r = peMakeRod(model); plusRod = r.rod; plusRodInfo = r.info; }   // 突起ボーン pe1〜pe4（plus2と同じ処理）
+      { const r = peMakeRod(model); plusRod = r.rod; plusRodInfo = r.info; rodWetAttach(model, plusRod); }   // 突起ボーン pe1〜pe4（plus2と同じ処理）
 
       const clips = gltf.animations || [];
       if (clips.length === 0) { plusAnim = '  アニメなし'; return; }
@@ -1877,12 +1936,11 @@ body.stereo .dispbar{opacity:.55}
         o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
         applyGloss(o);
         applySkinLook(o);
-        wetMatsOf(o);
       });
       group.add(model);
       plus2State = '表示中';
 
-      { const r = peMakeRod(model); plus2Rod = r.rod; plus2RodInfo = r.info; }   // 突起ボーン pe1〜pe4（plusと同じ処理）
+      { const r = peMakeRod(model); plus2Rod = r.rod; plus2RodInfo = r.info; rodWetAttach(model, plus2Rod); }   // 突起ボーン pe1〜pe4（plusと同じ処理）
 
       const clips = gltf.animations || [];
       if (clips.length === 0) { plus2Anim = '  アニメなし'; return; }
@@ -2075,6 +2133,42 @@ body.stereo .dispbar{opacity:.55}
     rod.bend = 0;
     for (let i = 0; i < n; i++) rod.bend += used[i] * 180 / Math.PI;
     group.updateMatrixWorld(true);
+    rodWetUpdate(rod, e.c, e.u, full);
+  }
+  function rodWetUpdate(rod, c, u, full) {   // 板（筒の入口に置いた、挿入方向に垂直な面）を超えた棒の部分に濡れを塗り、超えた回数で強さ（層）を決める
+    const rw = rod.wet;
+    if (!rw) return;
+    const e = _pe, n = rod.bones.length, K = n + 1, NB = rw.NB, pts = rw.pts, cum = rw.cum;
+    peMeasure(rod);
+    for (let i = 0; i < n; i++) pts[i].copy(e.p[i]);
+    pts[n].copy(e.tip);
+    for (let i = 0; i < 6; i++) rw.P.value[i].copy(pts[Math.max(0, i - (6 - K))]);   // 足りない分は根元の点を重ねる（長さ0の区間）
+    cum[0] = 0;
+    for (let i = 1; i < K; i++) cum[i] = cum[i - 1] + pts[i].distanceTo(pts[i - 1]);
+    const total = cum[K - 1];
+    const off = -full / 2 + WET_PLATE_OFFSET;                        // 板の位置（筒の中心から挿入方向へ測る）
+    rw.plateC.copy(c).addScaledVector(u, off); rw.plateN.copy(u);
+    rw.ready = true;
+    if (!(total > 1e-6)) return;
+    let seg = 0, changed = false;
+    for (let b = 0; b < NB; b++) {
+      const target = (b + 0.5) / NB * total;                          // このマスの、棒に沿った位置
+      while (seg < K - 2 && cum[seg + 1] < target) seg++;
+      const sl = cum[seg + 1] - cum[seg];
+      e.t2.lerpVectors(pts[seg], pts[seg + 1], sl > 1e-8 ? clamp((target - cum[seg]) / sl, 0, 1) : 0);
+      e.t3.subVectors(e.t2, c);
+      const s = e.t3.dot(u) - off;                                    // 板を超えた深さ（m）。0以下なら板の手前
+      if (!rw.init) { rw.ins[b] = s > 0 ? 1 : 0; rw.cnt[b] = rw.ins[b]; }                      // 最初から超えている所は1回目として塗る
+      else if (!rw.ins[b]) { if (s > WET_ROD_HYST) { rw.ins[b] = 1; rw.cnt[b] = Math.min(WET_ROD_LAYERS, rw.cnt[b] + 1); } }   // 手前から超えた瞬間だけ数える
+      else if (s < -WET_ROD_HYST) rw.ins[b] = 0;                                                // 手前に戻った（次に超えたらまた数える）
+    }
+    rw.init = true;
+    let m = 0;                                                        // 根元側から先端へ：ある点の回数は、そこから先端までに伝わる
+    for (let b = 0; b < NB; b++) {
+      if (rw.cnt[b] > m) m = rw.cnt[b];
+      if (m !== rw.lv[b]) { rw.lv[b] = m; rw.data[b * 4] = Math.round(m / WET_ROD_LAYERS * 255); changed = true; }
+    }
+    if (changed) rw.tex.needsUpdate = true;
   }
   // ---- playerarm.glb（playerと同じ読み込み。「2action2」の0フレーム目で止めて既定ポーズにする） ----
   const ARM_URL = 'playerarm.glb?' + ASSET_VERSION;   // index.html と同じ場所に置く

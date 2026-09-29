@@ -1956,6 +1956,50 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     }
   }
 
+  // ---- h.glbの首ボーン：アニメの上に、ごくわずかな揺れ（呼吸・重心の揺らぎ）を足して、止まって見えないようにする ----
+  // 骨はここでも名前で判定する（HUDの「h.glb首ボーン」に本数が出る。0本なら骨名の一部も出るので、下の正規表現に足す）。
+  const HGN_ON = true;               // false: 首はアニメどおり
+  const HGN_BONE_RE = /neck|首|kubi/i;   // 首ボーンの名前
+  const HGN_EXCLUDE_RE = /hair|髪|kami|twist|roll/i;   // 合えば首ボーンにしない
+  const HGN_AMP_DEG = 1.2;           // 揺れの大きさ（度。首全体の合計。骨が複数あれば本数で割る。大きいほど大きく動く）
+  const HGN_SPEED = 1;               // 揺れの速さの倍率（1でゆっくり。2で2倍速）
+  let hgNeck = null;
+  let hgNeckInfo = '未読込';
+  let hgNeckT = 0;
+  const _hnE = new THREE.Euler(), _hnQ = new THREE.Quaternion();
+  function setupHgNeck(model) {
+    hgNeck = null;
+    const bones = [];
+    model.traverse(function (o) {
+      if (o.isBone && HGN_BONE_RE.test(o.name || '') && !HGN_EXCLUDE_RE.test(o.name || '')) bones.push(o);
+    });
+    if (!bones.length) {
+      const names = []; model.traverse(function (o) { if (o.isBone && names.length < 12) names.push(o.name || '無名'); });
+      hgNeckInfo = '0本（骨名の例: ' + names.join(', ') + '）';
+      return;
+    }
+    hgNeck = bones.map(function (o, i) { return { o: o, q0: o.quaternion.clone(), out: o.quaternion.clone(), ph: i * 1.7 }; });
+    hgNeckInfo = bones.length + '本（' + bones.map(function (b) { return b.name; }).join(', ') + '）';
+  }
+  function updateHgNeck(dt) {
+    if (!HGN_ON || !hgNeck || !(dt > 0)) return;
+    hgNeckT += Math.min(dt, 0.1) * HGN_SPEED;
+    const t = hgNeckT, a = HGN_AMP_DEG * Math.PI / 180 / hgNeck.length;
+    for (let i = 0; i < hgNeck.length; i++) {
+      const e = hgNeck[i], o = e.o, p = e.ph;
+      if (o.quaternion.equals(e.out)) o.quaternion.copy(e.q0);   // アニメが動かしていない骨は元の姿勢から始める（前フレームの揺れを積み上げない）
+      // 周期の違うゆっくりした揺れを重ねる（規則的に見えないように）: 左右の向き・前後のうなずき・傾き
+      _hnE.set(
+        a * (0.60 * Math.sin(t * 1.9 + p) + 0.25 * Math.sin(t * 0.7 + p * 2.3)),
+        a * (0.55 * Math.sin(t * 0.8 + p + 1.3) + 0.30 * Math.sin(t * 1.7 + p * 1.9)),
+        a * (0.40 * Math.sin(t * 1.1 + p + 2.6) + 0.20 * Math.sin(t * 0.5 + p * 3.1)),
+        'XYZ');
+      _hnQ.setFromEuler(_hnE);
+      o.quaternion.multiply(_hnQ);
+      e.out.copy(o.quaternion);
+    }
+  }
+
   // ---- h.glb（idleをループ再生するだけの追加モデル。位置・サイズ・傾きは操作側/表示側のパネルで調整） ----
   const HG_URL = 'h.glb?' + ASSET_VERSION;            // index.html と同じ場所に置く
   let hgState = '未読込';
@@ -1975,6 +2019,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       const hgRef = Math.max(hgSize.x, hgSize.y, hgSize.z, 1e-3);   // 質感の細かさの基準（モデルの大きさ）
       model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true; try { applyHgLook(o, hgRef); } catch (err) { console.warn('[hgLook] 質感の設定に失敗', err); } } });
       group.add(model);
+      try { setupHgNeck(model); } catch (err) { hgNeck = null; hgNeckInfo = '設定に失敗'; console.warn('[hgNeck] 首ボーンの設定に失敗', err); }
       try { setupHgHair(model, group); } catch (err) { hgHair = null; hgHairInfo = '設定に失敗'; console.warn('[hgHair] 髪ボーンの設定に失敗', err); }
       hgState = '表示中';
       const clips = gltf.animations || [];
@@ -3546,6 +3591,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     if (hgMixer) hgMixer.update(dt);                         // h.glbのidleもループ再生
+    try { updateHgNeck(dt); } catch (err) { hgNeck = null; console.warn('[hgNeck] 首ボーンの更新に失敗', err); }   // 首: アニメの上にごくわずかな揺れを足す（髪ボーンの計算より前）
     if (R && R.bg) R.bg.position.set(bgP.x, bgP.y, bgP.z);   // bg.glbの位置（表示側パネルの値）
     if (R && R.hg) {   // h.glbの位置・サイズ・傾き（パネルの値）＋ partの揺れ・押し出しを HG_FOLLOW の割合だけ反映（partはhの部位のため）
       const hf = HG_FOLLOW;
@@ -3735,6 +3781,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         'h.glb: ' + hgState + hgAnim + '\n' +
         'h.glb材質: ' + (hgLookNames.length ? hgLookNames.join(', ') : '未読込') + '\n' +
         'h.glb髪ボーン: ' + hgHairInfo + '\n' +
+        'h.glb首ボーン: ' + hgNeckInfo + '\n' +
         'part.glb: ' + hState + hAnim + (hSplitBoneCount ? '  骨' + hSplitBoneCount + '本' : '') + (partPushLen > 0.0005 ? '  押し出し ' + (partPushLen * 100).toFixed(1) + 'cm' : '') + '\n' +
         'part材質: ' + (hSkinNames.length ? hSkinNames.join(', ') : '未読込') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +

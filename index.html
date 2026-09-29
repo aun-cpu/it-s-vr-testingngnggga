@@ -311,6 +311,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="pstep" data-k="hoz" data-d="-1" data-step="1">−</button><input type="range" id="rng-hoz" data-k="hoz" min="-200" max="200" step="1"><button type="button" class="pstep" data-k="hoz" data-d="1" data-step="1">＋</button><span class="pv" id="val-hoz">0.00</span></div>
       <div class="prow"><span class="pl">サイズ</span><button type="button" class="pstep" data-k="hos" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-hos" data-k="hos" min="0.1" max="3" step="0.01"><button type="button" class="pstep" data-k="hos" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-hos">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="pstep" data-k="hot" data-d="-1" data-step="1">−</button><input type="range" id="rng-hot" data-k="hot" min="-180" max="180" step="1"><button type="button" class="pstep" data-k="hot" data-d="1" data-step="1">＋</button><span class="pv" id="val-hot">0.00</span></div>
+      <div class="prow"><span class="pl">材質2/3 細さ</span><button type="button" class="pstep" data-k="pth" data-d="-1" data-step="0.01">−</button><input type="range" id="rng-pth" data-k="pth" min="0.1" max="1.5" step="0.01"><button type="button" class="pstep" data-k="pth" data-d="1" data-step="0.01">＋</button><span class="pv" id="val-pth">0.00</span></div>
     </div>
     <div id="posTab-tube" class="hidden">
       <p class="postitle">筒の位置・大きさ調整（partの位置からの差・m/°）</p>
@@ -417,6 +418,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="hoz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoz" data-k="hoz" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoz">0.00</span></div>
       <div class="prow"><span class="pl">サイズ</span><button type="button" class="dpstep" data-k="hos" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hos" data-k="hos" min="0.1" max="3" step="0.01"><button type="button" class="dpstep" data-k="hos" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hos">0.00</span></div>
       <div class="prow"><span class="pl">傾き</span><button type="button" class="dpstep" data-k="hot" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-hot" data-k="hot" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="hot" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-hot">0.00</span></div>
+      <div class="prow"><span class="pl">材質2/3 細さ</span><button type="button" class="dpstep" data-k="pth" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-pth" data-k="pth" min="0.1" max="1.5" step="0.01"><button type="button" class="dpstep" data-k="pth" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-pth">0.00</span></div>
       <button type="button" class="mini" id="dBtnPosReset" style="width:100%; margin-top:4px">この項目をリセット</button>
       <p class="postitle" style="margin:10px 0 6px">筒の位置・大きさ調整（partの位置からの差）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="tbx" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-tbx" data-k="tbx" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="tbx" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-tbx">0.00</span></div>
@@ -590,6 +592,7 @@ body.stereo .dispbar{opacity:.55}
     lqx: 0, lqy: 0.27, lqz: 0.13, lqr: 0.02, lql: 0.02, lqt: 3.0, lqs: 1.5,
     lqpr: 0.025,   // 板のまわりの液体溜まり（リング）の最大の半径(m)
     lqwu: 0.45, lqws: 0.75,   // partの濡れ範囲: 上への広がり倍率（小さいほど上に広がらない）・全体の広がり倍率
+    pth: 0.6,   // part.glbの「材質2か3（番号の大きい方）」の細さ（1=そのまま、小さいほど細い）
     sfx: 0.5, sfy: 6.5, sfz: 1.0, sfs: 1.0, sfw: 1.5, sfp: 0.5, sfv: 1.0, sfd: 0.3, sfh: 0.3, sfa: 0.3,   // pubic系メッシュだけ: 位置(cm)・大きさ・ぼかし幅・ぼかし強さ・輪郭の透け・密度・拡散の広がり(%)・拡散の濃さ
     hgx: 0.01, hgy: -0.27, hgz: 0.03, hgs: 1.14, hgt: -4,   // h.glb（idle再生の追加モデル）: 位置(m)・サイズ（倍率）・傾き（度）
     // 液体用の筒（別の筒）: partの位置からのズレ（位置m）・半径(m)・長さ(m)・傾き（度）・液の大きさ倍率
@@ -811,7 +814,7 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('.pstep').forEach((b) => {
     b.addEventListener('click', () => setPos(b.dataset.k, st[b.dataset.k] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1')));
   });
-  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs', 'lqwu', 'lqws', 'lqpr'], hg: ['hgx', 'hgy', 'hgz', 'hgs', 'hgt'], se: ['sfx', 'sfy', 'sfz', 'sfs', 'sfw', 'sfp', 'sfv', 'sfd', 'sfh', 'sfa'] };
+  const TAB_KEYS = { body: ['px', 'py', 'pz'], arm: ['aox', 'aoy', 'aoz', 'aor'], part: ['hox', 'hoy', 'hoz', 'hos', 'hot', 'pth'], tube: ['tbx', 'tby', 'tbz', 'tbr', 'tbl', 'tbt'], lq: ['lqx', 'lqy', 'lqz', 'lqr', 'lql', 'lqt', 'lqs', 'lqwu', 'lqws', 'lqpr'], hg: ['hgx', 'hgy', 'hgz', 'hgs', 'hgt'], se: ['sfx', 'sfy', 'sfz', 'sfs', 'sfw', 'sfp', 'sfv', 'sfd', 'sfh', 'sfa'] };
   let posTab = 'body';
   document.querySelectorAll('#posTabs button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -3317,6 +3320,90 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     o.add(outline);
     hOutlineMeshes.push(outline);
   }
+  // ---- part.glbの「材質2か3（番号が大きい方）」を細くする ----
+  // 対象の材質の頂点だけを、その部分の一番長い軸を保ったまま断面（他の2軸）だけ縮める。ジオメトリ自体を書き換えるので、輪郭線・骨の動き・モーフにもそのまま乗る。
+  // 材質名の末尾の数字（例: マテリアル.002 → 2、Material3 → 3）で判定し、2と3があれば大きい方。数字が名前に無い時は、材質の並び順で3番目（無ければ2番目）を使う。HUDの「part細く」で対象を確認できる。
+  const PART_THIN_NUMS = [2, 3];       // 候補にする材質の番号。この中で最も大きい番号の材質を細くする
+  let partThinEntries = [];            // {geo, verts, ctr, axis, pos0, morph0}
+  let partThinApplied = 1;
+  let partThinInfo = '未読込';
+  function setupPartThin(model) {
+    partThinEntries = []; partThinApplied = 1;
+    const mats = [];   // 出てくる順の材質（重複なし）
+    model.traverse(function (o) {
+      if (!o.isMesh || o.userData.__outline) return;
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { if (m && mats.indexOf(m) < 0) mats.push(m); });
+    });
+    const num = function (m) { const r = /(\d+)\s*$/.exec(m.name || ''); return r ? parseInt(r[1], 10) : null; };
+    let target = null, how = '';
+    const cand = mats.filter(function (m) { return PART_THIN_NUMS.indexOf(num(m)) >= 0; });
+    if (cand.length) {
+      const mx = Math.max.apply(null, cand.map(num));
+      target = cand.filter(function (m) { return num(m) === mx; });
+      how = '名前の番号' + mx;
+    } else if (mats.length >= 2) {
+      target = [mats[Math.min(2, mats.length - 1)]];
+      how = '名前に番号なし→' + (Math.min(2, mats.length - 1) + 1) + '番目の材質';
+    }
+    if (!target) { partThinInfo = '対象なし（材質 ' + mats.length + ' 個）'; return; }
+    model.traverse(function (o) {
+      if (!o.isMesh || o.userData.__outline || !o.geometry || !o.geometry.attributes.position) return;
+      const geo = o.geometry, pos = geo.attributes.position;
+      const ml = Array.isArray(o.material) ? o.material : [o.material];
+      const set = new Set();
+      const idx = geo.index ? geo.index.array : null;
+      const addRange = function (st, cnt) { for (let i = st; i < st + cnt; i++) set.add(idx ? idx[i] : i); };
+      if (Array.isArray(o.material) && geo.groups && geo.groups.length) {
+        geo.groups.forEach(function (g) { if (target.indexOf(ml[g.materialIndex]) >= 0) addRange(g.start, g.count); });
+      } else if (target.indexOf(ml[0]) >= 0) {
+        addRange(0, idx ? idx.length : pos.count);
+      }
+      if (!set.size) return;
+      const verts = Int32Array.from(set);
+      const lo = new THREE.Vector3(1e9, 1e9, 1e9), hi = new THREE.Vector3(-1e9, -1e9, -1e9);
+      for (let i = 0; i < verts.length; i++) { const v = verts[i]; lo.x = Math.min(lo.x, pos.getX(v)); lo.y = Math.min(lo.y, pos.getY(v)); lo.z = Math.min(lo.z, pos.getZ(v)); hi.x = Math.max(hi.x, pos.getX(v)); hi.y = Math.max(hi.y, pos.getY(v)); hi.z = Math.max(hi.z, pos.getZ(v)); }
+      const sz = hi.clone().sub(lo), ctr = lo.clone().add(hi).multiplyScalar(0.5);
+      const axis = new THREE.Vector3(sz.x >= sz.y && sz.x >= sz.z ? 1 : 0, sz.y > sz.x && sz.y >= sz.z ? 1 : 0, sz.z > sz.x && sz.z > sz.y ? 1 : 0);
+      partThinEntries.push({ geo: geo, verts: verts, ctr: ctr, axis: axis, pos0: pos.array.slice(), morph0: null, mesh: o });
+    });
+    partThinInfo = target.map(function (m) { return m.name || '無名'; }).join('+') + '（' + how + '、' + partThinEntries.length + 'メッシュ）';
+    partThinEntries.forEach(function (en) { const ma = en.geo.morphAttributes && en.geo.morphAttributes.position; if (ma) en.morph0 = ma.map(function (a) { return a.array.slice(); }); });
+  }
+  function attachPartThinOutlines(model) {   // 輪郭線のメッシュ（ジオメトリの複製）にも同じ頂点の細さを適用する
+    const extra = [];
+    partThinEntries.forEach(function (en) {
+      en.mesh.children.forEach(function (c) {
+        if (!c.userData.__outline || !c.geometry || !c.geometry.attributes.position || c.geometry === en.geo) return;
+        if (c.geometry.attributes.position.count !== en.geo.attributes.position.count) return;
+        const g = c.geometry, ma = g.morphAttributes && g.morphAttributes.position;
+        extra.push({ geo: g, verts: en.verts, ctr: en.ctr, axis: en.axis, pos0: g.attributes.position.array.slice(), morph0: ma ? ma.map(function (a) { return a.array.slice(); }) : null, mesh: c });
+      });
+    });
+    partThinEntries = partThinEntries.concat(extra);
+    partThinApplied = 1;
+  }
+  function applyPartThin(t) {
+    if (!partThinEntries.length || Math.abs(t - partThinApplied) < 1e-4) return;
+    partThinApplied = t;
+    const ax = new THREE.Vector3();
+    partThinEntries.forEach(function (en) {
+      const pos = en.geo.attributes.position, a = en.axis, c = en.ctr, src = en.pos0, dst = pos.array;
+      const thin = function (arr, base, cx, cy, cz) {   // 中心からの差のうち、軸方向はそのまま・断面方向だけ t 倍
+        for (let i = 0; i < en.verts.length; i++) {
+          const v = en.verts[i] * 3;
+          const dx = base[v] - cx, dy = base[v + 1] - cy, dz = base[v + 2] - cz;
+          const al = dx * a.x + dy * a.y + dz * a.z;
+          arr[v] = cx + a.x * al + (dx - a.x * al) * t;
+          arr[v + 1] = cy + a.y * al + (dy - a.y * al) * t;
+          arr[v + 2] = cz + a.z * al + (dz - a.z * al) * t;
+        }
+      };
+      thin(dst, src, c.x, c.y, c.z);
+      pos.needsUpdate = true;
+      const ma = en.geo.morphAttributes && en.geo.morphAttributes.position;
+      if (ma && en.morph0) ma.forEach(function (m, mi) { if (en.morph0[mi] && m.array.length === en.morph0[mi].length) { thin(m.array, en.morph0[mi], 0, 0, 0); m.needsUpdate = true; } });
+    });
+  }
   function loadH(group, onDone) {
     if (!THREE.GLTFLoader) { hState = '読込失敗（GLTFLoaderなし）'; if (onDone) onDone(); return; }
     hState = '読込中…';
@@ -3351,8 +3438,10 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         for (let bi = 0; bi < H_BONE_MAX; bi++) { hSplitU.boneA.value.push(new THREE.Vector3(1e4, 1e4, 1e4)); hSplitU.boneB.value.push(new THREE.Vector3(1e4, 1e4, 1e4)); }
       }
       try { hSplitBoneCount = setupHSplitBones(model, hSplitRef); } catch (err) { hSplitBoneCount = 0; hSplitU.hasBones.value = 0; console.warn('[split] 骨格の取得に失敗', err); }
+      try { setupPartThin(model); } catch (err) { partThinEntries = []; partThinInfo = '失敗'; console.warn('[partThin] 対象の材質の取得に失敗', err); }   // 材質がトゥーン等に差し替わる前に、対象の材質を決める
       model.traverse(function (o) { if (o.isMesh && !o.userData.__outline) { o.frustumCulled = false; applyToon(o); addOutline(o, outlineWorldThickness); } });
-      applyHOutline(); applyHProcessing();   // 初期状態（既定は全部ON）を反映
+      applyHOutline(); applyHProcessing();
+      try { attachPartThinOutlines(model); applyPartThin(inp.pth); } catch (err) { console.warn('[partThin] 適用に失敗', err); }   // 初期状態（既定は全部ON）を反映
       group.add(model);
       hState = '表示中';
       hSph.forEach(function (sp, i) {   // 球の可視化（「球表示」ボタンでON/OFF）
@@ -3770,6 +3859,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     if (hgMixer) hgMixer.update(dt);                         // h.glbのidleもループ再生
+    try { applyPartThin(inp.pth); } catch (err) {}   // partの材質2/3の細さ（スライダーの値。変わった時だけ頂点を更新）
     updateSoftEdgeUniforms();   // pubic系メッシュの位置・ぼかし（スライダーの値）
     if (R && R.bg) R.bg.position.set(bgP.x, bgP.y, bgP.z);   // bg.glbの位置（表示側パネルの値）
     if (R && R.hg) {   // h.glbの位置・サイズ・傾き（パネルの値）＋ partの揺れ・押し出しを HG_FOLLOW の割合だけ反映（partはhの部位のため）
@@ -3963,6 +4053,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         '当たり判定から除外: ' + (partCollExcluded.length ? partCollExcluded.join(', ') : 'なし') + '\n' +
         'part.glb: ' + hState + hAnim + (hSplitBoneCount ? '  骨' + hSplitBoneCount + '本' : '') + (partPushLen > 0.0005 ? '  押し出し ' + (partPushLen * 100).toFixed(1) + 'cm' : '') + '\n' +
         'part材質: ' + (hSkinNames.length ? hSkinNames.join(', ') : '未読込') + '\n' +
+        'part細く: ' + partThinInfo + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +
         'playerplus.glb: ' + plusState + plusAnim + plusRodInfo + (plusRod ? '（曲げ ' + Math.round(plusRod.bend) + '°）' : '') + '\n' +
         'playerplus2.glb: ' + plus2State + plus2Anim + plus2RodInfo + (plus2Rod ? '（曲げ ' + Math.round(plus2Rod.bend) + '°）' : '') + '\n' +

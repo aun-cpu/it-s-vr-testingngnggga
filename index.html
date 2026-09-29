@@ -2103,6 +2103,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const PART_COLLIDE_SAMPLES = 1500;         // 判定に使うplayerの頂点の最大数（多いほど正確だが重い）
   const PART_COLLIDE_MAX_OFFSET = 0.3;       // m: 押し出しで元の位置からずれてよい最大距離
   const PART_COLLIDE_ITER = 3;               // 1フレーム内で重なりを解消する反復回数
+  const PART_COLLIDE_EXCLUDE_RE = /pubic|恥/i;   // 名前（メッシュ名・材質名・親ノード名のどれか）がこれに合うplayerのメッシュは、partとの当たり判定に使わない（見た目はそのまま）。除外したい名前はここに足す
+  let partCollExcluded = [];                 // 当たり判定から除外したメッシュ名（HUD表示用）
   const PART_SPRING_K = 120;                 // 元の位置へ戻る弾性の強さ
   const PART_SPRING_C = 9;                   // 動きの減衰（大きいほど早く収まる）
   let hCollide = null;                       // partの衝突用の大きさ（読込後に設定）
@@ -2114,10 +2116,15 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const _cp = { v: new THREE.Vector3(), inv: new THREE.Matrix4(), t: new THREE.Vector3(), best: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), prev: new THREE.Vector3(), bp: new THREE.Vector3(), bp0: new THREE.Vector3(), sum: new THREE.Vector3() };
   function collectPartCollideMeshes() {
     const list = [];
+    partCollExcluded = [];
     [R.player, R.arm].forEach(function (g) {
       if (!g) return;
       g.traverse(function (o) {
         if (!o.isMesh || o.userData.__outline || !o.visible || !o.geometry || !o.geometry.attributes.position) return;
+        let hit = PART_COLLIDE_EXCLUDE_RE.test(o.name || '');   // 除外する名前か（メッシュ名 → 材質名 → gまでの親ノード名の順に調べる）
+        if (!hit) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { if (m && PART_COLLIDE_EXCLUDE_RE.test(m.name || '')) hit = true; });
+        for (let p = o.parent; !hit && p && p !== g.parent; p = p.parent) if (PART_COLLIDE_EXCLUDE_RE.test(p.name || '')) hit = true;
+        if (hit) { partCollExcluded.push(o.name || '無名'); return; }
         if (o.isSkinnedMesh && (typeof o.boneTransform !== 'function' || !o.geometry.attributes.skinIndex || !o.geometry.attributes.skinWeight)) return;
         list.push(o);
       });
@@ -3794,6 +3801,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         'h.glb: ' + hgState + hgAnim + '\n' +
         'h.glb材質: ' + (hgLookNames.length ? hgLookNames.join(', ') : '未読込') + '\n' +
         'h.glb髪ボーン: ' + hgHairInfo + '\n' +
+        '当たり判定から除外: ' + (partCollExcluded.length ? partCollExcluded.join(', ') : 'なし') + '\n' +
         'part.glb: ' + hState + hAnim + (hSplitBoneCount ? '  骨' + hSplitBoneCount + '本' : '') + (partPushLen > 0.0005 ? '  押し出し ' + (partPushLen * 100).toFixed(1) + 'cm' : '') + '\n' +
         'part材質: ' + (hSkinNames.length ? hSkinNames.join(', ') : '未読込') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +

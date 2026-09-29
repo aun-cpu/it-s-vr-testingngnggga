@@ -2245,10 +2245,12 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let partPushLen = 0;                       // 現在のずれの大きさ（m）
   let partCollList = null, partCollKey = '', partCollPts = null;
   const _cp = { v: new THREE.Vector3(), inv: new THREE.Matrix4(), t: new THREE.Vector3(), best: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), prev: new THREE.Vector3(), bp: new THREE.Vector3(), bp0: new THREE.Vector3(), sum: new THREE.Vector3() };
+  const ARM_COLLIDE_ON = false;        // false: 腕(playerarm)をpartとの物理判定（押し出し）から外す／true: 従来どおり判定に含める
   function collectPartCollideMeshes() {
     const list = [];
     partCollExcluded = [];
-    [R.player, R.arm].forEach(function (g) {
+    (ARM_COLLIDE_ON ? [R.player, R.arm] : [R.player]).forEach(function (g) {   // 腕(playerarm)はpartの物理判定に含めない
+
       if (!g) return;
       g.traverse(function (o) {
         if (!o.isMesh || o.userData.__outline || !o.visible || !o.geometry || !o.geometry.attributes.position) return;
@@ -2280,11 +2282,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     partVel.addScaledVector(c.a, dt);
     partOff.addScaledVector(partVel, dt);
     // 2) playerの頂点（ボーン変形後）をワールド座標で集める
-    const key = (R.player ? R.player.children.length : 0) + ':' + (R.arm ? R.arm.children.length : 0);
+    const key = (R.player ? R.player.children.length : 0) + ':' + (ARM_COLLIDE_ON && R.arm ? R.arm.children.length : 0);
     if (key !== partCollKey || !partCollList) { partCollKey = key; partCollList = collectPartCollideMeshes(); partCollPts = null; }
     if (!partCollList.length) { h.position.copy(partBase).add(partOff); return; }
     if (R.player) R.player.updateMatrixWorld(true);
-    if (R.arm) R.arm.updateMatrixWorld(true);
+    if (ARM_COLLIDE_ON && R.arm) R.arm.updateMatrixWorld(true);
     let total = 0;
     partCollList.forEach(function (e) { total += e.idx.length; });
     if (!partCollPts || partCollPts.length !== total * 3) partCollPts = new Float32Array(total * 3);
@@ -2360,6 +2362,9 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const JELLY_ROT_MAX = 1.5 * Math.PI / 180;   // 揺れに伴う横方向の傾き（sway）の最大角度
   const JELLY_BOB_MAX = 0.012;        // 揺れに伴う上下の沈み込み（バウンド）の最大量（m）
   const ARM_FOLLOW_Z = 1.0;            // playerarmが、partの押し出し（前後=Z方向のみ）に追従する割合。0=追従しない／1=partと同じだけ前後に動く／0.5=半分
+  let armFollowLive = false;           // 角度が反映されている間（手動角度をONにした／操作側を接続した）true
+  let armRefZ = 0;                     // 角度の反映が始まった瞬間の、partの押し出し量（前後）。armはここからの変化分だけ追従する
+  let armFollowOff = 0;                // armに足している前後のずれ（m）
   const HG_FOLLOW = 0.3;              // partはhの部位。partのゼリー揺れ・押し出しを、この割合だけh.glb全体にも反映する（0=反映しない／1=partと同じ強さ）
   // ---- playerplus.glb（playerと同じ位置・同じ読み込み。playerと同じ名前の動き「2action」を、playerと同じ再生位置で動かす。半透明） ----
   const PLUS_URL = 'playerplus.glb?' + ASSET_VERSION; // index.html と同じ場所に置く
@@ -3814,8 +3819,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let tiltAxis = 'b';
   const TILT_MAX = 7;                        // 角度の測定範囲：基準から ±7° まで
   let tiltRefQ = null;                       // 基準の向き（この向きを0°とする）
-  let armRefZ = null;                        // 角度を反映した瞬間のpart位置Z（armとpartの初期関係の基準）
-  let armRefPending = true;                  // true: 次に角度が反映された瞬間に基準を取り直す
   let tiltZeroPending = true;                // 次に角度データが届いた時点を基準にする
   // 操作側からの角度は約30Hz送信だが描画は60〜120Hzで動くため、そのまま使うと値が数フレーム
   // 据え置かれてから飛ぶ「カクツキ」になる。テンポ（角度→再生位置の対応）は変えず、
@@ -3832,7 +3835,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let tiltManualVal = -7;                    // 手動角度（度）。既定は先頭フレーム（-7°）
   const tiltManualBtn = $('#tiltManualBtn'), tiltManualWrap = $('#tiltManualWrap'),
         tiltManualRng = $('#tiltManualRng'), tiltManualValTxt = $('#tiltManualValTxt');
-  $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; armRefPending = true; lastTiltKey = ''; });
+  $('#tiltReset').addEventListener('click', () => { tiltZeroPending = true; lastTiltKey = ''; });
   $('#tiltSel').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-axis]');
     if (!btn) return;
@@ -3842,7 +3845,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   });
   tiltManualBtn.addEventListener('click', () => {
     tiltManual = !tiltManual;
-    armRefPending = true;
     tiltManualBtn.classList.toggle('on', tiltManual);
     tiltManualWrap.classList.toggle('hidden', !tiltManual);
     lastTiltKey = '';
@@ -3954,7 +3956,10 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     }
     if (R.arm) {
       R.arm.visible = true;
-      R.arm.position.set(inp.aox, inp.aoy, inp.aoz + (armRefZ === null ? partOff.z : (R.h ? R.h.position.z : 0) - armRefZ) * ARM_FOLLOW_Z);   // 初期位置（playerと同じ位置＋操作側からのズレ調整）を基準に、partが押し出されたら前後（Z）だけ一緒に動く
+      // 角度を反映した瞬間（手動角度をONにした時／操作側を接続した時）のpartの押し出し量を基準にして、そこからのpartの前後（Z）の動きにだけ追従する。角度が反映されていない間は追従しない
+      { const target = armFollowLive ? (partOff.z - armRefZ) * ARM_FOLLOW_Z : 0;
+        armFollowOff = armFollowLive ? target : armFollowOff + (target - armFollowOff) * (1 - Math.exp(-dt / 0.25)); }   // 切断・手動OFFの時は、なめらかに元の位置へ戻す
+      R.arm.position.set(inp.aox, inp.aoy, inp.aoz + armFollowOff);   // 位置はplayerと同じ位置＋操作側からのズレ調整（aox/aoy/aoz）のまま、前後だけ加算
       R.arm.rotation.y = ARM_FACING + inp.aor * Math.PI / 180;
     }
     if (armMixer) armMixer.update(dt);
@@ -3987,11 +3992,10 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     }
     // ---- 操作側の角度を計算（描画より前に。ここで計算しないと1フレーム遅れて反映される） ----
     const gyroLive = fresh && inp.ce === 1;
-    const tiltLive = tiltManual || gyroLive;
-    // 手動／操作側で角度が反映された瞬間のpart位置を、armとpartの基準関係として記録する
-    if (!tiltLive) { armRefPending = true; armRefZ = null; }
-    else if (armRefPending) { armRefZ = R.h ? R.h.position.z : 0; armRefPending = false; }   // 手動モード中は操作側からの受信の有無に関わらず「有効」として扱う
-    if (!linked) { tiltZeroPending = true; tiltSmoothReady = false; armRefPending = true; }          // 切断中は次の接続で基準・補間を取り直す
+    const tiltLive = tiltManual || gyroLive;   // 手動モード中は操作側からの受信の有無に関わらず「有効」として扱う
+    if (tiltLive && !armFollowLive) armRefZ = partOff.z;   // 角度の反映が始まった瞬間：この時点のpartの押し出しを、armの追従の基準にする
+    armFollowLive = !!tiltLive;
+    if (!linked) { tiltZeroPending = true; tiltSmoothReady = false; }          // 切断中は次の接続で基準・補間を取り直す
     if (gyroLive && tiltZeroPending) {            // 最初のデータ／リセット押下時の向きを0°にする
       tiltRefQ = inp.cq.slice();
       tiltZeroPending = false;

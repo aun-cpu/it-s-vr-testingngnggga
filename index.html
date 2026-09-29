@@ -2685,9 +2685,9 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   // モデルの色合いを少し薄く・光沢を少し加える（PBR/Phong どちらのマテリアルでも効くように分岐）
   // ---- 「pubic」「恥」を含む名前のplayerメッシュの輪郭をぼかす（縁に向かって透明にフェードさせる） ----
   const SOFT_EDGE_RE = /pubic|恥/i;   // ぼかすメッシュの名前（メッシュ名・材質名・親ノード名のどれか）。足したい名前はここに
-  const SOFT_EDGE_WIDTH = 0.6;        // ぼかす幅（メッシュ内側へ向かう最大距離に対する割合。0.3=やや / 0.6=かなり / 1.0=中心以外ほぼ全部）
-  const SOFT_EDGE_POWER = 1.6;        // 大きいほど縁が「より透明」になり、輪郭が溶ける（1.0=直線的）
-  const SOFT_EDGE_VIEW = 0.35;        // 視線に対して斜めの面（シルエット）を透かす強さ。0で無効
+  const SOFT_EDGE_WIDTH = 1.0;        // ぼかす幅（メッシュ内側へ向かう最大距離に対する割合。0.3=やや / 0.6=かなり / 1.0=中心以外ほぼ全部）
+  const SOFT_EDGE_POWER = 2.6;        // 大きいほど縁が「より透明」になり、輪郭が溶ける（1.0=直線的）
+  const SOFT_EDGE_VIEW = 0.85;        // 視線に対して斜めの面（シルエット）を透かす強さ。0で無効
   function softEdgeMatch(o) {
     if (SOFT_EDGE_RE.test(o.name || '')) return true;
     const ms = Array.isArray(o.material) ? o.material : [o.material];

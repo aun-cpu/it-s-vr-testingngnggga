@@ -3949,10 +3949,12 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const WATER_CLICK_RATE = 0.55;      // クリックの密度（大きいほど細かく詰まる。0.5〜2）
   const WATER_BURST_SCALE = 1.0;      // 1回の鳴る長さの倍率
   const WATER_HISS = 0;               // 背景の高音ざわつき（さらさら音）の音量。0で無し
-  const WATER_LOW_ON = true;          // 低い音（「コッ」）を、高いクリックとは別の層として重ねる
-  const WATER_LOW_VOL = 1.8;          // 低い音の層の音量（高いクリックに対する倍率。1=同じ / 大きいほど低い音が目立つ）
-  const WATER_LOW_RATE = 1.0;         // 低い音の密度（大きいほど多く詰まる。1で1回あたり6〜8個前後）
-  const WATER_LOW_HZ = [550, 1000];   // 低い音の中心周波数の範囲(Hz)
+  const WATER_LOW_ON = true;          // 低い音（水の「ぽちゃ・ぽこっ」）を、高いクリックとは別の層として重ねる
+  const WATER_LOW_VOL = 1.8;          // 低い音の層の音量（大きいほど低い音が目立つ）
+  const WATER_LOW_COUNT = [1, 3];     // 1回の水音で鳴らす低い音の数（連続させず、少数だけ）。前へ動く時は少なめ、後ろへ引く時は多め
+  const WATER_LOW_GAP = [0.09, 0.2];  // 秒: 低い音どうしの間隔（この間隔を空けて、連続に聞こえないようにする）
+  const WATER_LOW_HZ = [220, 420];    // 低い音の出だしの高さ(Hz)。ここから少し上へ跳ね上がって水の泡の音になる
+  const WATER_LOW_RISE = [1.5, 2.1];  // 出だしに対して、どれだけ高くなるか（倍率。大きいほど「ぽこっ」と跳ねる）
   let waterCtx = null, waterNoise = null, waterLastAt = 0;
   const wStroke = { dir: 0, lo: 0, hi: 0, init: false };
   function waterEnsure() {
@@ -4009,24 +4011,36 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       // 次のクリックまでの間隔：20ms前後が中心、時々ぱらぱらと詰まったり間が空いたりする
       st += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / WATER_CLICK_RATE;
     }
-    // (3) 低い音の層。高いクリックとは別のタイミング・別の音量で「コッ・コココッ」と重ねる（少し大きめ・多め）
+    // (3) 低い音の層。連続させず、水の泡がはじけるような「ぽこっ・ぽちゃ」を少数だけ間を空けて鳴らす（音程が素早く上がって、なめらかに消える）
     if (WATER_LOW_ON) {
       const lowOut = ctx.createGain();
       lowOut.gain.value = WATER_LOW_VOL;
       lowOut.connect(out);
-      let lt = t + Math.random() * 0.02;
-      while (lt < t + dur) {
-        const amp = (0.05 + 0.5 * Math.pow(Math.random(), 3)) * (0.6 + 0.4 * pw);
-        const cs = ctx.createBufferSource(); cs.buffer = waterNoise;
-        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
-        bp.frequency.value = WATER_LOW_HZ[0] + Math.random() * (WATER_LOW_HZ[1] - WATER_LOW_HZ[0]);
-        bp.Q.value = 3;
-        const life = 0.008 + Math.random() * 0.022;   // 高い音より少し長く残して、低い響きが聞こえるように
-        const cg = ctx.createGain();
-        cg.gain.setValueAtTime(0.0001, lt); cg.gain.linearRampToValueAtTime(amp, lt + 0.001); cg.gain.exponentialRampToValueAtTime(0.0001, lt + life);
-        cs.connect(bp); bp.connect(cg); cg.connect(lowOut);
-        cs.start(lt, Math.random() * 0.45); cs.stop(lt + life + 0.01);
-        lt += (0.03 + Math.pow(Math.random(), 1.5) * 0.07) / WATER_LOW_RATE;
+      const n = dir > 0 ? 1 + Math.floor(Math.random() * 2) : 1 + Math.floor(Math.random() * (WATER_LOW_COUNT[1] - WATER_LOW_COUNT[0] + 1));
+      let lt = t + 0.005 + Math.random() * 0.03;
+      for (let i = 0; i < n && lt < t + dur; i++) {
+        const f0 = WATER_LOW_HZ[0] + Math.random() * (WATER_LOW_HZ[1] - WATER_LOW_HZ[0]);
+        const f1 = f0 * (WATER_LOW_RISE[0] + Math.random() * (WATER_LOW_RISE[1] - WATER_LOW_RISE[0]));
+        const riseT = 0.03 + Math.random() * 0.03;
+        const life = 0.08 + Math.random() * 0.08;
+        const amp = (0.18 + 0.16 * Math.random()) * (0.6 + 0.4 * pw);
+        const osc = ctx.createOscillator(); osc.type = 'sine';
+        osc.frequency.setValueAtTime(f0, lt);
+        osc.frequency.exponentialRampToValueAtTime(f1, lt + riseT);
+        const og = ctx.createGain();
+        og.gain.setValueAtTime(0.0001, lt);
+        og.gain.linearRampToValueAtTime(amp, lt + 0.006);
+        og.gain.exponentialRampToValueAtTime(0.0001, lt + life);
+        osc.connect(og); og.connect(lowOut);
+        osc.start(lt); osc.stop(lt + life + 0.02);
+        // 出だしの、ごく短い水のはねる音（低めのノイズ）
+        const ns = ctx.createBufferSource(); ns.buffer = waterNoise;
+        const nb = ctx.createBiquadFilter(); nb.type = 'bandpass'; nb.frequency.value = 900 + Math.random() * 500; nb.Q.value = 1.2;
+        const ng = ctx.createGain();
+        ng.gain.setValueAtTime(0.0001, lt); ng.gain.linearRampToValueAtTime(amp * 0.5, lt + 0.002); ng.gain.exponentialRampToValueAtTime(0.0001, lt + 0.03);
+        ns.connect(nb); nb.connect(ng); ng.connect(lowOut);
+        ns.start(lt, Math.random() * 0.45); ns.stop(lt + 0.04);
+        lt += life * 0.6 + WATER_LOW_GAP[0] + Math.random() * (WATER_LOW_GAP[1] - WATER_LOW_GAP[0]);
       }
     }
   }

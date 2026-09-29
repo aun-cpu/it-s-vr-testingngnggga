@@ -1051,7 +1051,8 @@ body.stereo .dispbar{opacity:.55}
     'diffuseColor.rgb *= 1.0 - 0.10 * wtW;',
     'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.94, 0.96, 1.0), 0.18 * wtW);'].join('\n') + '\n';
   const WET_ROUGH = 'roughnessFactor = mix(roughnessFactor, 0.05, clamp(wtW * 1.4, 0.0, 1.0));\n';
-  const WET_NORMAL = [   // 濡れた所に小さな水玉状の凹凸（光を散らして"ぬれ感"を出す）
+  const WET_BEADS = false;   // true: 濡れた所に小さな水滴（水玉状の凹凸）を付ける / false: 付けない
+  const WET_NORMAL = !WET_BEADS ? '' : [   // 濡れた所に小さな水玉状の凹凸（光を散らして"ぬれ感"を出す）
     '{',
     '  float wtB = wtW * (smoothstep(0.55, 0.85, wtN(vWetQ * 220.0)) * 0.0012 + wtN(vWetQ * 90.0) * 0.0006);',
     '  vec3 wtP = -vViewPosition; vec3 wtDx = dFdx(wtP), wtDy = dFdy(wtP);',

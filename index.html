@@ -1019,6 +1019,66 @@ body.stereo .dispbar{opacity:.55}
   const WET_ALPHA = 0.32;      // 糸の不透明度（小さいほど透明。液体本体のOOZE_ALPHAとは別）
   const WET_RECOIL_MIN = 0.15, WET_RECOIL_MAX = 0.32;   // 秒: ちぎれた糸が縮みきるまで
   const wetStrands = [], wetDrops = [];
+  // ---- 液体筒まわりの薄い湯気：糸が張られるたびに、その糸の口側の付け根から一つ立ちのぼる（糸と同じ濡れ量・同じタイミング）----
+  const STEAM_ON = true;
+  const STEAM_MAX = 48;                // 同時に出せる湯気の数
+  const STEAM_CHANCE = 0.7;            // 糸が1本張られた時に、湯気が出る確率（濡れが多いほど出やすい）
+  const STEAM_ALPHA = 0.14;            // 湯気の濃さ（最大の不透明度。小さいほど薄い）
+  const STEAM_SIZE = [0.03, 0.09];     // m: 湯気の大きさ（出た時 → 広がりきった時）
+  const STEAM_LIFE = [1.4, 2.4];       // 秒: 湯気が消えるまで
+  const STEAM_RISE = [0.03, 0.07];     // m/秒: 立ちのぼる速さ
+  const STEAM_DRIFT = 0.02;            // m/秒: ゆらゆら横に流れる速さ
+  const wetSteam = [];
+  let steamTex = null;
+  function steamTexture() {   // ふわっとした白いもや（円形のぼかし）を数個重ねて、形を不規則に
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    for (let i = 0; i < 5; i++) {
+      const x = 32 + (Math.random() - 0.5) * 16, y = 32 + (Math.random() - 0.5) * 16, r = 14 + Math.random() * 12;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    }
+    const t = new THREE.CanvasTexture(c); return t;
+  }
+  function initSteam(group) {
+    if (!STEAM_ON) return;
+    for (let i = 0; i < STEAM_MAX; i++) {
+      const mat = new THREE.SpriteMaterial({ map: steamTexture(), color: 0xf2f5fa, transparent: true, opacity: 0, depthWrite: false, fog: false });
+      const spr = new THREE.Sprite(mat); spr.visible = false; spr.frustumCulled = false; spr.renderOrder = 6;
+      group.add(spr);
+      wetSteam.push({ spr: spr, on: false, age: 0, life: 2, vx: 0, vy: 0.05, vz: 0, s0: 0.03, s1: 0.08, a: 1, ph: 0 });
+    }
+  }
+  function wetSteamEmit(pos, wet) {
+    if (!STEAM_ON || Math.random() > STEAM_CHANCE * clamp(wet, 0.2, 1)) return;
+    for (let i = 0; i < wetSteam.length; i++) {
+      const st = wetSteam[i];
+      if (st.on) continue;
+      st.on = true; st.age = 0; st.life = STEAM_LIFE[0] + Math.random() * (STEAM_LIFE[1] - STEAM_LIFE[0]);
+      st.vy = STEAM_RISE[0] + Math.random() * (STEAM_RISE[1] - STEAM_RISE[0]);
+      st.vx = (Math.random() - 0.5) * STEAM_DRIFT * 2; st.vz = (Math.random() - 0.5) * STEAM_DRIFT * 2;
+      st.s0 = STEAM_SIZE[0] * (0.7 + Math.random() * 0.6); st.s1 = STEAM_SIZE[1] * (0.7 + Math.random() * 0.6);
+      st.a = 0.6 + 0.4 * clamp(wet, 0, 1); st.ph = Math.random() * 6.28;
+      st.spr.position.copy(pos); st.spr.material.rotation = Math.random() * 6.28;
+      st.spr.scale.setScalar(st.s0); st.spr.visible = true;
+      return;
+    }
+  }
+  function updateSteam(dt) {
+    for (let i = 0; i < wetSteam.length; i++) {
+      const st = wetSteam[i];
+      if (!st.on) continue;
+      st.age += dt;
+      const u = st.age / st.life;
+      if (u >= 1) { st.on = false; st.spr.visible = false; continue; }
+      const sway = Math.sin(st.age * 1.7 + st.ph) * 0.5;
+      st.spr.position.x += (st.vx + sway * STEAM_DRIFT) * dt; st.spr.position.y += st.vy * dt * (1 - 0.4 * u); st.spr.position.z += (st.vz + Math.cos(st.age * 1.3 + st.ph) * 0.5 * STEAM_DRIFT) * dt;
+      st.spr.scale.setScalar(st.s0 + (st.s1 - st.s0) * Math.sqrt(u));
+      const fin = clamp(u / 0.2, 0, 1), fout = 1 - clamp((u - 0.4) / 0.6, 0, 1);
+      st.spr.material.opacity = STEAM_ALPHA * st.a * fin * fin * (3 - 2 * fin) * fout * fout;
+    }
+  }
   const wetAnchor = new THREE.Vector3();
   const wetZero = new THREE.Vector3();
   let wetBurstT = 0, wetBurstCd = 0, wetTouch = false;   // wetTouch: plus2の先端が筒に当たっている間 true
@@ -1321,6 +1381,7 @@ body.stereo .dispbar{opacity:.55}
                    off: new THREE.Vector3(), n: new THREE.Vector3(), la: new THREE.Vector3(), lb: new THREE.Vector3(),
                    dr: { on: false, pos: new THREE.Vector3(), v: 0, t: 0, r: 0.005 } });
     }
+    initSteam(oozeGroup);
     scene.add(oozeGroup);
     initOozeGuide(scene);
   }
@@ -1504,12 +1565,14 @@ body.stereo .dispbar{opacity:.55}
             s.r0 = WET_STRING_R * rnd(0.6, 1.4) * (0.6 + 1.0 * wetK);
             s.ph = rnd(0, 6.28); s.ph2 = rnd(0, 6.28); s.ao = rnd(0.2, 1.2); s.am = rnd(0.3, 1); s.tk = rnd(0.3, 0.7); s.bt = rnd(0, 50); s.sagK = rnd(0.6, 1.4);
             s.bow.set(rnd(-1, 1), rnd(-0.3, 0.3), rnd(-1, 1)).multiplyScalar(rnd(0.03, 0.1));
+            s.steamNew = true;   // この糸の口側の付け根から湯気を出す（下で位置が決まってから）
           } else continue;
         }
         // 両端：part側は口のふち周りに広く、player側は根元まわりに広く散らし、さらに外側へGAPだけ離す
         e.a.copy(e.o).addScaledVector(e.x, Math.cos(s.ph) * rr * WET_MOUTH_SPREAD * s.am).addScaledVector(e.w, Math.sin(s.ph) * rr * WET_MOUTH_SPREAD * s.am).addScaledVector(e.d, -wetSide * WET_END_GAP * 0.5);
         e.b.copy(wetAnchor).addScaledVector(e.x, Math.cos(s.ph2) * WET_ANCHOR_SPREAD * s.ao).addScaledVector(e.w, Math.sin(s.ph2) * WET_ANCHOR_SPREAD * s.ao);
         e.b.addScaledVector(e.d, wetSide * WET_END_GAP * 0.5);   // 口から外へ、筒の軸方向にだけ離す
+        if (s.steamNew) { s.steamNew = false; wetSteamEmit(e.a, wetK); }   // 糸と同じタイミング・同じ濡れ量で、薄い湯気
         if (s.state === 1) {
           s.age += dt;
           const u = clamp(s.age / s.life, 0, 1), sx = Math.pow(u, 1.6);
@@ -1544,6 +1607,7 @@ body.stereo .dispbar{opacity:.55}
           if (u >= 1) { s.state = 0; s.wait = rnd(WET_STRING_WAIT[0], WET_STRING_WAIT[1]); s.mesh.visible = s.mesh2.visible = false; }
         }
       }
+      updateSteam(dt);
       for (let i = 0; i < wetDrops.length; i++) {   // ちぎれた雫：重力でだんだん速く落ち、縦に伸びながら消える
         const d = wetDrops[i];
         if (!d.on) continue;

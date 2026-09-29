@@ -3750,7 +3750,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         playerAct0.enabled = false;
       } else {
         frontIntro = false;   // 導入クリップが無い場合は導入を行わず、最初の音声をすぐ流す
-        playDaySound('1');
+        // 導入なしの時の音声も鳴らさない
       }
       // 「5フレーム目」の実際の秒数を、トラックのキーフレーム間隔から算出する
       const track0 = clip.tracks && clip.tracks[0];
@@ -4282,7 +4282,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       frontIntro = false;
       // 切り替え時にpartの位置を動かす演出はやめた（位置は操作側の値のまま）
       introOffset = INTRO_END_START_DEG - tiltSmooth;   // 切り替わった時点の角度が、2actionの0°になるようにずらす
-      playDaySound('1');   // 最初の音声（3日→1a / 5日→1b / 7日→1c）を、2action0→2actionに切り替わるこのタイミングで流す
+      // 導入の切り替え時の音声（playDaySound('1')）は鳴らさない
     }
 
     updatePartCollision(dt);   // playerの今のポーズに合わせて、partがplayerと重ならないよう押し出す

@@ -1848,6 +1848,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const HGH_DRAG = 7;                // 動きの減衰（1/秒。小さいほど長く揺れる。大きいほど早く収まる）
   const HGH_GRAVITY = 6;             // 重力（m/s²。大きいほど毛先が垂れる）
   const HGH_MAX_DEG = 40;            // 元の姿勢から曲がってよい最大角度（度）
+  const HGH_COLLIDE_ON = true;       // 髪の先端が頭の中へ入り込まないようにする（頭の形はモデルから自動で求める）
+  const HGH_HEAD_RE = /head|頭|atama/i;   // 頭ボーンの名前
+  const HGH_HEAD_EXCLUDE_RE = /hair|髪|kami|band|end|top|tip|neck|首/i;   // 合えば頭ボーンにしない
+  const HGH_COLLIDE_SCALE = 0.92;    // 頭の大きさの倍率（頂点から求めた大きさに掛ける。1で頂点の外形そのまま。髪が頭から浮くなら小さく、まだ刺さるなら大きく）
+  const HGH_COLLIDE_MARGIN = 0.04;   // 頭の表面から髪の先端を離す余裕（頭の大きさに対する割合）
   const HGH_MAX_DT = 1 / 30;         // 1回の計算に使う時間の上限（秒。落ちた時に暴れないため）
   const HGH_SWAY_GAIN = 2;           // hの揺れ（partの揺れ・押し出しがh全体へ伝わった動き）に髪が遅れてついてくる強さ。大きいほどhの揺れに大きく反応。0で無効
   const HGH_SWAY_DEADZONE = 0.12;    // m/s: hの揺れの速さがこれより小さい間は髪を反応させない（partのゆるい揺れが続いている間に、髪までずっと揺れないため）。これを超えた分だけ反応する
@@ -1855,6 +1860,41 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let hgHairInfo = '未読込';
   const _hhPrevG = new THREE.Matrix4(), _hhRel = new THREE.Matrix4();   // 前フレームのh全体の行列 / 「今の位置→前フレームの位置」への変換
   let _hhHasPrev = false;
+  // 頭ボーンに重みがある頂点（髪のメッシュは除く）から、頭の大きさと中心を楕円体で求める（頭ボーンの座標系）
+  function fitHgHead(model) {
+    const cands = [];
+    model.traverse(function (o) { if (o.isBone && HGH_HEAD_RE.test(o.name || '') && !HGH_HEAD_EXCLUDE_RE.test(o.name || '')) cands.push(o); });
+    let best = null;
+    const inv = new THREE.Matrix4(), m = new THREE.Matrix4(), v = new THREE.Vector3();
+    cands.forEach(function (b) {
+      inv.copy(b.matrixWorld).invert();
+      const xs = [], ys = [], zs = [];
+      model.traverse(function (o) {
+        if (!o.isSkinnedMesh || !o.skeleton || !o.geometry || HGL_HAIR_RE.test(o.name || '')) return;
+        const g = o.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+        const bi = o.skeleton.bones.indexOf(b);
+        if (!pos || !si || !sw || bi < 0) return;
+        m.multiplyMatrices(inv, o.matrixWorld);
+        for (let i = 0; i < pos.count; i++) {
+          let w = 0;
+          if (si.getX(i) === bi) w += sw.getX(i);
+          if (si.getY(i) === bi) w += sw.getY(i);
+          if (si.getZ(i) === bi) w += sw.getZ(i);
+          if (si.getW(i) === bi) w += sw.getW(i);
+          if (w < 0.5) continue;
+          v.fromBufferAttribute(pos, i).applyMatrix4(m);
+          xs.push(v.x); ys.push(v.y); zs.push(v.z);
+        }
+      });
+      if (xs.length < 50 || (best && best.count >= xs.length)) return;
+      const pick = function (arr, q) { const a = Float32Array.from(arr).sort(); return a[Math.min(a.length - 1, Math.max(0, Math.round((a.length - 1) * q)))]; };   // 端の外れ値（鼻先など）を除くため1%〜99%を使う
+      const lo = new THREE.Vector3(pick(xs, 0.01), pick(ys, 0.01), pick(zs, 0.01));
+      const hi = new THREE.Vector3(pick(xs, 0.99), pick(ys, 0.99), pick(zs, 0.99));
+      best = { bone: b, count: xs.length, c: lo.clone().add(hi).multiplyScalar(0.5),
+        r: hi.clone().sub(lo).multiplyScalar(0.5 * HGH_COLLIDE_SCALE).max(new THREE.Vector3(1e-4, 1e-4, 1e-4)) };
+    });
+    return best;
+  }
   function setupHgHair(model, group) {
     hgHair = null;
     const hairSet = new Set();
@@ -1868,9 +1908,12 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       hgHairInfo = '0本（骨名の例: ' + names.join(', ') + '）';
       return;
     }
+    let headFit = null;
+    if (HGH_COLLIDE_ON) { try { headFit = fitHgHead(model); } catch (err) { headFit = null; console.warn('[hgHair] 頭の形の取得に失敗', err); } }
     // 髪ボーンとその祖先（groupまで）だけを、親→子の順で毎フレーム更新する（モデル全体の行列更新はしない）
     const need = new Set();
     hairSet.forEach(function (b) { for (let p = b; p; p = p.parent) { if (need.has(p)) break; need.add(p); if (p === group) break; } });
+    if (headFit) { for (let p = headFit.bone; p; p = p.parent) { if (need.has(p)) break; need.add(p); if (p === group) break; } }
     const order = [];
     (function walk(o) { if (need.has(o)) order.push(o); for (let i = 0; i < o.children.length; i++) walk(o.children[i]); })(group);
     const index = new Map();
@@ -1892,11 +1935,12 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       }
       return e;
     });
-    hgHair = { list: list, n: hairSet.size };
-    hgHairInfo = hairSet.size + '本' + (hairSet.size >= HGH_MAX_BONES ? '（上限）' : '');
+    hgHair = { list: list, n: hairSet.size, headIdx: headFit ? index.get(headFit.bone) : -1, c: headFit ? headFit.c : null, r: headFit ? headFit.r : null, invHead: new THREE.Matrix4(), ready: false };
+    hgHairInfo = hairSet.size + '本' + (hairSet.size >= HGH_MAX_BONES ? '（上限）' : '') + (headFit ? '  頭コライダー: ' + headFit.bone.name + '（頂点' + headFit.count + '）' : (HGH_COLLIDE_ON ? '  頭コライダー: 頭ボーンが見つからず無効' : ''));
   }
   const _hh = { pos: new THREE.Vector3(), scl: new THREE.Vector3(), head: new THREE.Vector3(), tail: new THREE.Vector3(),
     da: new THREE.Vector3(), dn: new THREE.Vector3(), nx: new THREE.Vector3(), tmp: new THREE.Vector3(),
+    qn: new THREE.Vector3(), qa: new THREE.Vector3(),
     q1: new THREE.Quaternion(), pq: new THREE.Quaternion(), dq: new THREE.Quaternion(), ident: new THREE.Quaternion() };
   function updateHgHair(dt) {
     if (!HGH_ON || !hgHair || !(dt > 0)) return;
@@ -1914,6 +1958,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         if (_hhHasPrev) _hhRel.copy(o.matrixWorld).invert().premultiply(_hhPrevG); else _hhRel.identity();
         _hhPrevG.copy(o.matrixWorld); _hhHasPrev = true;
       }
+      if (i === hgHair.headIdx) { hgHair.invHead.copy(o.matrixWorld).invert(); hgHair.ready = true; }   // 頭ボーンの今の位置（コライダー用）
       if (!e.hair) continue;
       const pq = e.par >= 0 ? list[e.par].wq : H.ident;
       H.head.copy(H.pos);
@@ -1943,6 +1988,20 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         if (pl > 1e-6) H.dn.copy(H.da).multiplyScalar(cosMax).addScaledVector(H.tmp, sinMax / pl); else H.dn.copy(H.da);
       }
       H.nx.copy(H.head).addScaledVector(H.dn, len);
+      if (hgHair.ready && hgHair.headIdx >= 0) {   // 頭の楕円体の中へ入らないよう押し戻す。アニメの姿勢がもともと頭に近い（中にある）場合は、その深さより深くは入れない
+        const M = hgHair.invHead, hc = hgHair.c, hr = hgHair.r;
+        H.qn.copy(H.nx).applyMatrix4(M).sub(hc).divide(hr);
+        H.qa.copy(H.tail).applyMatrix4(M).sub(hc).divide(hr);
+        const thr = Math.min(1 + HGH_COLLIDE_MARGIN, H.qa.length()), dN = H.qn.length();
+        if (dN < thr && thr > 1e-4) {
+          if (dN < 1e-4) { if (H.qa.lengthSq() > 1e-8) H.qn.copy(H.qa); else H.qn.set(0, 0, 1); }
+          H.qn.setLength(thr).multiply(hr).add(hc).applyMatrix4(list[hgHair.headIdx].o.matrixWorld);
+          H.dn.subVectors(H.qn, H.head);
+          const l2 = H.dn.length();
+          if (l2 > 1e-6) H.dn.divideScalar(l2); else H.dn.copy(H.da);
+          H.nx.copy(H.head).addScaledVector(H.dn, len);   // 骨の長さは保つ
+        }
+      }
       e.prev.copy(e.cur); e.cur.copy(H.nx);
       // 向きの差（ワールド）を、この骨のローカル回転へ移して反映
       H.dq.setFromUnitVectors(H.da, H.dn);
@@ -1953,50 +2012,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       e.wq.premultiply(H.dq);
       o.updateMatrix();
       o.matrixWorld.multiplyMatrices(o.parent.matrixWorld, o.matrix);   // 子骨の計算のため
-    }
-  }
-
-  // ---- h.glbの首ボーン：アニメの上に、ごくわずかな揺れ（呼吸・重心の揺らぎ）を足して、止まって見えないようにする ----
-  // 骨はここでも名前で判定する（HUDの「h.glb首ボーン」に本数が出る。0本なら骨名の一部も出るので、下の正規表現に足す）。
-  const HGN_ON = true;               // false: 首はアニメどおり
-  const HGN_BONE_RE = /neck|首|kubi/i;   // 首ボーンの名前
-  const HGN_EXCLUDE_RE = /hair|髪|kami|twist|roll/i;   // 合えば首ボーンにしない
-  const HGN_AMP_DEG = 1.2;           // 揺れの大きさ（度。首全体の合計。骨が複数あれば本数で割る。大きいほど大きく動く）
-  const HGN_SPEED = 1;               // 揺れの速さの倍率（1でゆっくり。2で2倍速）
-  let hgNeck = null;
-  let hgNeckInfo = '未読込';
-  let hgNeckT = 0;
-  const _hnE = new THREE.Euler(), _hnQ = new THREE.Quaternion();
-  function setupHgNeck(model) {
-    hgNeck = null;
-    const bones = [];
-    model.traverse(function (o) {
-      if (o.isBone && HGN_BONE_RE.test(o.name || '') && !HGN_EXCLUDE_RE.test(o.name || '')) bones.push(o);
-    });
-    if (!bones.length) {
-      const names = []; model.traverse(function (o) { if (o.isBone && names.length < 12) names.push(o.name || '無名'); });
-      hgNeckInfo = '0本（骨名の例: ' + names.join(', ') + '）';
-      return;
-    }
-    hgNeck = bones.map(function (o, i) { return { o: o, q0: o.quaternion.clone(), out: o.quaternion.clone(), ph: i * 1.7 }; });
-    hgNeckInfo = bones.length + '本（' + bones.map(function (b) { return b.name; }).join(', ') + '）';
-  }
-  function updateHgNeck(dt) {
-    if (!HGN_ON || !hgNeck || !(dt > 0)) return;
-    hgNeckT += Math.min(dt, 0.1) * HGN_SPEED;
-    const t = hgNeckT, a = HGN_AMP_DEG * Math.PI / 180 / hgNeck.length;
-    for (let i = 0; i < hgNeck.length; i++) {
-      const e = hgNeck[i], o = e.o, p = e.ph;
-      if (o.quaternion.equals(e.out)) o.quaternion.copy(e.q0);   // アニメが動かしていない骨は元の姿勢から始める（前フレームの揺れを積み上げない）
-      // 周期の違うゆっくりした揺れを重ねる（規則的に見えないように）: 左右の向き・前後のうなずき・傾き
-      _hnE.set(
-        a * (0.60 * Math.sin(t * 1.9 + p) + 0.25 * Math.sin(t * 0.7 + p * 2.3)),
-        a * (0.55 * Math.sin(t * 0.8 + p + 1.3) + 0.30 * Math.sin(t * 1.7 + p * 1.9)),
-        a * (0.40 * Math.sin(t * 1.1 + p + 2.6) + 0.20 * Math.sin(t * 0.5 + p * 3.1)),
-        'XYZ');
-      _hnQ.setFromEuler(_hnE);
-      o.quaternion.multiply(_hnQ);
-      e.out.copy(o.quaternion);
     }
   }
 
@@ -2019,7 +2034,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       const hgRef = Math.max(hgSize.x, hgSize.y, hgSize.z, 1e-3);   // 質感の細かさの基準（モデルの大きさ）
       model.traverse(function (o) { if (o.isMesh) { o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true; try { applyHgLook(o, hgRef); } catch (err) { console.warn('[hgLook] 質感の設定に失敗', err); } } });
       group.add(model);
-      try { setupHgNeck(model); } catch (err) { hgNeck = null; hgNeckInfo = '設定に失敗'; console.warn('[hgNeck] 首ボーンの設定に失敗', err); }
       try { setupHgHair(model, group); } catch (err) { hgHair = null; hgHairInfo = '設定に失敗'; console.warn('[hgHair] 髪ボーンの設定に失敗', err); }
       hgState = '表示中';
       const clips = gltf.animations || [];
@@ -3591,7 +3605,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (armMixer) armMixer.update(dt);
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     if (hgMixer) hgMixer.update(dt);                         // h.glbのidleもループ再生
-    try { updateHgNeck(dt); } catch (err) { hgNeck = null; console.warn('[hgNeck] 首ボーンの更新に失敗', err); }   // 首: アニメの上にごくわずかな揺れを足す（髪ボーンの計算より前）
     if (R && R.bg) R.bg.position.set(bgP.x, bgP.y, bgP.z);   // bg.glbの位置（表示側パネルの値）
     if (R && R.hg) {   // h.glbの位置・サイズ・傾き（パネルの値）＋ partの揺れ・押し出しを HG_FOLLOW の割合だけ反映（partはhの部位のため）
       const hf = HG_FOLLOW;
@@ -3781,7 +3794,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         'h.glb: ' + hgState + hgAnim + '\n' +
         'h.glb材質: ' + (hgLookNames.length ? hgLookNames.join(', ') : '未読込') + '\n' +
         'h.glb髪ボーン: ' + hgHairInfo + '\n' +
-        'h.glb首ボーン: ' + hgNeckInfo + '\n' +
         'part.glb: ' + hState + hAnim + (hSplitBoneCount ? '  骨' + hSplitBoneCount + '本' : '') + (partPushLen > 0.0005 ? '  押し出し ' + (partPushLen * 100).toFixed(1) + 'cm' : '') + '\n' +
         'part材質: ' + (hSkinNames.length ? hSkinNames.join(', ') : '未読込') + '\n' +
         'playerarm.glb: ' + armState + armAnim + '\n' +

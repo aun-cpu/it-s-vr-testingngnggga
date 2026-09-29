@@ -426,6 +426,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="aoz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-aoz" data-k="aoz" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="aoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-aoz">0.00</span></div>
       <div class="prow"><span class="pl">回転</span><button type="button" class="dpstep" data-k="aor" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-aor" data-k="aor" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="aor" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-aor">0.00</span></div>
       <button type="button" class="mini" id="dBtnArmReset" style="width:100%; margin-top:4px">腕をリセット</button>
+      <button type="button" class="mini" id="dBtnArmColl" style="width:100%; margin-top:6px">腕の物理判定: OFF</button>
       <p class="postitle" style="margin:10px 0 6px">part.glbの位置・サイズ・傾き調整（player本体との差）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="hox" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hox" data-k="hox" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hox" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hox">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="hoy" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoy" data-k="hoy" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoy">0.00</span></div>
@@ -929,6 +930,11 @@ body.stereo .dispbar{opacity:.55}
   $('#dBtnHgReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.hg) inp[k] = POS_DEFAULT[k];
     syncDispPosUi(); buzz(15);
+  });
+  $('#dBtnArmColl').addEventListener('click', () => {
+    ARM_COLLIDE_ON = !ARM_COLLIDE_ON;   // 判定リストは次フレームで自動的に作り直される
+    $('#dBtnArmColl').textContent = '腕の物理判定: ' + (ARM_COLLIDE_ON ? 'ON' : 'OFF');
+    $('#dBtnArmColl').classList.toggle('on', ARM_COLLIDE_ON);
   });
   $('#dBtnArmReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.arm) inp[k] = POS_DEFAULT[k];
@@ -2245,7 +2251,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let partPushLen = 0;                       // 現在のずれの大きさ（m）
   let partCollList = null, partCollKey = '', partCollPts = null;
   const _cp = { v: new THREE.Vector3(), inv: new THREE.Matrix4(), t: new THREE.Vector3(), best: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), prev: new THREE.Vector3(), bp: new THREE.Vector3(), bp0: new THREE.Vector3(), sum: new THREE.Vector3() };
-  const ARM_COLLIDE_ON = false;        // false: 腕(playerarm)をpartとの物理判定（押し出し）から外す／true: 従来どおり判定に含める
+  let ARM_COLLIDE_ON = false;        // false: 腕(playerarm)をpartとの物理判定（押し出し）から外す／true: 従来どおり判定に含める
   function collectPartCollideMeshes() {
     const list = [];
     partCollExcluded = [];

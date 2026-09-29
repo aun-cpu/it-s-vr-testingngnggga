@@ -426,7 +426,8 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="dpstep" data-k="aoz" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-aoz" data-k="aoz" min="-1" max="1" step="0.01"><button type="button" class="dpstep" data-k="aoz" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-aoz">0.00</span></div>
       <div class="prow"><span class="pl">回転</span><button type="button" class="dpstep" data-k="aor" data-d="-1" data-step="1">−</button><input type="range" id="d-rng-aor" data-k="aor" min="-180" max="180" step="1"><button type="button" class="dpstep" data-k="aor" data-d="1" data-step="1">＋</button><span class="pv" id="d-val-aor">0.00</span></div>
       <button type="button" class="mini" id="dBtnArmReset" style="width:100%; margin-top:4px">腕をリセット</button>
-      <button type="button" class="mini" id="dBtnArmColl" style="width:100%; margin-top:6px">腕の物理判定: OFF</button>
+      <button type="button" class="mini on" id="dBtnArmColl" style="width:100%; margin-top:6px">腕の物理判定: ON</button>
+      <button type="button" class="mini on" id="dBtnArmVis" style="width:100%; margin-top:6px">腕の調整: 見た目のみ（判定は初期位置）</button>
       <p class="postitle" style="margin:10px 0 6px">part.glbの位置・サイズ・傾き調整（player本体との差）</p>
       <div class="prow"><span class="pl">X 左右</span><button type="button" class="dpstep" data-k="hox" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hox" data-k="hox" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hox" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hox">0.00</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-k="hoy" data-d="-1" data-step="0.01">−</button><input type="range" id="d-rng-hoy" data-k="hoy" min="-200" max="200" step="0.01"><button type="button" class="dpstep" data-k="hoy" data-d="1" data-step="0.01">＋</button><span class="pv" id="d-val-hoy">0.00</span></div>
@@ -935,6 +936,11 @@ body.stereo .dispbar{opacity:.55}
     ARM_COLLIDE_ON = !ARM_COLLIDE_ON;   // 判定リストは次フレームで自動的に作り直される
     $('#dBtnArmColl').textContent = '腕の物理判定: ' + (ARM_COLLIDE_ON ? 'ON' : 'OFF');
     $('#dBtnArmColl').classList.toggle('on', ARM_COLLIDE_ON);
+  });
+  $('#dBtnArmVis').addEventListener('click', () => {
+    ARM_ADJUST_VISUAL_ONLY = !ARM_ADJUST_VISUAL_ONLY;
+    $('#dBtnArmVis').textContent = '腕の調整: ' + (ARM_ADJUST_VISUAL_ONLY ? '見た目のみ（判定は初期位置）' : '判定も一緒に動く');
+    $('#dBtnArmVis').classList.toggle('on', ARM_ADJUST_VISUAL_ONLY);
   });
   $('#dBtnArmReset').addEventListener('click', () => {
     for (const k of TAB_KEYS.arm) inp[k] = POS_DEFAULT[k];
@@ -2251,7 +2257,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   let partPushLen = 0;                       // 現在のずれの大きさ（m）
   let partCollList = null, partCollKey = '', partCollPts = null;
   const _cp = { v: new THREE.Vector3(), inv: new THREE.Matrix4(), t: new THREE.Vector3(), best: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), prev: new THREE.Vector3(), bp: new THREE.Vector3(), bp0: new THREE.Vector3(), sum: new THREE.Vector3() };
-  let ARM_COLLIDE_ON = false;        // false: 腕(playerarm)をpartとの物理判定（押し出し）から外す／true: 従来どおり判定に含める
+  let ARM_COLLIDE_ON = true;           // true: 腕(playerarm)をpartの物理判定に含める／false: 含めない
+  let ARM_ADJUST_VISUAL_ONLY = true;   // true: 腕の位置調整(aox/aoy/aoz/aor)は見た目だけ動かし、判定は初期値(POS_DEFAULT)の位置のまま／false: 判定も一緒に動く        // false: 腕(playerarm)をpartとの物理判定（押し出し）から外す／true: 従来どおり判定に含める
   function collectPartCollideMeshes() {
     const list = [];
     partCollExcluded = [];
@@ -2292,6 +2299,13 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (key !== partCollKey || !partCollList) { partCollKey = key; partCollList = collectPartCollideMeshes(); partCollPts = null; }
     if (!partCollList.length) { h.position.copy(partBase).add(partOff); return; }
     if (R.player) R.player.updateMatrixWorld(true);
+    // 腕の当たり判定は「初期値の位置」で取る（見た目だけ調整値ぶんずらす）。判定用に一時的に置き直し、点の取得後に元へ戻す
+    let armSaved = null;
+    if (ARM_COLLIDE_ON && R.arm && ARM_ADJUST_VISUAL_ONLY) {
+      armSaved = { x: R.arm.position.x, y: R.arm.position.y, z: R.arm.position.z, ry: R.arm.rotation.y };
+      R.arm.position.set(POS_DEFAULT.aox, POS_DEFAULT.aoy, POS_DEFAULT.aoz + armFollowOff);
+      R.arm.rotation.y = ARM_FACING + POS_DEFAULT.aor * Math.PI / 180;
+    }
     if (ARM_COLLIDE_ON && R.arm) R.arm.updateMatrixWorld(true);
     let total = 0;
     partCollList.forEach(function (e) { total += e.idx.length; });
@@ -2307,6 +2321,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       }
     });
     // 3) 重なりを解消：partの楕円体の内側に入った頂点のうち一番深いものを、表面まで押し出す（数回反復）
+    if (armSaved) {   // 見た目の位置へ戻す
+      R.arm.position.set(armSaved.x, armSaved.y, armSaved.z);
+      R.arm.rotation.y = armSaved.ry;
+      R.arm.updateMatrixWorld(true);
+    }
     const rx = hCollide.rx * PART_COLLIDE_SCALE, ry = hCollide.ry * PART_COLLIDE_SCALE, rz = hCollide.rz * PART_COLLIDE_SCALE;
     let touched = false;
     c.sum.set(0, 0, 0);

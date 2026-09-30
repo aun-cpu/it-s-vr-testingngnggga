@@ -4313,7 +4313,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       lt += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / (WATER_CLICK_RATE * WATER_LOW_DENSITY);
     }
   }
-  function updateWaterSound(a, active, vel, nowSec) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒)
+  function updateWaterSound(a, active, vel, nowSec, intro) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒) / intro: 導入（2action0）の最中か
     if (!WATER_ON) return;
     if (!active) { wStroke.init = false; wStroke.dir = 0; w1aArmed = false; return; }
     if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; wLowArmed = a < WATER_LOW_DEG; stepRef = a; return; }
@@ -4322,18 +4322,19 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     let fire = 0;
     if (wStroke.dir !== 1 && a - wStroke.lo > WATER_HYST_DEG) { fire = 1; wStroke.dir = 1; wStroke.hi = a; wStroke.lo = a; }
     else if (wStroke.dir !== -1 && wStroke.hi - a > WATER_HYST_DEG) { fire = -1; wStroke.dir = -1; wStroke.hi = a; wStroke.lo = a; }
-    if (fire === -1) w1aArmed = true;                       // 戻り始めた（この動きの間に1回だけ鳴らす）
+    if (fire === -1) w1aArmed = !intro;                     // 戻り始めた（この動きの間に1回だけ鳴らす。導入中は鳴らさない）
     else if (fire === 1) w1aArmed = false;                  // 前へ動き出したら、まだ鳴らしていなくてもやめる（鳴っている音は最後まで鳴らす）
-    if (w1aArmed && wStroke.dir === -1 && a >= W1A_MIN_DEG && w1aStart(nowSec)) w1aArmed = false;
-    if (a < stepRef - 0.2) stepRef = a;   // 戻る時は、基準を一緒に下げる（戻った所から数え直す）
+    if (w1aArmed && !intro && wStroke.dir === -1 && a >= W1A_MIN_DEG && w1aStart(nowSec)) w1aArmed = false;
+    if (!intro) stepRef = a;   // ^の音は導入（2action0）の最中だけ。導入が終わったら鳴らさない
+    else if (a < stepRef - 0.2) stepRef = a;   // 戻る時は、基準を一緒に下げる（戻った所から数え直す）
     else if (a - stepRef >= STEP_DEG) {   // 前へ STEP_DEG 動くたびに鳴らす
       const nStep = Math.floor((a - stepRef) / STEP_DEG);
       stepRef += nStep * STEP_DEG;   // 間引いた分も消費する（あとから遅れて鳴らさない）
       if (nowSec - stepLastAt >= STEP_GAP) { stepLastAt = nowSec; stepPlay(Math.min(nStep, STEP_MAX_PER_FRAME)); }
     }
     if (a < WATER_LOW_DEG - WATER_LOW_REARM) wLowArmed = true;   // 最大角度から離れたら、次に達した時にまた鳴らせる
-    else if (wLowArmed && a >= WATER_LOW_DEG) { wLowArmed = false; wLowLastAt = nowSec; playWaterLow(Math.abs(vel) / 40); }   // 最大角度に達した瞬間に低い水音
-    if (fire && a >= WATER_MIN_DEG - 0 && nowSec - waterLastAt > WATER_MIN_GAP) {
+    else if (wLowArmed && !intro && a >= WATER_LOW_DEG) { wLowArmed = false; wLowLastAt = nowSec; playWaterLow(Math.abs(vel) / 40); }   // 最大角度に達した瞬間に低い水音
+    if (fire && (intro || a >= WATER_MIN_DEG - 0) && nowSec - waterLastAt > WATER_MIN_GAP) {
       waterLastAt = nowSec;
       playWater(fire, Math.abs(vel) / 40);   // 速く動かすほど大きく
     }
@@ -4549,7 +4550,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     // 触れる勢い（角速度）＝tiltSmoothの1フレームあたりの変化量。ゼリー揺れの強さの元になる
     tiltSmoothVel = dt > 0 ? (tiltSmooth - tiltSmoothPrev) / dt : 0;
     tiltSmoothPrev = tiltSmooth;
-    updateWaterSound(tiltSmooth + introOffset, tiltLive && !frontIntro, tiltSmoothVel, now / 1000);   // 棒が前／後ろへ動き出したら水音
+    updateWaterSound(tiltSmooth + introOffset, tiltLive, tiltSmoothVel, now / 1000, frontIntro);   // 棒が前／後ろへ動き出したら水音（導入中は、^の音と低くない方の水音だけ）
     // 接触の深さ（次フレームの揺れの計算で使う）。導入中・角度データが無い間は接触なし
     jellyDepthDeg = (tiltLive && !frontIntro) ? Math.max(0, tiltSmooth + introOffset - CONTACT_START_DEG) : 0;
     const skinAng = (tiltLive && !frontIntro) ? tiltSmooth + introOffset : -999;

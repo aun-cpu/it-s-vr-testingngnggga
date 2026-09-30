@@ -3950,10 +3950,12 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const WATER_BURST_SCALE = 1.0;      // 1回の鳴る長さの倍率
   const WATER_HISS = 0;               // 背景の高音ざわつき（さらさら音）の音量。0で無し
   const WATER_LOW_ON = true;          // 高いクリック（チッ・チチッ）をそのまま低くしたような音を、別の層として重ねる
-  const WATER_LOW_VOL = 2.0;          // 低い音の層の音量（大きいほど低い音が目立つ）
+  const WATER_LOW_VOL = 1.0;          // 低い音の層の音量（大きいほど低い音が目立つ）
   const WATER_LOW_HZ = [900, 1300];   // 低い音の高さ(Hz)。高いクリックは7000〜8200Hz。下げるほど低くなる
   const WATER_LOW_STRETCH = 2.5;      // 低くした分だけ、1つ1つのクリックの長さを伸ばす倍率（音を遅く再生したように、少し丸く長く残る）
-  const WATER_LOW_DENSITY = 1.0;      // 低い音のクリックの密度（高いクリックと同じ=1 / 大きいほど多く詰まる）
+  const WATER_LOW_DENSITY = 0.5;      // 低い音のクリックの密度（高いクリックと同じ=1 / 大きいほど多く詰まる）
+  const WATER_LOW_DEG = ACTION3_DEG;  // 度: 低い音を鳴らす「最大角度」（棒が最大の角度に達した瞬間に1回だけ鳴らす。ACTION3_DEG=7°）
+  const WATER_LOW_REARM = 1.0;        // 度: 最大角度から、これだけ戻ると次に達した時にまた鳴らせる
   // ---- 用意した音声を「素材」にして、Web Audioで細かく切って組み替えながら鳴らす（音声ファイルを丸ごと流さないので毎回違う音になり、先に読み込んで解凍しておくので遅延もほぼ無い） ----
   const WATER_SAMPLE_ON = true;               // false: 用意した音声を使わず、これまでの合成音だけを鳴らす
   const WATER_SAMPLE_URL = '音.mp3';          // 用意した水音の音声（index.htmlと同じ場所）。読み込めない時は、自動で合成音に切り替わる
@@ -4011,6 +4013,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   w1aFetch();
   // ---- playerがpartに触れた瞬間の音。触れた勢い（角速度）で 肌強.mp3 / 肌弱.mp3 を使い分ける。弱すぎる接触は鳴らさない ----
   const SKIN_ON = true;              // false: 鳴らさない
+  const SKIN_CONTACT_DEG = 5;        // 度: この角度以上になった瞬間を「接触」として鳴らす
   const SKIN_MIN_VEL = 8;            // 度/秒: これ未満の弱い接触は鳴らさない
   const SKIN_STRONG_VEL = 30;        // 度/秒: これ以上なら肌強.mp3、MIN以上〜これ未満なら肌弱.mp3
   const SKIN_VOL = 1.0;              // 音量
@@ -4019,7 +4022,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     strong: { url: '肌強.mp3', buf: null, raw: null, state: 'idle' },   // idle → fetched → ready / failed
     weak:   { url: '肌弱.mp3', buf: null, raw: null, state: 'idle' }
   };
-  let skinLastAt = -10;
+  let skinLastAt = -10, skinAngPrev = -999;
   function skinFetch(k) {
     const o = skinSnd[k];
     if (!SKIN_ON || o.state !== 'idle') return;
@@ -4148,16 +4151,6 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       waterGrainPlay(ctx, out, st, rr(WATER_GRAIN_PITCH), WATER_GRAIN_LEN[1] * 1.4, pw);
       st += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / WATER_CLICK_RATE;
     }
-    if (WATER_LOW_ON) {
-      const lowOut = ctx.createGain(); lowOut.gain.value = WATER_LOW_VOL;
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = WATER_GRAIN_LOW_LP;
-      lowOut.connect(lp); lp.connect(out);
-      let lt = t + Math.random() * 0.012;
-      while (lt < t + dur) {
-        waterGrainPlay(ctx, lowOut, lt, rr(WATER_GRAIN_LOW_PITCH), WATER_GRAIN_LOW_MAXDUR, pw);
-        lt += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / (WATER_CLICK_RATE * WATER_LOW_DENSITY);
-      }
-    }
   }
   waterSampleFetch();
   function playWater(dir, power) {   // dir: +1=前へ（押し込み） / -1=後ろへ（引き抜き）。参考音（音.mp3）に合わせた、細かい「チッ・チチッ」という不規則なクリックの連続
@@ -4199,31 +4192,50 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       // 次のクリックまでの間隔：20ms前後が中心、時々ぱらぱらと詰まったり間が空いたりする
       st += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / WATER_CLICK_RATE;
     }
-    // (3) 低い音の層。高いクリックと同じ並び方・同じ大きさの出方で、高さだけを低くしたもの（タイミングと大きさは高い方とは別に不規則）
-    if (WATER_LOW_ON) {
-      const lowOut = ctx.createGain();
-      lowOut.gain.value = WATER_LOW_VOL;
-      lowOut.connect(out);
+  }
+  let wLowArmed = true, wLowLastAt = -10;   // wLowArmed: 最大角度に達したらすぐ鳴らせる状態
+  function playWaterLow(power) {   // 低い水音だけを、最大角度に達した瞬間に鳴らす（素材があれば素材の粒を低くしたもの、無ければ合成音）
+    if (!WATER_LOW_ON) return;
+    const ctx = waterEnsure();
+    if (!ctx || ctx.state !== 'running' || !waterNoise) return;
+    const t = ctx.currentTime;
+    const pw = clamp(power, 0, 1);
+    const dur = 0.36 * WATER_BURST_SCALE;
+    const out = ctx.createGain();
+    out.gain.value = clamp(WATER_VOL * (0.55 + 0.45 * pw) * 1.3, 0, 2.5);
+    out.connect(waterBus || ctx.destination);
+    const lowOut = ctx.createGain(); lowOut.gain.value = WATER_LOW_VOL;
+    if (waterSampleReady()) {
+      const rr = function (r) { return r[0] + Math.random() * (r[1] - r[0]); };
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = WATER_GRAIN_LOW_LP;
+      lowOut.connect(lp); lp.connect(out);
       let lt = t + Math.random() * 0.012;
       while (lt < t + dur) {
-        const amp = (0.012 + 0.55 * Math.pow(Math.random(), 6)) * (0.6 + 0.4 * pw);
-        const cs = ctx.createBufferSource(); cs.buffer = waterNoise;
-        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
-        bp.frequency.value = WATER_LOW_HZ[0] + Math.random() * (WATER_LOW_HZ[1] - WATER_LOW_HZ[0]);
-        bp.Q.value = 2.5;
-        const life = (Math.random() < 0.7 ? 0.002 + Math.random() * 0.004 : 0.012 + Math.random() * 0.016) * WATER_LOW_STRETCH;
-        const cg = ctx.createGain();
-        cg.gain.setValueAtTime(0.0001, lt); cg.gain.linearRampToValueAtTime(amp, lt + 0.0006); cg.gain.exponentialRampToValueAtTime(0.0001, lt + life);
-        cs.connect(bp); bp.connect(cg); cg.connect(lowOut);
-        cs.start(lt, Math.random() * 0.45); cs.stop(lt + life + 0.01);
+        waterGrainPlay(ctx, lowOut, lt, rr(WATER_GRAIN_LOW_PITCH), WATER_GRAIN_LOW_MAXDUR, pw);
         lt += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / (WATER_CLICK_RATE * WATER_LOW_DENSITY);
       }
+      return;
+    }
+    lowOut.connect(out);
+    let lt = t + Math.random() * 0.012;
+    while (lt < t + dur) {
+      const amp = (0.012 + 0.55 * Math.pow(Math.random(), 6)) * (0.6 + 0.4 * pw);
+      const cs = ctx.createBufferSource(); cs.buffer = waterNoise;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = WATER_LOW_HZ[0] + Math.random() * (WATER_LOW_HZ[1] - WATER_LOW_HZ[0]);
+      bp.Q.value = 2.5;
+      const life = (Math.random() < 0.7 ? 0.002 + Math.random() * 0.004 : 0.012 + Math.random() * 0.016) * WATER_LOW_STRETCH;
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.0001, lt); cg.gain.linearRampToValueAtTime(amp, lt + 0.0006); cg.gain.exponentialRampToValueAtTime(0.0001, lt + life);
+      cs.connect(bp); bp.connect(cg); cg.connect(lowOut);
+      cs.start(lt, Math.random() * 0.45); cs.stop(lt + life + 0.01);
+      lt += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / (WATER_CLICK_RATE * WATER_LOW_DENSITY);
     }
   }
   function updateWaterSound(a, active, vel, nowSec) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒)
     if (!WATER_ON) return;
     if (!active) { wStroke.init = false; wStroke.dir = 0; w1aArmed = false; return; }
-    if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; return; }
+    if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; wLowArmed = a < WATER_LOW_DEG; return; }
     if (a > wStroke.hi) wStroke.hi = a;
     if (a < wStroke.lo) wStroke.lo = a;
     let fire = 0;
@@ -4232,6 +4244,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (fire === -1) w1aArmed = true;                       // 戻り始めた（この動きの間に1回だけ鳴らす）
     else if (fire === 1) w1aArmed = false;                  // 前へ動き出したら、まだ鳴らしていなくてもやめる（鳴っている音は最後まで鳴らす）
     if (w1aArmed && wStroke.dir === -1 && a >= W1A_MIN_DEG && w1aStart(nowSec)) w1aArmed = false;
+    if (a < WATER_LOW_DEG - WATER_LOW_REARM) wLowArmed = true;   // 最大角度から離れたら、次に達した時にまた鳴らせる
+    else if (wLowArmed && a >= WATER_LOW_DEG) { wLowArmed = false; wLowLastAt = nowSec; playWaterLow(Math.abs(vel) / 40); }   // 最大角度に達した瞬間に低い水音
     if (fire && a >= WATER_MIN_DEG - 0 && nowSec - waterLastAt > WATER_MIN_GAP) {
       waterLastAt = nowSec;
       playWater(fire, Math.abs(vel) / 40);   // 速く動かすほど大きく
@@ -4450,9 +4464,10 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     tiltSmoothPrev = tiltSmooth;
     updateWaterSound(tiltSmooth + introOffset, tiltLive && !frontIntro, tiltSmoothVel, now / 1000);   // 棒が前／後ろへ動き出したら水音
     // 接触の深さ（次フレームの揺れの計算で使う）。導入中・角度データが無い間は接触なし
-    const jellyDepthPrev = jellyDepthDeg;
     jellyDepthDeg = (tiltLive && !frontIntro) ? Math.max(0, tiltSmooth + introOffset - CONTACT_START_DEG) : 0;
-    if (jellyDepthPrev <= 0 && jellyDepthDeg > 0) skinPlay(tiltSmoothVel, now / 1000);   // playerがpartに触れた瞬間、その勢いで肌の音を鳴らす
+    const skinAng = (tiltLive && !frontIntro) ? tiltSmooth + introOffset : -999;
+    if (skinAngPrev > -900 && skinAngPrev < SKIN_CONTACT_DEG && skinAng >= SKIN_CONTACT_DEG) skinPlay(tiltSmoothVel, now / 1000);   // 角度がSKIN_CONTACT_DEG以上になった瞬間（接触）、その勢いで肌の音を鳴らす
+    skinAngPrev = skinAng;
     // 2action: 選んだ軸の角度で再生位置を決める。-20°=先頭フレーム／0°=5フレーム目／8°=最終フレーム（区分線形）
     if (playerAct && tiltLive) {
       const duration = playerAct.getClip().duration;

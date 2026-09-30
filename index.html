@@ -3966,13 +3966,15 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const WATER_GRAIN_LOW_LP = 3000;            // Hz: 低い層のローパス（これより高い成分は切る）
   let waterCtx = null, waterNoise = null, waterLastAt = 0, waterBus = null;
   const wStroke = { dir: 0, lo: 0, hi: 0, init: false };
-  // ---- 前へ動いている間の水音（1a.mp3）。ゆっくり進んでいれば遅く（低く）、速く進んでいればそのままの速さで再生する。これまでの水音に重ねて鳴る ----
+  // ---- 前へ動いた時の水音（1a.mp3）。前へ動くたびに、そのままの速さで最後まで鳴らす（途中で止めない）。これまでの水音に重ねて鳴る ----
   const W1A_ON = true;             // false: 鳴らさない
   const W1A_B64 = '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';   // 1a.mp3をこのファイルの中に埋め込んだもの（別ファイルを読み込まない）
   const W1A_VOL = 1.0;             // 音量
-  const W1A_MIN_RATE = 0.4;        // ほぼ止まっている時の再生速度（1.0=そのまま）
-  const W1A_FAST_VEL = 40;         // 度/秒: この速さ以上で等倍（1.0）で再生
-  let w1aBuf = null, w1aRaw = null, w1aState = 'idle', w1aSrc = null, w1aGain = null, w1aArmed = false;   // w1aArmed: 前へ動いていて、まだ1aを鳴らしていない   // idle → fetched → ready / failed
+  const W1A_MIN_DEG = -99;         // 度: 前へ動いてこの角度を超えた時に鳴らす（-99=ほぼ制限なし。以前は-2）
+  const W1A_MIN_GAP = 0.1;         // 秒: 続けて鳴らす最短の間隔（角度の細かい揺れで連打されないように）
+  const W1A_MAX_VOICES = 3;        // 連続で動かした時に、同時に重ねて鳴らす最大数（超えたら一番古いものを消す）
+  let w1aBuf = null, w1aRaw = null, w1aState = 'idle', w1aArmed = false, w1aLastAt = -10;   // w1aArmed: 前へ動いていて、まだ1aを鳴らしていない
+  const w1aVoices = [];
   function w1aFetch() {   // 埋め込んだ音声を取り出す（外部ファイルの読み込みに失敗して鳴らない、ということが起きない）
     if (!W1A_ON || w1aState !== 'idle') return;
     try {
@@ -3988,32 +3990,23 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       w1aBuf = buf; w1aState = 'ready';
     }).catch(function (e) { w1aState = 'failed'; console.info('[1a] 解凍できませんでした:', e && e.message); });
   }
-  function w1aRate(vel) { return W1A_MIN_RATE + (1 - W1A_MIN_RATE) * clamp(Math.abs(vel) / W1A_FAST_VEL, 0, 1); }
-  function w1aStop() {
-    if (!w1aSrc) return;
-    const src = w1aSrc, g = w1aGain; w1aSrc = null; w1aGain = null;
-    try {
-      const t = waterCtx.currentTime;
-      g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0, t, 0.03);
-      src.stop(t + 0.15);
-    } catch (e) {}
-  }
-  function w1aStart(vel) {   // 鳴らし始められたらtrue
+  function w1aStart(nowSec) {   // 鳴らし始められたらtrue
     if (!W1A_ON || w1aState !== 'ready' || !w1aBuf || !waterCtx) return false;
     if (waterCtx.state !== 'running') { try { waterCtx.resume(); } catch (e) {} return false; }   // 止まっていたら再開を試みる（次のフレームで鳴らす）
-    w1aStop();
-    const src = waterCtx.createBufferSource(); src.buffer = w1aBuf;
-    src.playbackRate.value = w1aRate(vel);
+    if (nowSec - w1aLastAt < W1A_MIN_GAP) return false;
+    w1aLastAt = nowSec;
+    const src = waterCtx.createBufferSource(); src.buffer = w1aBuf;   // 再生速度は常にそのまま（1.0）
     const g = waterCtx.createGain(); g.gain.value = W1A_VOL;
     src.connect(g); g.connect(waterBus || waterCtx.destination);
-    src.onended = function () { if (w1aSrc === src) { w1aSrc = null; w1aGain = null; } };
+    const v = { src: src, g: g };
+    src.onended = function () { const k = w1aVoices.indexOf(v); if (k >= 0) w1aVoices.splice(k, 1); };
     src.start();
-    w1aSrc = src; w1aGain = g;
+    w1aVoices.push(v);
+    while (w1aVoices.length > W1A_MAX_VOICES) {   // 重なりすぎたら、一番古いものをすばやく消す
+      const o = w1aVoices.shift();
+      try { const t = waterCtx.currentTime; o.g.gain.cancelScheduledValues(t); o.g.gain.setTargetAtTime(0, t, 0.02); o.src.stop(t + 0.1); } catch (e) {}
+    }
     return true;
-  }
-  function w1aFollow(vel) {   // 前へ動いている間、今の速さに合わせて再生速度をなめらかに変える
-    if (!w1aSrc) return;
-    try { w1aSrc.playbackRate.setTargetAtTime(w1aRate(vel), waterCtx.currentTime, 0.04); } catch (e) {}
   }
   w1aFetch();
   // ---- playerがpartに触れた瞬間の音。触れた勢い（角速度）で 肌強.mp3 / 肌弱.mp3 を使い分ける。弱すぎる接触は鳴らさない ----
@@ -4229,7 +4222,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   }
   function updateWaterSound(a, active, vel, nowSec) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒)
     if (!WATER_ON) return;
-    if (!active) { wStroke.init = false; wStroke.dir = 0; w1aArmed = false; w1aStop(); return; }
+    if (!active) { wStroke.init = false; wStroke.dir = 0; w1aArmed = false; return; }
     if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; return; }
     if (a > wStroke.hi) wStroke.hi = a;
     if (a < wStroke.lo) wStroke.lo = a;
@@ -4237,9 +4230,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (wStroke.dir !== 1 && a - wStroke.lo > WATER_HYST_DEG) { fire = 1; wStroke.dir = 1; wStroke.hi = a; wStroke.lo = a; }
     else if (wStroke.dir !== -1 && wStroke.hi - a > WATER_HYST_DEG) { fire = -1; wStroke.dir = -1; wStroke.hi = a; wStroke.lo = a; }
     if (fire === 1) w1aArmed = true;                        // 前へ動き出した（この動きの間に1回だけ鳴らす）
-    else if (fire === -1) { w1aArmed = false; w1aStop(); }  // 後ろへ戻る時は止める
-    if (w1aArmed && wStroke.dir === 1 && a >= WATER_MIN_DEG) { if (w1aStart(vel)) w1aArmed = false; }   // 動き出しが浅い角度でも、前へ動いてWATER_MIN_DEGを超えた時点で鳴らす
-    else if (wStroke.dir === 1) w1aFollow(vel);             // 前へ動いている間は、速さに合わせて再生速度を変える
+    else if (fire === -1) w1aArmed = false;                 // 後ろへ戻ったら、まだ鳴らしていなくてもやめる（鳴っている音は最後まで鳴らす）
+    if (w1aArmed && wStroke.dir === 1 && a >= W1A_MIN_DEG && w1aStart(nowSec)) w1aArmed = false;
     if (fire && a >= WATER_MIN_DEG - 0 && nowSec - waterLastAt > WATER_MIN_GAP) {
       waterLastAt = nowSec;
       playWater(fire, Math.abs(vel) / 40);   // 速く動かすほど大きく

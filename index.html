@@ -564,6 +564,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">声の成分の量（0で足さない）</span><button type="button" class="bgstep" data-brk="vwis" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vwis" data-brk="vwis" min="0" max="3" step="0.05"><button type="button" class="bgstep" data-brk="vwis" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vwis">0</span></div>
       <div class="prow"><span class="pl">息の音量（声と混ぜる時）</span><button type="button" class="bgstep" data-brk="bmix" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-bmix" data-brk="bmix" min="0" max="1.5" step="0.05"><button type="button" class="bgstep" data-brk="bmix" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-bmix">0</span></div>
       <div class="prow"><span class="pl">声の間は息のノイズを消す割合</span><button type="button" class="bgstep" data-brk="vduck" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vduck" data-brk="vduck" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="vduck" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vduck">0</span></div>
+      <div class="prow"><span class="pl">息を母音の響きに通して声に混ぜる量</span><button type="button" class="bgstep" data-brk="vasp" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vasp" data-brk="vasp" min="0" max="2" step="0.05"><button type="button" class="bgstep" data-brk="vasp" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vasp">0</span></div>
       <div class="prow"><span class="pl">声の割合（0=ささやき、1=声）</span><button type="button" class="bgstep" data-brk="vvo" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vvo" data-brk="vvo" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="vvo" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vvo">0</span></div>
       <div class="prow"><span class="pl">強い息ほど声が強く</span><button type="button" class="bgstep" data-brk="vint" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vint" data-brk="vint" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="vint" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vint">0</span></div>
       <div class="prow"><span class="pl">母音（0あ 1い 2う 3え 4お）</span><button type="button" class="bgstep" data-brk="vva" data-d="-1" data-step="1">−</button><input type="range" id="br-rng-vva" data-brk="vva" min="0" max="4" step="1"><button type="button" class="bgstep" data-brk="vva" data-d="1" data-step="1">＋</button><span class="pv" id="br-val-vva">0</span></div>
@@ -631,7 +632,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0930-voice-natural';
+  const BUILD = '0930-voice-blend';
   const $ = (s) => document.querySelector(s);
   const screens = { days: $('#days'), select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -4352,10 +4353,13 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     vgap: 0.6,       // 秒: 声の成分を続けて足さない最短の間隔
     vvar: 0.8,       // 声のバリエーション（0=母音・長さを上の設定どおり固定、1=毎回、母音・長さ・抑揚・高さ・「ん」の種類を変える）
     vcon: 1,         // 抑揚（声の高さの上がり下がり）の大きさ（倍。0で平らな声）
-    vduck: 0.85,     // 声を出している間、呼吸のノイズを下げる割合（1=消す。母音は息で出すので、別の息を同時に流さない）
+    vduck: 0.85,     // 声を出している間、そのままの呼吸ノイズを下げる割合（下げた分は、同じ息を母音の響きに通した音に置き換わる）
+    vasp: 0.85,      // 呼吸ノイズを母音の響き（フォルマント）に通して声に混ぜる量（0で従来どおり声だけ。1で息と同じ大きさ）
     vsus: 0.25,      // 速い呼吸が続いている間、1回の息ごとに声を足す確率の目安（0で「速くした瞬間」以外は足さない）
     bvar: 0.5        // 呼吸1回ごとの強弱・こもりの変化（0=毎回同じ、1=大きく変える）
   };
+  const BR_ASP_GAIN = [2.8, 6.3, 5.0, 3.6, 3.9], BR_ASP_GAIN_N = 10.5;   // 呼吸ノイズを母音の響きに通した時の音量を、通す前の息と同じにそろえる係数（あ・い・う・え・お・ん）
+  const BR_TILT = [1, 1.8, 2.2, 2.5];   // 高い響きほど持ち上げる（声だけ低音に偏って、息の音とつながらないのを防ぐ）
   const BR_VOICE_SR = 24000;   // 声の成分を作る時のサンプル数/秒
   const BR_VOWELS = [   // 母音ごとの響き（フォルマント）: f=中心周波数Hz、b=帯域幅Hz、a=相対音量
     { f: [800, 1200, 2500, 3500], b: [90, 110, 150, 200], a: [1, 0.55, 0.3, 0.15] },    // あ
@@ -4366,7 +4370,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   ];
   const BR_NASAL = { f: [250, 1100, 2200, 3200], b: [60, 140, 180, 220], a: [1, 0.12, 0.08, 0.04] };   // 「ん」（鼻にこもった低い響き）
   const BR = Object.assign({}, BR_VOICE_DEF, BR_DEF);
-  const breath = { trigReq: false, armed: false, seqEnd: 0, cur: null, out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0, vRef: BR.base, vLast: 0, vNext: 0, voices: [], deco: null, lastPh: { a: '', n: '' }, vRun: { n: 0, last: -99, p: 0 }, cnt: 0 };
+  const breath = { trigReq: false, armed: false, seqEnd: 0, cur: null, out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0, vRef: BR.base, vLast: 0, vNext: 0, voices: [], deco: null, fout: null, fbp: [], fg: [], lastPh: { a: '', n: '' }, vRun: { n: 0, last: -99, p: 0 }, cnt: 0 };
   function breathStroke(nowSec) {   // 前へ動き出した時に呼ぶ：往復の間隔からリズムを測る
     const p = nowSec - breath.lastAt;
     if (p < 0.25) return;   // 手ぶれの細かい向き変えは無視
@@ -4439,6 +4443,14 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (spaceConv) { const send = ctx.createGain(); send.gain.value = BR.rev; out.connect(send); send.connect(spaceConv); breath.send = send; }
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = BR.bright; lp.Q.value = 0.707;
     breath.out = out; breath.lp = lp;
+    { // 呼吸の音源を母音の響き（4つのバンドパス）にも通せる経路。声が入る間だけ音量が上がり、息と同じ音が母音の形になる
+      const fo = ctx.createGain(); fo.gain.value = 0; fo.connect(out); breath.fout = fo; breath.fbp = []; breath.fg = [];
+      for (let k = 0; k < 4; k++) {
+        const bq = ctx.createBiquadFilter(); bq.type = 'bandpass'; bq.frequency.value = BR_VOWELS[0].f[k]; bq.Q.value = 8;
+        const gk = ctx.createGain(); gk.gain.value = 0;
+        lp.connect(bq); bq.connect(gk); gk.connect(fo); breath.fbp.push(bq); breath.fg.push(gk);
+      }
+    }
     breathMakeSource(ctx);
   }
   function breathSegs(period) {   // 1回の呼吸の区間の境目（0〜1）。速い呼吸ほど、立ち上がりは保ち、余韻と間を削ってから全体を1回分に収める
@@ -4570,7 +4582,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     const fsh = Math.pow(2, BR.vfs / 12), semi0 = (ph.semi || 0) + BR.vsp * inten + BR.vpv * (2 * Math.random() - 1);
     const f0 = BR.vf0 * Math.pow(2, semi0 / 12) * (isN ? 0.95 : 1);
     const vo = ph.vo !== undefined ? ph.vo : 1;
-    const vg = clamp(BR.vvo * vo * (1 + BR.vint * (2 * inten - 1)), 0, 1.5), ng = 1 - 0.6 * Math.min(1, vg), vd = isN ? 0 : BR.vvd;
+    const vg = clamp(BR.vvo * vo * (1 + BR.vint * (2 * inten - 1)), 0, 1.5), ng = (1 - 0.6 * Math.min(1, vg)) * (BR.vasp > 0 ? 0.5 : 1), vd = isN ? 0 : BR.vvd;   // 息の成分は、呼吸と同じ音を通す経路(breathAspirate)が受け持つ
     const NF = 4, BWK = 1.3, y1 = new Float32Array(NF), y2 = new Float32Array(NF), ca1 = new Float32Array(NF), ca2 = new Float32Array(NF), cb0 = new Float32Array(NF);
     const Tp = 0.5, Tn = 0.2, tp = Math.random() * 6.283, aT = 1 - Math.exp(-2 * Math.PI * 3000 / sr);   // 声門の開く時間を長めにして、ブザーのような硬さを抑える
     let phs = Math.random(), gPrev = 0, jit = 0, pAmp = 1, vLp = 0;
@@ -4579,7 +4591,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       if (n % 32 === 0) {   // 母音の響きを更新（母音の変化・揺れ）。帯域幅は広めにして、金属的な鳴りを抑える
         const w = mo * bvSm(u * 1.15);
         for (let k = 0; k < NF; k++) {
-          const F = (A.f[k] + (B.f[k] - A.f[k]) * w) * fsh * (1 + BR.vff * ffj[n]), bw = (A.b[k] + (B.b[k] - A.b[k]) * w) * BWK, am = A.a[k] + (B.a[k] - A.a[k]) * w;
+          const F = (A.f[k] + (B.f[k] - A.f[k]) * w) * fsh * (1 + BR.vff * ffj[n]), bw = (A.b[k] + (B.b[k] - A.b[k]) * w) * BWK, am = (A.a[k] + (B.a[k] - A.a[k]) * w) * BR_TILT[k];
           const r = Math.exp(-Math.PI * bw / sr), w0 = 2 * Math.PI * Math.min(F, sr * 0.45) / sr;
           ca1[k] = 2 * r * Math.cos(w0); ca2[k] = -r * r; cb0[k] = (1 - r) * Math.sqrt(1 - 2 * r * Math.cos(2 * w0) + r * r) * am;
         }
@@ -4627,11 +4639,32 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     src.start(ts); src.stop(ts + d + 0.02);
     return { srcs: [src], g: g, t: ts, end: ts + d };
   }
+  function breathAspirate(ctx, ts, d, which, ph, inten) {   // 呼吸のノイズそのものを、声と同じ母音の響きに通して鳴らす（声と息が同じ口の形・同じ音色になる）
+    if (!breath.fout || BR.vasp <= 0) return;
+    const isN = which === 'n', A = isN ? BR_NASAL : BR_VOWELS[clamp(Math.round(ph.A !== undefined ? ph.A : BR.vva), 0, 4)];
+    const B = isN ? BR_NASAL : BR_VOWELS[clamp(Math.round(ph.B !== undefined ? ph.B : BR.vvb), 0, 4)], mo = isN ? 0 : clamp(ph.m !== undefined ? ph.m : BR.vmorph, 0, 1);
+    const gA = isN ? BR_ASP_GAIN_N : BR_ASP_GAIN[clamp(Math.round(ph.A !== undefined ? ph.A : BR.vva), 0, 4)];
+    const gB = isN ? BR_ASP_GAIN_N : BR_ASP_GAIN[clamp(Math.round(ph.B !== undefined ? ph.B : BR.vvb), 0, 4)];
+    const fsh = Math.pow(2, BR.vfs / 12), t1 = ts + d, BWK = 1.3;
+    for (let k = 0; k < 4; k++) {
+      const fA = A.f[k] * fsh, fB = (A.f[k] + (B.f[k] - A.f[k]) * mo) * fsh, bA = A.b[k] * BWK, bB = (A.b[k] + (B.b[k] - A.b[k]) * mo) * BWK;
+      const aA = A.a[k] * BR_TILT[k] * gA, aB = (A.a[k] + (B.a[k] - A.a[k]) * mo) * BR_TILT[k] * (gA + (gB - gA) * mo);
+      const bq = breath.fbp[k], gk = breath.fg[k];
+      bq.frequency.setValueAtTime(fA, ts); bq.frequency.linearRampToValueAtTime(fB, t1);
+      bq.Q.setValueAtTime(fA / bA, ts); bq.Q.linearRampToValueAtTime(fB / bB, t1);
+      gk.gain.setValueAtTime(aA, ts); gk.gain.linearRampToValueAtTime(aB, t1);
+    }
+    const kk = ph.k === 'sigh' ? 1.25 : ph.k === 'clip' ? 0.9 : 1;
+    const lv = BR.vasp * (0.6 + BR.ivol * inten) * BR.bmix * kk * (isN ? 0.7 : 1.15 - 0.4 * (ph.vo !== undefined ? ph.vo : 1)) * (ph.gain !== undefined ? ph.gain : 1);
+    const fo = breath.fout.gain, at = Math.min(0.03, d * 0.3);
+    fo.setValueAtTime(0, ts); fo.linearRampToValueAtTime(lv, ts + at);
+    fo.linearRampToValueAtTime(lv * 0.65, ts + d * 0.75); fo.linearRampToValueAtTime(0, t1 + 0.03);
+  }
   function breathVoicePhrase(ctx, t, inten, which) {   // 声のパターンを選んで鳴らす（2回続けるパターンでは2つ返す）
     const ph = breathPickPhrase(which, inten, ctx.currentTime), list = [], h = breathVoice(ctx, t, inten, which, ph);
     if (h) {
-      list.push(h);
-      if (ph.twin) { const h2 = breathVoice(ctx, h.end + 0.07, inten, which, Object.assign({}, ph, { semi: (ph.semi || 0) + 1.6, gain: (ph.gain || 1) * 0.85, twin: false })); if (h2) list.push(h2); }
+      list.push(h); breathAspirate(ctx, h.t, h.end - h.t, which, ph, inten);
+      if (ph.twin) { const ph2 = Object.assign({}, ph, { semi: (ph.semi || 0) + 1.6, gain: (ph.gain || 1) * 0.85, twin: false }), h2 = breathVoice(ctx, h.end + 0.07, inten, which, ph2); if (h2) { list.push(h2); breathAspirate(ctx, h2.t, h2.end - h2.t, which, ph2, inten); } }
     }
     return list;
   }
@@ -4660,6 +4693,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       } catch (e) {}
     }
     breath.voices = [];
+    if (breath.fout) try { const fg = breath.fout.gain; fg.cancelScheduledValues(tNow); fg.setValueAtTime(fg.value, tNow); fg.linearRampToValueAtTime(0, tNow + 0.05); } catch (e) {}
   }
   function breathTrigger(ctx, force) {   // 角度に達した瞬間：余韻なしの「吸う」→ 必ず余韻なしの「吐く」（2つ同時に予約するので、吐くは必ず鳴る）
     const tNow = ctx.currentTime;
@@ -4728,7 +4762,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const BR_DG = { vol: 2, rev: 2, bright: 0, ivol: 2, ipitch: 2, vvol: 2, vper: 2, vpit: 2, gr: 2, tr: 2, ia: 2, ir: 2, ea: 2, er: 2,
     density: 0, combf: 0, combs: 2, notchf: 2, notchs: 2, peakf: 0, peakg: 1, peakbw: 0, base: 2, max: 2, up: 1, down: 1, hold: 1, fkeep: 2, ftail: 2, kdeg: 1, tin: 2, tout: 2,
     vwis: 2, bmix: 2, vvo: 2, vint: 2, vva: 0, vvb: 0, vmorph: 2, vf0: 0, vpv: 1, vsp: 1, vfs: 1, vcut: 0, vtone: 2, vlen: 2, vlv: 2, vvv: 2, vatk: 3, vrel: 3, vvd: 3,
-    vdrift: 3, vjit: 3, vshm: 3, vtrem: 3, vff: 3, vturb: 2, vfry: 2, vpa: 2, vpn: 2, vapos: 2, vnoff: 2, vth: 2, vgap: 2, vvar: 2, vcon: 2, vduck: 2, vsus: 2, bvar: 2 };
+    vdrift: 3, vjit: 3, vshm: 3, vtrem: 3, vff: 3, vturb: 2, vfry: 2, vpa: 2, vpn: 2, vapos: 2, vnoff: 2, vth: 2, vgap: 2, vvar: 2, vcon: 2, vduck: 2, vasp: 2, vsus: 2, bvar: 2 };
   const BR_SRC = { density: 1, combf: 1, combs: 1, notchf: 1, notchs: 1, peakf: 1, peakg: 1, peakbw: 1 };   // 音源の波形を作り直す項目
   function breathApplyAudio() {   // 音量・響き・高音カットは今鳴っている音にも即反映
     const ctx = waterCtx;

@@ -555,6 +555,13 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">通常へ戻る時間(秒)</span><button type="button" class="bgstep" data-brk="down" data-d="-1" data-step="0.5">−</button><input type="range" id="br-rng-down" data-brk="down" min="1" max="20" step="0.5"><button type="button" class="bgstep" data-brk="down" data-d="1" data-step="0.5">＋</button><span class="pv" id="br-val-down">0</span></div>
       <div class="prow"><span class="pl">リズムを保つ時間(秒)</span><button type="button" class="bgstep" data-brk="hold" data-d="-1" data-step="0.1">−</button><input type="range" id="br-rng-hold" data-brk="hold" min="0.2" max="5" step="0.1"><button type="button" class="bgstep" data-brk="hold" data-d="1" data-step="0.1">＋</button><span class="pv" id="br-val-hold">0</span></div>
       <div class="prow"><span class="pl">呼吸ごとの強弱・こもりの変化</span><button type="button" class="bgstep" data-brk="bvar" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-bvar" data-brk="bvar" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="bvar" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-bvar">0</span></div>
+      <p class="postitle" style="margin:10px 0 4px; opacity:.75">▼ 呼吸を母音らしくする（声は足さない）</p>
+      <div class="prow"><span class="pl">母音らしさ（0=ふつうの息 〜 1=ささやき声）</span><button type="button" class="bgstep" data-brk="vcol" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vcol" data-brk="vcol" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="vcol" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vcol">0</span></div>
+      <div class="prow"><span class="pl">1回ごとの量のばらつき</span><button type="button" class="bgstep" data-brk="vcv" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vcv" data-brk="vcv" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="vcv" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vcv">0</span></div>
+      <div class="prow"><span class="pl">1回の息の中で母音が動く度合い</span><button type="button" class="bgstep" data-brk="vmv" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vmv" data-brk="vmv" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="vmv" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vmv">0</span></div>
+      <div class="prow"><span class="pl">吸う息の母音らしさ（吐く息を1として）</span><button type="button" class="bgstep" data-brk="vinh" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vinh" data-brk="vinh" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="vinh" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vinh">0</span></div>
+      <button type="button" class="mini" id="dBtnBrVow" style="width:100%; margin-top:6px">母音つきの息を1回（押すたび あ→い→う→え→お）</button>
+      <button type="button" class="mini" id="dBtnBrVowR" style="width:100%; margin-top:6px">母音つきの息を1回（ランダム）</button>
       <p class="postitle" style="margin:10px 0 4px; opacity:.75">▼ 呼吸音に声の成分（母音・ん）を足す</p>
       <button type="button" class="mini on" id="dBtnBrVoice" style="width:100%; margin-top:6px">声の成分を足す: ON</button>
       <button type="button" class="mini" id="dBtnBrVoiceA" style="width:100%; margin-top:6px">呼吸1回＋後ろに母音（sha）</button>
@@ -632,7 +639,7 @@ body.stereo .dispbar{opacity:.55}
 <script>
 (function () {
   'use strict';
-  const BUILD = '0930-voice-blend';
+  const BUILD = '0930-vowel-breath';
   const $ = (s) => document.querySelector(s);
   const screens = { days: $('#days'), select: $('#select'), pair: $('#pair'), ctrl: $('#ctrl'), disp: $('#disp') };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -4318,7 +4325,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   };
   // 声（あ・ん）を呼吸に混ぜる設定。BR_DEF に無い項目はここの値が使われる
   const BR_VOICE_DEF = {
-    von: true,       // false: 声の成分を足さない
+    von: false,      // false: 声（有声音）の成分を足さない。今は呼吸そのものを母音らしく変える方式（下の vcol など）を使うのでOFF
+    vcol: 0.45,      // 呼吸のノイズを母音の響き（フォルマント）に近づける量（0=ふつうの息、0.45=若干、1=はっきり母音のささやき）
+    vcv: 0.5,        // 1回ごとに vcol をばらつかせる幅（0=毎回同じ量）
+    vmv: 0.6,        // 1回の息の中で、母音が次の母音へ動く度合い（0=動かない）
+    vinh: 0.3,       // 「吸う」側の母音らしさの割合（吐く側を1として。吸う息は息のまま近づけたくない時は小さく）
     vwis: 1,         // 声の成分の量（0で足さない）
     bmix: 1,         // 息の音量（声の成分と混ぜる時の割合。0で声の成分だけ）
     vvo: 0.5,        // 声（有声音）の割合（0=ささやき声だけ、1=声が主）
@@ -4360,6 +4371,9 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   };
   const BR_ASP_GAIN = [2.8, 6.3, 5.0, 3.6, 3.9], BR_ASP_GAIN_N = 10.5;   // 呼吸ノイズを母音の響きに通した時の音量を、通す前の息と同じにそろえる係数（あ・い・う・え・お・ん）
   const BR_TILT = [1, 1.8, 2.2, 2.5];   // 高い響きほど持ち上げる（声だけ低音に偏って、息の音とつながらないのを防ぐ）
+  const BR_COL_GAIN = [1.9, 4.5, 3.6, 2.6, 2.5];   // 呼吸ノイズを母音の響き（帯域幅は広め）に通した時の音量を、通す前の息と同じにそろえる係数（あ・い・う・え・お）
+  const BR_COL_BW = 2.2;   // 息を母音に通す時の帯域幅の倍率（広いほど笛のようなピーッが出ず、自然なささやき声になる）
+  const BR_COL_W = [3, 0.6, 1.2, 1.6, 2.4];   // 母音の選ばれやすさ（あ・い・う・え・お）。「はぁ」「ほぉ」が多く、「いー」は稀
   const BR_VOICE_SR = 24000;   // 声の成分を作る時のサンプル数/秒
   const BR_VOWELS = [   // 母音ごとの響き（フォルマント）: f=中心周波数Hz、b=帯域幅Hz、a=相対音量
     { f: [800, 1200, 2500, 3500], b: [90, 110, 150, 200], a: [1, 0.55, 0.3, 0.15] },    // あ
@@ -4370,7 +4384,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   ];
   const BR_NASAL = { f: [250, 1100, 2200, 3200], b: [60, 140, 180, 220], a: [1, 0.12, 0.08, 0.04] };   // 「ん」（鼻にこもった低い響き）
   const BR = Object.assign({}, BR_VOICE_DEF, BR_DEF);
-  const breath = { trigReq: false, armed: false, seqEnd: 0, cur: null, out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0, vRef: BR.base, vLast: 0, vNext: 0, voices: [], deco: null, fout: null, fbp: [], fg: [], lastPh: { a: '', n: '' }, vRun: { n: 0, last: -99, p: 0 }, cnt: 0 };
+  const breath = { trigReq: false, armed: false, seqEnd: 0, cur: null, out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0, vRef: BR.base, vLast: 0, vNext: 0, voices: [], deco: null, lastVow: -1, forceVow: -1, bus: null, dry: null, wet: null, cq: [], cg: [], fout: null, fbp: [], fg: [], lastPh: { a: '', n: '' }, vRun: { n: 0, last: -99, p: 0 }, cnt: 0 };
   function breathStroke(nowSec) {   // 前へ動き出した時に呼ぶ：往復の間隔からリズムを測る
     const p = nowSec - breath.lastAt;
     if (p < 0.25) return;   // 手ぶれの細かい向き変えは無視
@@ -4443,6 +4457,18 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (spaceConv) { const send = ctx.createGain(); send.gain.value = BR.rev; out.connect(send); send.connect(spaceConv); breath.send = send; }
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = BR.bright; lp.Q.value = 0.707;
     breath.out = out; breath.lp = lp;
+    { // 1回ごとの息をまとめる「バス」：そのままの息(dry)と、母音の響きを通した息(wet)を混ぜて出す。母音らしさの量・母音の種類は、息ごとにここを動かして変える
+      const bus = ctx.createGain(), dry = ctx.createGain(), wet = ctx.createGain();
+      dry.gain.value = 1; wet.gain.value = 0;
+      bus.connect(dry); dry.connect(out); wet.connect(out);
+      breath.cq = []; breath.cg = [];
+      for (let k = 0; k < 4; k++) {
+        const bq = ctx.createBiquadFilter(); bq.type = 'bandpass'; bq.frequency.value = BR_VOWELS[0].f[k]; bq.Q.value = 4;
+        const gk = ctx.createGain(); gk.gain.value = 0;
+        bus.connect(bq); bq.connect(gk); gk.connect(wet); breath.cq.push(bq); breath.cg.push(gk);
+      }
+      breath.bus = bus; breath.dry = dry; breath.wet = wet;
+    }
     { // 呼吸の音源を母音の響き（4つのバンドパス）にも通せる経路。声が入る間だけ音量が上がり、息と同じ音が母音の形になる
       const fo = ctx.createGain(); fo.gain.value = 0; fo.connect(out); breath.fout = fo; breath.fbp = []; breath.fg = [];
       for (let k = 0; k < 4; k++) {
@@ -4452,6 +4478,42 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       }
     }
     breathMakeSource(ctx);
+  }
+  function breathPickVowel(inten, not) {   // 母音を1つ選ぶ（速く強い息ほど「あ・え」の開いた母音、ゆっくりした息ほど「お・う」。直前と同じ母音は選ばれにくい）
+    if (breath.forceVow >= 0 && not === undefined) return breath.forceVow;
+    const bias = [1 + inten, 0.8, 1.6 - 1.2 * inten, 1 + 0.8 * inten, 1.6 - 1.0 * inten];
+    let tot = 0;
+    const ws = BR_COL_W.map((w, i) => { let v = w * bias[i]; if (i === breath.lastVow || i === not) v *= i === not ? 0 : 0.2; tot += v; return v; });
+    let r = Math.random() * tot;
+    for (let i = 0; i < 5; i++) { r -= ws[i]; if (r < 0) return i; }
+    return 0;
+  }
+  function breathColor(ctx, t, span, inten, S, u0) {   // 1回の息のあいだ、息のノイズを母音の響きに近づける（声は足さない）。吸う側は控えめ、吐く側で母音らしく、終わりで少し戻る
+    if (!breath.wet) return;
+    const wetG = breath.wet.gain, dryG = breath.dry.gain;
+    [wetG, dryG].forEach((p) => { try { p.cancelScheduledValues(t); } catch (e) {} });
+    breath.cq.forEach((q, k) => { try { q.frequency.cancelScheduledValues(t); q.Q.cancelScheduledValues(t); breath.cg[k].gain.cancelScheduledValues(t); } catch (e) {} });
+    const w0 = clamp(BR.vcol * breathRand(BR.vcv * 2), 0, 1), wi = w0 * clamp(BR.vinh, 0, 1);
+    if (w0 <= 0.001) { wetG.setValueAtTime(0, t); dryG.setValueAtTime(1, t); return; }
+    const vA = breathPickVowel(inten), vB = breath.forceVow < 0 && Math.random() < clamp(BR.vmv, 0, 1) ? breathPickVowel(inten, vA) : vA;
+    breath.lastVow = vA;
+    const m = vB === vA ? 0 : 0.4 + 0.5 * Math.random();
+    const A = BR_VOWELS[vA], B = BR_VOWELS[vB], gA = BR_COL_GAIN[vA], gB = BR_COL_GAIN[vB], fsh = Math.pow(2, BR.vfs / 12) * (1 + 0.03 * (Math.random() - 0.5) * 2);
+    const at = (u) => t + Math.max(0, (u - u0)) / (1 - u0) * span, tTr = at(S.tr), tEA = at(S.tEA), tET = at(S.tET), tEnd = t + span;
+    const tEx = Math.max(tTr + 0.01, tEA);
+    // 母音らしさの量：吸う（控えめ）→ 吐く立ち上がりで増える → 終わりで少し戻る
+    const wIn = u0 > 0 ? w0 : wi;
+    wetG.setValueAtTime(wIn, t); wetG.linearRampToValueAtTime(wIn, tTr); wetG.linearRampToValueAtTime(w0, tEx); wetG.setValueAtTime(w0, Math.max(tEx, tET - 0.02)); wetG.linearRampToValueAtTime(w0 * 0.5, Math.max(tET, tEnd - 0.01));
+    dryG.setValueAtTime(1 - wIn, t); dryG.linearRampToValueAtTime(1 - wIn, tTr); dryG.linearRampToValueAtTime(1 - w0, tEx); dryG.setValueAtTime(1 - w0, Math.max(tEx, tET - 0.02)); dryG.linearRampToValueAtTime(1 - w0 * 0.5, Math.max(tET, tEnd - 0.01));
+    // 母音の響き：吐くの始まりで vA、終わりへ向けて vB へ動く（吸う側は vA のまま）
+    for (let k = 0; k < 4; k++) {
+      const fA = A.f[k] * fsh, fB = (A.f[k] + (B.f[k] - A.f[k]) * m) * fsh, bA = A.b[k] * BR_COL_BW, bB = (A.b[k] + (B.b[k] - A.b[k]) * m) * BR_COL_BW;
+      const aA = A.a[k] * BR_TILT[k] * gA, aB = (A.a[k] + (B.a[k] - A.a[k]) * m) * BR_TILT[k] * (gA + (gB - gA) * m);
+      const q = breath.cq[k], gk = breath.cg[k].gain, tm = Math.max(tEx, tEnd - 0.01);
+      q.frequency.setValueAtTime(fA, t); q.frequency.setValueAtTime(fA, tTr); q.frequency.linearRampToValueAtTime(fB, tm);
+      q.Q.setValueAtTime(fA / bA, t); q.Q.setValueAtTime(fA / bA, tTr); q.Q.linearRampToValueAtTime(fB / bB, tm);
+      gk.setValueAtTime(aA, t); gk.setValueAtTime(aA, tTr); gk.linearRampToValueAtTime(aB, tm);
+    }
   }
   function breathSegs(period) {   // 1回の呼吸の区間の境目（0〜1）。速い呼吸ほど、立ち上がりは保ち、余韻と間を削ってから全体を1回分に収める
     const c = clamp(period * BR.base, 0.02, 1);   // 通常の呼吸に対する短さ（1=通常）
@@ -4479,7 +4541,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     const g = ctx.createGain(); g.gain.value = 0;
     g.gain.setValueCurveAtTime(curve, t, span);
     const cut = ctx.createGain();   // 途中で止める（動き出しで吸う息を切る）ための音量
-    breath.lp.connect(g); g.connect(cut); cut.connect(breath.out);
+    breath.lp.connect(g); g.connect(cut); cut.connect(breath.bus || breath.out);
+    breathColor(ctx, t, span, inten, S, u0);   // 息を若干母音らしくする（母音の種類・量を息ごとに変える）
     if (bvr > 0) breath.lp.frequency.setTargetAtTime(clamp(BR.bright * (1 + bvr * 0.9 * (Math.random() - 0.6)), 1500, 20000), t, 0.05);   // 呼吸ごとにこもり具合を少し変える
     breath.cur = { t: t, end: t + span, period: period, u0: u0, S: S, cut: cut };
     { // 声の成分：速くした瞬間の息に、頭へ「ん」・後ろへ「あ」を足す（sh → nush / sha）。forceDeco は試し用（確率を無視して {a, n} のとおりに足す）
@@ -4762,7 +4825,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const BR_DG = { vol: 2, rev: 2, bright: 0, ivol: 2, ipitch: 2, vvol: 2, vper: 2, vpit: 2, gr: 2, tr: 2, ia: 2, ir: 2, ea: 2, er: 2,
     density: 0, combf: 0, combs: 2, notchf: 2, notchs: 2, peakf: 0, peakg: 1, peakbw: 0, base: 2, max: 2, up: 1, down: 1, hold: 1, fkeep: 2, ftail: 2, kdeg: 1, tin: 2, tout: 2,
     vwis: 2, bmix: 2, vvo: 2, vint: 2, vva: 0, vvb: 0, vmorph: 2, vf0: 0, vpv: 1, vsp: 1, vfs: 1, vcut: 0, vtone: 2, vlen: 2, vlv: 2, vvv: 2, vatk: 3, vrel: 3, vvd: 3,
-    vdrift: 3, vjit: 3, vshm: 3, vtrem: 3, vff: 3, vturb: 2, vfry: 2, vpa: 2, vpn: 2, vapos: 2, vnoff: 2, vth: 2, vgap: 2, vvar: 2, vcon: 2, vduck: 2, vasp: 2, vsus: 2, bvar: 2 };
+    vdrift: 3, vjit: 3, vshm: 3, vtrem: 3, vff: 3, vturb: 2, vfry: 2, vpa: 2, vpn: 2, vapos: 2, vnoff: 2, vth: 2, vgap: 2, vvar: 2, vcon: 2, vduck: 2, vasp: 2, vsus: 2, bvar: 2, vcol: 2, vcv: 2, vmv: 2, vinh: 2 };
   const BR_SRC = { density: 1, combf: 1, combs: 1, notchf: 1, notchs: 1, peakf: 1, peakg: 1, peakbw: 1 };   // 音源の波形を作り直す項目
   function breathApplyAudio() {   // 音量・響き・高音カットは今鳴っている音にも即反映
     const ctx = waterCtx;
@@ -4830,6 +4893,23 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (ctx.state === 'running') go(); else ctx.resume().then(go).catch(() => {});
   }
   $('#dBtnBrVoice').addEventListener('click', () => { BR.von = !BR.von; breathSyncUi(); });
+  let vowTestI = 0;
+  function breathVowTest(fixed) {   // 母音つきの息を1回だけ鳴らして聞き比べる（fixed: 母音を あ→い→う→え→お と順番に固定）
+    waterEnsure();
+    const ctx = waterCtx;
+    if (!ctx) return;
+    const names = ['あ', 'い', 'う', 'え', 'お'];
+    const go = () => {
+      if (!breath.out) breathInit(ctx);
+      if (fixed) { breath.forceVow = vowTestI % 5; $('#dBtnBrVow').textContent = '母音つきの息を1回（今: ' + names[vowTestI % 5] + '）'; vowTestI++; }
+      else breath.forceVow = -1;
+      breathBurst(ctx, ctx.currentTime + 0.05, 1 / (BR.base + (BR.max - BR.base) * 0.4), 0.4);
+      setTimeout(() => { breath.forceVow = -1; }, 100);
+    };
+    if (ctx.state === 'running') go(); else ctx.resume().then(go).catch(() => {});
+  }
+  $('#dBtnBrVow').addEventListener('click', () => breathVowTest(true));
+  $('#dBtnBrVowR').addEventListener('click', () => breathVowTest(false));
   $('#dBtnBrVoiceA').addEventListener('click', () => breathDecoTest(true, false));
   $('#dBtnBrVoiceN').addEventListener('click', () => breathDecoTest(false, true));
   $('#dBtnBrVoiceAN').addEventListener('click', () => breathDecoTest(true, true));

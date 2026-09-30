@@ -4238,7 +4238,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     rev: 0,       // 呼吸に足す響きの量
     bright: 5000,   // Hz: 高音のカット（小さいほどこもって柔らかい。大きいと実質なし）
     ivol: 0.5,       // 速い呼吸ほど大きくなる量
-    ipitch: 0.15,    // 速い呼吸ほど音が高く・軽くなる量（0.15＝15%高く）
+    ipitch: 0,    // 速い呼吸ほど音が高く・軽くなる量（0.15＝15%高く）
     vvol: 0.2,       // 1回ごとの音量のばらつき
     vper: 0.19,       // 1回ごとの間隔のばらつき
     vpit: 0,         // 1回ごとの高さのばらつき
@@ -4258,11 +4258,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     peakbw: 4000,    // Hz: ピークEQの幅
     base: 0.3,       // 回/秒: 通常の呼吸の速さ（約18回/分）
     max: 2.5,        // 回/秒: いちばん速い呼吸（約150回/分）
-    up: 5,         // 秒: 動きが速くなった時、呼吸がその速さに追いつくまでの時間
+    up: 0.1,         // 秒: 動きが速くなった時、呼吸がその速さに追いつくまでの時間
     down: 1,         // 秒: 動きが止まった後、通常の速さへ戻っていく時間（大きいほどゆっくり）
-    hold: 1.2,       // 秒: 往復が途絶えても、この間は直前のリズムを保つ（往復の長さの1.8倍と比べて長い方）
-    fkeep: 0.6,      // 速い呼吸で「すー」「はー」の立ち上がりを通常の長さに近く保つ度合い（0=全体を均等に縮める）
-    ftail: 0.6,      // 速い呼吸で余韻（減衰・息継ぎの間）を削る度合い（0=均等に縮める。大きいほど「すは」のように短く切れる）
+    hold: 0.2,       // 秒: 往復が途絶えても、この間は直前のリズムを保つ（往復の長さの1.8倍と比べて長い方）
+    fkeep: 0,      // 速い呼吸で「すー」「はー」の立ち上がりを通常の長さに近く保つ度合い（0=全体を均等に縮める）
+    ftail: 0,      // 速い呼吸で余韻（減衰・息継ぎの間）を削る度合い（0=均等に縮める。大きいほど「すは」のように短く切れる）
     kick: true,      // true: 前へ動いて kdeg の角度に達した瞬間に、余韻なしの「吸う」→ 必ず余韻なしの「吐く」を鳴らす（戻る時は何もしない）
     kdeg: 7,         // 度: 「吸う」を鳴らす角度
     tin: 0.2,        // 秒: 動き出しの「吸う」の長さ（直線で立ち上がり、最後だけ一瞬で止める）
@@ -4421,10 +4421,18 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     const dt = clamp(nowSec - breath.lastUpd, 0, 0.1); breath.lastUpd = nowSec;
     breath.rate += (target - breath.rate) * (1 - Math.exp(-dt / (target > breath.rate ? BR.up : BR.down)));
     const tNow = ctx.currentTime;
+    { // 呼吸が速くなった時は、今鳴っている息をすばやく止めて、その場で新しい速さの息に切り替える
+      const c = breath.cur;
+      if (c && tNow >= breath.seqEnd && tNow < c.end && tNow - c.t > 0.15 && breath.rate > c.rate * 1.1 + 0.05) {
+        c.cut.gain.setTargetAtTime(0, tNow, 0.012);
+        breath.nextAt = tNow;
+      }
+    }
     if (tNow >= breath.nextAt - 0.03) {
       const t0 = Math.max(tNow, breath.nextAt), period = (1 / breath.rate) * breathRand(BR.vper);
       const inten = clamp((breath.rate - BR.base) / (BR.max - BR.base), 0, 1);
       breathBurst(ctx, t0, period, inten);
+      if (breath.cur) breath.cur.rate = breath.rate;
       breath.nextAt = t0 + period;
     }
   }

@@ -643,7 +643,7 @@ body.stereo .dispbar{opacity:.55}
   const BG_DEFAULT = { x: -2.9, y: 0, z: 2.45 };
   const bgP = Object.assign({}, BG_DEFAULT);
   // 動かせる光源（表示側パネル専用。操作側とは同期しない）
-  const LIGHT_DEFAULT = { x: 0, y: 1.8, z: 0.45, i: 0.5, d: 6, fd: 0.6 };   // 位置(m)・強さ・届く距離(m)・視線追従の距離(m)
+  const LIGHT_DEFAULT = { x: 0.5, y: 1.8, z: 0.45, i: 0.5, d: 6, fd: 0.6 };   // 位置(m)・強さ・届く距離(m)・視線追従の距離(m)
   const SUN_DEFAULT = 0;   // 太陽光の強さの初期値
   const sunP = { i: SUN_DEFAULT };
   const lightP = Object.assign({ color: '#6f7276', follow: false, marker: true, shadow: true }, LIGHT_DEFAULT);
@@ -3954,29 +3954,182 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   const WATER_LOW_HZ = [900, 1300];   // 低い音の高さ(Hz)。高いクリックは7000〜8200Hz。下げるほど低くなる
   const WATER_LOW_STRETCH = 2.5;      // 低くした分だけ、1つ1つのクリックの長さを伸ばす倍率（音を遅く再生したように、少し丸く長く残る）
   const WATER_LOW_DENSITY = 1.0;      // 低い音のクリックの密度（高いクリックと同じ=1 / 大きいほど多く詰まる）
-  let waterCtx = null, waterNoise = null, waterLastAt = 0;
+  // ---- 用意した音声を「素材」にして、Web Audioで細かく切って組み替えながら鳴らす（音声ファイルを丸ごと流さないので毎回違う音になり、先に読み込んで解凍しておくので遅延もほぼ無い） ----
+  const WATER_SAMPLE_ON = true;               // false: 用意した音声を使わず、これまでの合成音だけを鳴らす
+  const WATER_SAMPLE_URL = '音.mp3';          // 用意した水音の音声（index.htmlと同じ場所）。読み込めない時は、自動で合成音に切り替わる
+  const WATER_SAMPLE_GAIN = 0.9;              // 素材を鳴らす音量（粒の大きさのばらつきは、素材の元の大きさ＋ランダムで決まる）
+  const WATER_GRAIN_LEN = [0.012, 0.09];      // 秒: 素材から切り出す1粒（1つのクリック）の長さの範囲
+  const WATER_GRAIN_MAX = 200;                // 切り出す粒の最大数
+  const WATER_GRAIN_PITCH = [0.88, 1.15];     // 通常の層：再生速度のばらつき（1=録音のまま。粒ごとに少しずつ高さが変わる）
+  const WATER_GRAIN_LOW_PITCH = [0.2, 0.32];  // 低い層：再生速度（小さいほど低くなる。同じ粒を低くして重ねる）
+  const WATER_GRAIN_LOW_MAXDUR = 0.12;        // 秒: 低い層の1粒の最大の長さ（低くすると伸びるので、長くなりすぎないよう切る）
+  const WATER_GRAIN_LOW_LP = 3000;            // Hz: 低い層のローパス（これより高い成分は切る）
+  let waterCtx = null, waterNoise = null, waterLastAt = 0, waterBus = null;
   const wStroke = { dir: 0, lo: 0, hi: 0, init: false };
+  // ---- 前へ動いている間の水音（1a.mp3）。ゆっくり進んでいれば遅く（低く）、速く進んでいればそのままの速さで再生する。これまでの水音に重ねて鳴る ----
+  const W1A_ON = true;             // false: 鳴らさない
+  const W1A_URL = '1a.mp3';        // index_2.htmlと同じ場所に置く
+  const W1A_VOL = 1.0;             // 音量
+  const W1A_MIN_RATE = 0.4;        // ほぼ止まっている時の再生速度（1.0=そのまま）
+  const W1A_FAST_VEL = 40;         // 度/秒: この速さ以上で等倍（1.0）で再生
+  let w1aBuf = null, w1aRaw = null, w1aState = 'idle', w1aSrc = null, w1aGain = null;   // idle → fetched → ready / failed
+  function w1aFetch() {
+    if (!W1A_ON || w1aState !== 'idle') return;
+    w1aState = 'loading';
+    try {
+      fetch(W1A_URL).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); })
+        .then(function (buf) { w1aRaw = buf; w1aState = 'fetched'; w1aDecode(); })
+        .catch(function (e) { w1aState = 'failed'; console.info('[1a] 読み込めませんでした:', e && e.message); });
+    } catch (e) { w1aState = 'failed'; }
+  }
+  function w1aDecode() {
+    if (!waterCtx || w1aState !== 'fetched' || !w1aRaw) return;
+    const raw = w1aRaw; w1aRaw = null; w1aState = 'decoding';
+    new Promise(function (res, rej) { waterCtx.decodeAudioData(raw, res, rej); }).then(function (buf) {
+      w1aBuf = buf; w1aState = 'ready';
+    }).catch(function (e) { w1aState = 'failed'; console.info('[1a] 解凍できませんでした:', e && e.message); });
+  }
+  function w1aRate(vel) { return W1A_MIN_RATE + (1 - W1A_MIN_RATE) * clamp(Math.abs(vel) / W1A_FAST_VEL, 0, 1); }
+  function w1aStop() {
+    if (!w1aSrc) return;
+    const src = w1aSrc, g = w1aGain; w1aSrc = null; w1aGain = null;
+    try {
+      const t = waterCtx.currentTime;
+      g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0, t, 0.03);
+      src.stop(t + 0.15);
+    } catch (e) {}
+  }
+  function w1aStart(vel) {
+    if (!W1A_ON || w1aState !== 'ready' || !w1aBuf || !waterCtx || waterCtx.state !== 'running') return;
+    w1aStop();
+    const src = waterCtx.createBufferSource(); src.buffer = w1aBuf;
+    src.playbackRate.value = w1aRate(vel);
+    const g = waterCtx.createGain(); g.gain.value = W1A_VOL;
+    src.connect(g); g.connect(waterBus || waterCtx.destination);
+    src.onended = function () { if (w1aSrc === src) { w1aSrc = null; w1aGain = null; } };
+    src.start();
+    w1aSrc = src; w1aGain = g;
+  }
+  function w1aFollow(vel) {   // 前へ動いている間、今の速さに合わせて再生速度をなめらかに変える
+    if (!w1aSrc) return;
+    try { w1aSrc.playbackRate.setTargetAtTime(w1aRate(vel), waterCtx.currentTime, 0.04); } catch (e) {}
+  }
+  w1aFetch();
   function waterEnsure() {
     try {
       if (!waterCtx) {
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return null;
-        waterCtx = new AC();
+        try { waterCtx = new AC({ latencyHint: 'interactive' }); } catch (e2) { waterCtx = new AC(); }   // 遅延を最小にする指定
         const len = Math.floor(waterCtx.sampleRate * 0.6);
         waterNoise = waterCtx.createBuffer(1, len, waterCtx.sampleRate);
         const d = waterNoise.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        waterBus = waterCtx.createDynamicsCompressor();   // 素材の粒が重なって大きくなりすぎても音割れしないように
+        waterBus.threshold.value = -10; waterBus.ratio.value = 4; waterBus.attack.value = 0.002; waterBus.release.value = 0.08;
+        waterBus.connect(waterCtx.destination);
+        waterSampleDecode();
+        w1aDecode();
       }
       if (waterCtx.state === 'suspended') waterCtx.resume();
       return waterCtx;
     } catch (e) { return null; }
   }
   ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { document.addEventListener(ev, waterEnsure, { passive: true }); });   // iOSは操作をきっかけに音を有効にする必要がある
+  // 素材の読み込み：ページを開いた時点で先に取り込み、最初の操作で音を有効にしたタイミングで解凍する（鳴らす時に読み込まないので遅延しない）
+  let waterSample = null, waterGrains = [], waterSampleRaw = null, waterSampleState = 'idle';   // idle → fetched → ready / failed
+  let waterGrainLast1 = -1, waterGrainLast2 = -1;
+  function waterSampleFetch() {
+    if (!WATER_SAMPLE_ON || waterSampleState !== 'idle') return;
+    waterSampleState = 'loading';
+    try {
+      fetch(WATER_SAMPLE_URL).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); })
+        .then(function (buf) { waterSampleRaw = buf; waterSampleState = 'fetched'; waterSampleDecode(); })
+        .catch(function (e) { waterSampleState = 'failed'; console.info('[水音] 素材を読み込めなかったので合成音を使います:', e && e.message); });
+    } catch (e) { waterSampleState = 'failed'; }
+  }
+  function waterSampleDecode() {
+    if (!waterCtx || waterSampleState !== 'fetched' || !waterSampleRaw) return;
+    const raw = waterSampleRaw; waterSampleRaw = null; waterSampleState = 'decoding';
+    new Promise(function (res, rej) { waterCtx.decodeAudioData(raw, res, rej); }).then(function (buf) {
+      waterSample = buf; waterGrains = waterBuildGrains(buf); waterSampleState = waterGrains.length ? 'ready' : 'failed';
+      console.info('[水音] 素材を読み込みました: 粒 ' + waterGrains.length + ' 個');
+    }).catch(function (e) { waterSampleState = 'failed'; console.info('[水音] 素材を解凍できなかったので合成音を使います:', e && e.message); });
+  }
+  // 素材の中から、クリック（音が急に立ち上がる所）を見つけて、1粒ずつ切り出す
+  function waterBuildGrains(buf) {
+    const sr = buf.sampleRate, n = buf.length, nch = buf.numberOfChannels;
+    const x = new Float32Array(n);
+    for (let c = 0; c < nch; c++) { const d = buf.getChannelData(c); for (let i = 0; i < n; i++) x[i] += d[i] / nch; }
+    const hop = Math.max(1, Math.round(sr * 0.0005)), hs = hop / sr, m = Math.floor(n / hop);
+    const env = new Float32Array(m); let gmax = 1e-6;
+    for (let i = 0; i < m; i++) { let mx = 0; for (let k = i * hop, e = Math.min(n, k + hop); k < e; k++) { const a = Math.abs(x[k]); if (a > mx) mx = a; } env[i] = mx; if (mx > gmax) gmax = mx; }
+    const floor = gmax * 0.04, refr = 12, maxHops = Math.round(WATER_GRAIN_LEN[1] / hs), minHops = Math.round(WATER_GRAIN_LEN[0] / hs);
+    let grains = [], base = 0, last = -1e9;
+    for (let i = 1; i < m - 1; i++) {
+      const thr = base * 2.2;
+      if (env[i] > floor && env[i] > thr && env[i - 1] <= thr && i - last > refr) {
+        let pk = 0; for (let j = i; j < Math.min(m, i + 6); j++) if (env[j] > pk) pk = env[j];
+        let j = i, quiet = 0;
+        while (j < m - 1 && j - i < maxHops) { if (env[j] < pk * 0.1) { if (++quiet >= 4) break; } else quiet = 0; j++; }
+        const len = Math.max(minHops, j - i) * hs + 0.003;
+        grains.push({ s: Math.max(0, (i - 2) * hs), d: Math.min(WATER_GRAIN_LEN[1], len), p: pk / gmax });
+        last = i;
+      }
+      base += (env[i] - base) * 0.02;
+    }
+    if (grains.length > WATER_GRAIN_MAX) { const step = grains.length / WATER_GRAIN_MAX; const g2 = []; for (let k = 0; k < WATER_GRAIN_MAX; k++) g2.push(grains[Math.floor(k * step)]); grains = g2; }
+    if (grains.length < 6 && n / sr > 0.2) {   // クリックがはっきり見つからない素材（さらさら音など）は、ランダムな位置を短く切り出して代用する
+      grains = [];
+      for (let k = 0; k < 80; k++) { const d = WATER_GRAIN_LEN[0] + Math.random() * (WATER_GRAIN_LEN[1] - WATER_GRAIN_LEN[0]); grains.push({ s: Math.random() * Math.max(0.001, n / sr - d), d: d, p: 0.5 }); }
+    }
+    return grains;
+  }
+  function waterSampleReady() { return WATER_SAMPLE_ON && waterSampleState === 'ready' && waterSample && waterGrains.length > 0; }
+  function waterGrainPlay(ctx, dest, when, rate, maxOut, pw) {   // 粒を1つ、指定の時刻に鳴らす（rate: 再生速度=高さ）
+    const n = waterGrains.length; let gi = 0;
+    for (let tries = 0; tries < 6; tries++) { gi = Math.floor(Math.random() * n); if (n < 4 || (gi !== waterGrainLast1 && gi !== waterGrainLast2)) break; }   // 同じ粒が続けて鳴らないようにする
+    waterGrainLast2 = waterGrainLast1; waterGrainLast1 = gi;
+    const gr = waterGrains[gi];
+    const dBuf = Math.min(gr.d, maxOut * rate), dOut = dBuf / rate;
+    const gain = WATER_SAMPLE_GAIN * (0.45 + 0.55 * gr.p) * (0.2 + 0.8 * Math.pow(Math.random(), 3)) * (0.6 + 0.4 * pw);   // 多くは小さく、時々大きい
+    const src = ctx.createBufferSource(); src.buffer = waterSample; src.playbackRate.value = rate;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when); g.gain.linearRampToValueAtTime(gain, when + 0.0008);
+    g.gain.setValueAtTime(gain, when + Math.max(0.0009, dOut - 0.004)); g.gain.linearRampToValueAtTime(0.0001, when + dOut);   // 切り口の「ぷつっ」というノイズを消す
+    src.connect(g); g.connect(dest);
+    src.start(when, gr.s, dBuf); src.stop(when + dOut + 0.01);
+  }
+  function playWaterSample(ctx, dir, pw) {   // 素材の粒を、不規則な間隔で並べる。通常の層と、同じ粒を低くした層の2つを重ねる
+    const t = ctx.currentTime + 0.003;
+    const dur = (dir > 0 ? 0.36 : 0.46) * WATER_BURST_SCALE;
+    const out = ctx.createGain();
+    out.gain.value = clamp(WATER_VOL * (0.55 + 0.45 * pw) * 1.3, 0, 2.5);
+    out.connect(waterBus || ctx.destination);
+    const rr = function (r) { return r[0] + Math.random() * (r[1] - r[0]); };
+    let st = t + Math.random() * 0.012;
+    while (st < t + dur) {
+      waterGrainPlay(ctx, out, st, rr(WATER_GRAIN_PITCH), WATER_GRAIN_LEN[1] * 1.4, pw);
+      st += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / WATER_CLICK_RATE;
+    }
+    if (WATER_LOW_ON) {
+      const lowOut = ctx.createGain(); lowOut.gain.value = WATER_LOW_VOL;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = WATER_GRAIN_LOW_LP;
+      lowOut.connect(lp); lp.connect(out);
+      let lt = t + Math.random() * 0.012;
+      while (lt < t + dur) {
+        waterGrainPlay(ctx, lowOut, lt, rr(WATER_GRAIN_LOW_PITCH), WATER_GRAIN_LOW_MAXDUR, pw);
+        lt += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / (WATER_CLICK_RATE * WATER_LOW_DENSITY);
+      }
+    }
+  }
+  waterSampleFetch();
   function playWater(dir, power) {   // dir: +1=前へ（押し込み） / -1=後ろへ（引き抜き）。参考音（音.mp3）に合わせた、細かい「チッ・チチッ」という不規則なクリックの連続
     const ctx = waterEnsure();
     if (!ctx || ctx.state !== 'running' || !waterNoise) return;
     const t = ctx.currentTime;
     const pw = clamp(power, 0, 1);
+    if (waterSampleReady()) { playWaterSample(ctx, dir, pw); return; }   // 用意した音声を読み込めている時は、その素材を組み替えて鳴らす（読めていなければ、下の合成音）
     const dur = (dir > 0 ? 0.36 : 0.46) * WATER_BURST_SCALE;   // 引き抜く時は少し長く続く
     const out = ctx.createGain();
     out.gain.value = clamp(WATER_VOL * (0.55 + 0.45 * pw) * 1.3, 0, 2.5);
@@ -4033,13 +4186,16 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   }
   function updateWaterSound(a, active, vel, nowSec) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒)
     if (!WATER_ON) return;
-    if (!active) { wStroke.init = false; wStroke.dir = 0; return; }
+    if (!active) { wStroke.init = false; wStroke.dir = 0; w1aStop(); return; }
     if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; return; }
     if (a > wStroke.hi) wStroke.hi = a;
     if (a < wStroke.lo) wStroke.lo = a;
     let fire = 0;
     if (wStroke.dir !== 1 && a - wStroke.lo > WATER_HYST_DEG) { fire = 1; wStroke.dir = 1; wStroke.hi = a; wStroke.lo = a; }
     else if (wStroke.dir !== -1 && wStroke.hi - a > WATER_HYST_DEG) { fire = -1; wStroke.dir = -1; wStroke.hi = a; wStroke.lo = a; }
+    if (fire === 1 && a >= WATER_MIN_DEG) w1aStart(vel);   // 前へ動き出したら1aを鳴らし始める
+    else if (fire === -1) w1aStop();                        // 後ろへ戻る時は止める
+    else if (wStroke.dir === 1) w1aFollow(vel);             // 前へ動いている間は、速さに合わせて再生速度を変える
     if (fire && a >= WATER_MIN_DEG - 0 && nowSec - waterLastAt > WATER_MIN_GAP) {
       waterLastAt = nowSec;
       playWater(fire, Math.abs(vel) / 40);   // 速く動かすほど大きく

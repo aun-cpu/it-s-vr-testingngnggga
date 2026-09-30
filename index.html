@@ -4111,7 +4111,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         waterBus.threshold.value = -10; waterBus.ratio.value = 4; waterBus.attack.value = 0.002; waterBus.release.value = 0.08;
         waterBus.connect(waterCtx.destination);
         waterSampleDecode();
-        w1aDecode(); w1bDecode();
+        w1aDecode(); w1bDecode(); stepDecode();
         skinDecode('strong'); skinDecode('weak');
       }
       if (waterCtx.state === 'suspended') waterCtx.resume();
@@ -4238,6 +4238,40 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       st += (0.008 + Math.pow(Math.random(), 1.8) * 0.085) / WATER_CLICK_RATE;
     }
   }
+  // ---- 前へ STEP_DEG 動くたびに鳴らす短い音（_.mp3をこのファイルの中に埋め込み済み）。戻る時は鳴らさず、戻った所から数え直す ----
+  const STEP_ON = true;              // false: 鳴らさない
+  const STEP_DEG = 1;                // 度: 前へこの角度動くたびに1回鳴らす
+  const STEP_VOL = 1.0;              // 音量
+  const STEP_MAX_PER_FRAME = 3;      // 1フレームで大きく動いた時に、まとめて鳴らす最大回数（少しずつずらして鳴らす）
+  const STEP_B64 = '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';
+  let stepBuf = null, stepRaw = null, stepState = 'idle', stepRef = NaN;   // stepRef: 次の音を鳴らす基準の角度
+  function stepFetch() {
+    if (!STEP_ON || stepState !== 'idle') return;
+    try {
+      const bin = atob(STEP_B64), u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      stepRaw = u8.buffer; stepState = 'fetched'; stepDecode();
+    } catch (e) { stepState = 'failed'; console.info('[step] 埋め込み音声を取り出せませんでした:', e && e.message); }
+  }
+  function stepDecode() {
+    if (!waterCtx || stepState !== 'fetched' || !stepRaw) return;
+    const raw = stepRaw; stepRaw = null; stepState = 'decoding';
+    new Promise(function (res, rej) { waterCtx.decodeAudioData(raw, res, rej); }).then(function (buf) {
+      stepBuf = buf; stepState = 'ready';
+    }).catch(function (e) { stepState = 'failed'; console.info('[step] 解凍できませんでした:', e && e.message); });
+  }
+  function stepPlay(n) {
+    if (!STEP_ON || stepState !== 'ready' || !stepBuf || !waterCtx) return;
+    if (waterCtx.state !== 'running') { try { waterCtx.resume(); } catch (e) {} return; }
+    const t = waterCtx.currentTime + 0.003;
+    for (let k = 0; k < n; k++) {
+      const src = waterCtx.createBufferSource(); src.buffer = stepBuf;
+      const g = waterCtx.createGain(); g.gain.value = STEP_VOL;
+      src.connect(g); g.connect(waterBus || waterCtx.destination);
+      src.start(t + k * 0.02);
+    }
+  }
+  stepFetch();
   let wLowArmed = true, wLowLastAt = -10;   // wLowArmed: 最大角度に達したらすぐ鳴らせる状態
   function playWaterLow(power) {   // 低い水音だけを、最大角度に達した瞬間に鳴らす（素材があれば素材の粒を低くしたもの、無ければ合成音）
     if (!WATER_LOW_ON) return;
@@ -4280,7 +4314,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   function updateWaterSound(a, active, vel, nowSec) {   // a: 棒の動きの基準になる角度 / active: 角度が有効か / vel: 角速度(度/秒)
     if (!WATER_ON) return;
     if (!active) { wStroke.init = false; wStroke.dir = 0; w1aArmed = false; return; }
-    if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; wLowArmed = a < WATER_LOW_DEG; return; }
+    if (!wStroke.init) { wStroke.init = true; wStroke.dir = 0; wStroke.lo = a; wStroke.hi = a; wLowArmed = a < WATER_LOW_DEG; stepRef = a; return; }
     if (a > wStroke.hi) wStroke.hi = a;
     if (a < wStroke.lo) wStroke.lo = a;
     let fire = 0;
@@ -4289,6 +4323,12 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (fire === -1) w1aArmed = true;                       // 戻り始めた（この動きの間に1回だけ鳴らす）
     else if (fire === 1) w1aArmed = false;                  // 前へ動き出したら、まだ鳴らしていなくてもやめる（鳴っている音は最後まで鳴らす）
     if (w1aArmed && wStroke.dir === -1 && a >= W1A_MIN_DEG && w1aStart(nowSec)) w1aArmed = false;
+    if (a < stepRef - 0.2) stepRef = a;   // 戻る時は、基準を一緒に下げる（戻った所から数え直す）
+    else if (a - stepRef >= STEP_DEG) {   // 前へ STEP_DEG 動くたびに鳴らす
+      const nStep = Math.floor((a - stepRef) / STEP_DEG);
+      stepRef += nStep * STEP_DEG;
+      stepPlay(Math.min(nStep, STEP_MAX_PER_FRAME));
+    }
     if (a < WATER_LOW_DEG - WATER_LOW_REARM) wLowArmed = true;   // 最大角度から離れたら、次に達した時にまた鳴らせる
     else if (wLowArmed && a >= WATER_LOW_DEG) { wLowArmed = false; wLowLastAt = nowSec; playWaterLow(Math.abs(vel) / 40); }   // 最大角度に達した瞬間に低い水音
     if (fire && a >= WATER_MIN_DEG - 0 && nowSec - waterLastAt > WATER_MIN_GAP) {

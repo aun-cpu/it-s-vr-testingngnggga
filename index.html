@@ -542,6 +542,10 @@ body.stereo .dispbar{opacity:.55}
       <p class="postitle" style="margin:10px 0 4px; opacity:.75">▼ 速い呼吸での切れ（すーはー → すは）</p>
       <div class="prow"><span class="pl">速い時: 立ち上がりを保つ</span><button type="button" class="bgstep" data-brk="fkeep" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-fkeep" data-brk="fkeep" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="fkeep" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-fkeep">0</span></div>
       <div class="prow"><span class="pl">速い時: 余韻を削る</span><button type="button" class="bgstep" data-brk="ftail" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-ftail" data-brk="ftail" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="ftail" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-ftail">0</span></div>
+      <p class="postitle" style="margin:10px 0 4px; opacity:.75">▼ 動き出し</p>
+      <button type="button" class="mini on" id="dBtnBrKick" style="width:100%; margin-top:2px">動き出しで吐くから始める: ON</button>
+      <div class="prow"><span class="pl">動き出しとみなす静止(秒)</span><button type="button" class="bgstep" data-brk="kickgap" data-d="-1" data-step="0.5">−</button><input type="range" id="br-rng-kickgap" data-brk="kickgap" min="1" max="15" step="0.5"><button type="button" class="bgstep" data-brk="kickgap" data-d="1" data-step="0.5">＋</button><span class="pv" id="br-val-kickgap">0</span></div>
+      <button type="button" class="mini" id="dBtnBrKickTest" style="width:100%; margin-top:6px">動き出しを試す（吐くから鳴らす）</button>
       <p class="postitle" style="margin:10px 0 4px; opacity:.75">▼ リズム</p>
       <div class="prow"><span class="pl">通常の速さ(回/秒)</span><button type="button" class="bgstep" data-brk="base" data-d="-1" data-step="0.01">−</button><input type="range" id="br-rng-base" data-brk="base" min="0.1" max="0.6" step="0.01"><button type="button" class="bgstep" data-brk="base" data-d="1" data-step="0.01">＋</button><span class="pv" id="br-val-base">0</span></div>
       <div class="prow"><span class="pl">最速(回/秒)</span><button type="button" class="bgstep" data-brk="max" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-max" data-brk="max" min="0.6" max="2.5" step="0.05"><button type="button" class="bgstep" data-brk="max" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-max">0</span></div>
@@ -4256,13 +4260,16 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     down: 1,         // 秒: 動きが止まった後、通常の速さへ戻っていく時間（大きいほどゆっくり）
     hold: 1.2,       // 秒: 往復が途絶えても、この間は直前のリズムを保つ（往復の長さの1.8倍と比べて長い方）
     fkeep: 0.6,      // 速い呼吸で「すー」「はー」の立ち上がりを通常の長さに近く保つ度合い（0=全体を均等に縮める）
-    ftail: 0.6       // 速い呼吸で余韻（減衰・息継ぎの間）を削る度合い（0=均等に縮める。大きいほど「すは」のように短く切れる）
+    ftail: 0.6,      // 速い呼吸で余韻（減衰・息継ぎの間）を削る度合い（0=均等に縮める。大きいほど「すは」のように短く切れる）
+    kick: true,      // true: 静止からの動き出しで、呼吸を強制的に「吐く」から始める
+    kickgap: 4       // 秒: この時間以上動いていなかった後の動き出しを「動き出し」とみなす
   };
   const BR = Object.assign({}, BR_DEF);
-  const breath = { out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0 };
+  const breath = { kickReq: false, cur: null, out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0 };
   function breathStroke(nowSec) {   // 前へ動き出した時に呼ぶ：往復の間隔からリズムを測る
     const p = nowSec - breath.lastAt;
     if (p < 0.25) return;   // 手ぶれの細かい向き変えは無視
+    if (BR.kick && p >= BR.kickgap) breath.kickReq = true;   // しばらく動いていなかった後の動き出し → 次のフレームで「吐く」から始める
     breath.lastAt = nowSec;
     if (p < 4) { const f = 1 / p; breath.fs = breath.fs > 0 ? breath.fs * 0.5 + f * 0.5 : f; }
     else breath.fs = 0;     // 間が空いた後の最初の1回は、まだリズムが分からない
@@ -4351,23 +4358,41 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (u >= S.tEA && u < S.tET) { const w = (u - S.tEA) / (S.tET - S.tEA); return ge * (1 - w * w); }
     return 0;
   }
-  function breathBurst(ctx, t, period, inten) {   // 1回の呼吸を鳴らす（音源は鳴らしっぱなしで、その音量だけを1回分の形で通す）
+  function breathBurst(ctx, t, period, inten, fromExh) {   // 1回の呼吸を鳴らす（音源は鳴らしっぱなしで、その音量だけを1回分の形で通す）。fromExh: 「吐く」の途中から始める。鳴らす長さ(秒)を返す
+    const S = breathSegs(period), u0 = fromExh ? S.tr : 0, span = period * (1 - u0);
     const amp = (0.6 + BR.ivol * inten) * breathRand(BR.vvol);
-    const n = clamp(Math.round(period * 200), 128, 2048), curve = new Float32Array(n);
-    const S = breathSegs(period);
-    for (let i = 0; i < n; i++) curve[i] = breathEnv(i / n, S) * amp;
+    const n = clamp(Math.round(span * 200), 128, 2048), curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) curve[i] = breathEnv(u0 + (1 - u0) * i / n, S) * amp;
     const g = ctx.createGain(); g.gain.value = 0;
-    g.gain.setValueCurveAtTime(curve, t, period);
-    breath.lp.connect(g); g.connect(breath.out);
+    g.gain.setValueCurveAtTime(curve, t, span);
+    const cut = ctx.createGain();   // 途中で止める（動き出しで吸う息を切る）ための音量
+    breath.lp.connect(g); g.connect(cut); cut.connect(breath.out);
+    breath.cur = { t: t, end: t + span, period: period, u0: u0, S: S, cut: cut };
     breath.pb = (1 + BR.ipitch * inten) * (1 + BR.vpit * (2 * Math.random() - 1));   // 速い呼吸ほど高く・軽く
     if (breath.src) breath.src.playbackRate.setTargetAtTime(breath.pb, t, 0.05);
-    setTimeout(() => { try { breath.lp.disconnect(g); g.disconnect(); } catch (e) {} }, Math.max(0, (t - ctx.currentTime + period + 0.3) * 1000));
+    setTimeout(() => { try { breath.lp.disconnect(g); g.disconnect(); cut.disconnect(); } catch (e) {} }, Math.max(0, (t - ctx.currentTime + span + 0.3) * 1000));
+    return span;
+  }
+  function breathKick(ctx) {   // 動き出し：今が「吐く」の最中でなければ、鳴っている息をすばやく止めて、「吐く」から始め直す
+    const tNow = ctx.currentTime, c = breath.cur;
+    if (c && tNow < c.end && tNow >= c.t) {
+      const u = c.u0 + (1 - c.u0) * (tNow - c.t) / (c.end - c.t);
+      if (u >= c.S.tr) return false;   // すでに吐いている最中ならそのまま
+    }
+    if (c && tNow < c.end) {
+      if (c.t > tNow) { c.cut.gain.cancelScheduledValues(tNow); c.cut.gain.setValueAtTime(0, tNow); }   // まだ始まっていない次の息は取りやめる
+      else c.cut.gain.setTargetAtTime(0, tNow, 0.012);
+    }
+    const period = (1 / breath.rate) * breathRand(BR.vper), t0 = tNow + 0.02;
+    breath.nextAt = t0 + breathBurst(ctx, t0, period, 0, true);   // 吐き終わったら、次は通常どおり吸うから
+    return true;
   }
   function updateBreath(nowSec) {   // 毎フレーム（表示側）：呼吸の速さを動きに合わせ、次の呼吸の時刻になったら鳴らす
     if (!BR.on) return;
     const ctx = waterCtx;
     if (!ctx || ctx.state !== 'running') return;
     if (!breath.out) breathInit(ctx);
+    if (breath.kickReq) { breath.kickReq = false; if (breathKick(ctx)) return; }
     let target = BR.base;
     if (breath.fs > 0 && nowSec - breath.lastAt < Math.max(BR.hold, 1.8 / breath.fs)) {
       let r = breath.fs; while (r > BR.max) r /= 2;   // 速すぎる時は2回に1回のように合わせる
@@ -4386,7 +4411,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
 
   // ---- 呼吸音の調整UI（表示側パネル） ----
   const BR_DG = { vol: 2, rev: 2, bright: 0, ivol: 2, ipitch: 2, vvol: 2, vper: 2, vpit: 2, gr: 2, tr: 2, ia: 2, ir: 2, ea: 2, er: 2,
-    density: 0, combf: 0, combs: 2, notchf: 2, notchs: 2, peakf: 0, peakg: 1, peakbw: 0, base: 2, max: 2, up: 1, down: 1, hold: 1, fkeep: 2, ftail: 2 };
+    density: 0, combf: 0, combs: 2, notchf: 2, notchs: 2, peakf: 0, peakg: 1, peakbw: 0, base: 2, max: 2, up: 1, down: 1, hold: 1, fkeep: 2, ftail: 2, kickgap: 1 };
   const BR_SRC = { density: 1, combf: 1, combs: 1, notchf: 1, notchs: 1, peakf: 1, peakg: 1, peakbw: 1 };   // 音源の波形を作り直す項目
   function breathApplyAudio() {   // 音量・響き・高音カットは今鳴っている音にも即反映
     const ctx = waterCtx;
@@ -4406,6 +4431,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       if (v) v.textContent = BR[k].toFixed(BR_DG[k]);
     }
     const b = $('#dBtnBrOn'); b.textContent = '呼吸音: ' + (BR.on ? 'ON' : 'OFF'); b.classList.toggle('on', BR.on);
+    const k = $('#dBtnBrKick'); k.textContent = '動き出しで吐くから始める: ' + (BR.kick ? 'ON' : 'OFF'); k.classList.toggle('on', BR.kick);
     const inh = BR.tr * BR.ir, exh = (1 - BR.tr) * BR.er;
     $('#br-ratio').textContent = '吸う : 吐く = 1 : ' + (exh / inh).toFixed(2) + '　（吸う ' + Math.round(inh * 100) + '% ／ 吐く ' + Math.round(exh * 100) + '% ／ 息継ぎの間 ' + Math.round((1 - inh - exh) * 100) + '%）';
   }
@@ -4422,6 +4448,13 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   }
   document.querySelectorAll('input[data-brk]').forEach((r) => r.addEventListener('input', (e) => breathSet(r.dataset.brk, parseFloat(e.target.value))));
   document.querySelectorAll('button[data-brk]').forEach((b) => b.addEventListener('click', () => breathSet(b.dataset.brk, BR[b.dataset.brk] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.1'))));
+  function breathKickTest() {   // 動き出しを試す：吸う途中でも切って「吐く」から鳴らす
+    waterEnsure();
+    const ctx = waterCtx;
+    if (!ctx) return;
+    const go = () => { if (!breath.out) breathInit(ctx); breathKick(ctx); };
+    if (ctx.state === 'running') go(); else ctx.resume().then(go).catch(() => {});
+  }
   function breathTest(inten) {   // 押した時に1回だけ鳴らして聞き比べる
     waterEnsure();
     const ctx = waterCtx;
@@ -4435,6 +4468,8 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   $('#dBtnBrOn').addEventListener('click', () => { BR.on = !BR.on; breathSyncUi(); });
   $('#dBtnBrTest0').addEventListener('click', () => breathTest(0));
   $('#dBtnBrTest1').addEventListener('click', () => breathTest(1));
+  $('#dBtnBrKick').addEventListener('click', () => { BR.kick = !BR.kick; breathSyncUi(); });
+  $('#dBtnBrKickTest').addEventListener('click', breathKickTest);
   $('#dBtnBrReset').addEventListener('click', () => {
     Object.assign(BR, BR_DEF);
     breathApplyAudio(); if (waterCtx && breath.lp) breathMakeSource(waterCtx);

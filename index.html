@@ -4116,6 +4116,68 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     src.start();
   }
   skinFetch('strong'); skinFetch('weak');
+  // ---- 空間の音：液体の筒から音が聞こえる＋わずかな環境ノイズを響かせる ----
+  // 水音・低い水音・戻る音(1a/1b)・進む音(^)・肌の音など、Web Audioで鳴らす音は全部いったんwaterBusに集まるので、そこから筒の位置の音源として鳴らす。
+  // 耳の位置と向きは表示側のカメラ（=見回している向き）に合わせるので、見回すと筒の音が聞こえる向きが変わる。
+  const SPACE_ON = true;               // false: これまでどおり（筒の位置と関係なく、頭の中で鳴る）
+  const TUBE_SND_REF = 1.0;            // m: 筒までの距離がこれ以下なら、距離で音量を下げない
+  const TUBE_SND_ROLL = 0.6;           // 距離で音が小さくなる強さ（0=変わらない / 大きいほど遠くで小さい）
+  const REVERB_SEC = 1.8;              // 響き（残響）の長さ（秒）
+  const REVERB_SND = 0.22;             // 筒の音に足す響きの量（0で響き無し）
+  const AMB_ON = true;                 // わずかな環境ノイズ（空気のざわつき）を鳴らす
+  const AMB_VOL = 0.012;               // 環境ノイズの音量（とても小さい）
+  const AMB_LP = 1400;                 // Hz: 環境ノイズの高音のカット（小さいほどこもる）
+  const AMB_REVERB = 0.6;              // 環境ノイズをどれだけ響かせるか
+  let waterPan = null, spaceConv = null, ambStarted = false, spaceVec = null;
+  function spaceBuild(ctx, bus) {   // bus(圧縮) → 筒の位置の音源(panner) → 出力。響き(残響)にも少し送る
+    const sr = ctx.sampleRate, len = Math.max(1, Math.floor(sr * REVERB_SEC));
+    const ir = ctx.createBuffer(2, len, sr);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }   // 減衰するノイズ＝簡易な残響
+    const conv = ctx.createConvolver(); conv.buffer = ir; conv.connect(ctx.destination); spaceConv = conv;
+    let src = bus;
+    if (SPACE_ON) {
+      const pan = ctx.createPanner();
+      pan.panningModel = 'HRTF'; pan.distanceModel = 'inverse'; pan.refDistance = TUBE_SND_REF; pan.rolloffFactor = TUBE_SND_ROLL;
+      bus.connect(pan); pan.connect(ctx.destination); waterPan = pan; src = pan;
+    } else bus.connect(ctx.destination);
+    if (REVERB_SND > 0) { const send = ctx.createGain(); send.gain.value = REVERB_SND; src.connect(send); send.connect(conv); }
+  }
+  function ambientStart(ctx) {   // 表示側で最初に鳴らせる状態になった時に1回だけ。ゆっくり音量を上げる
+    if (!AMB_ON || ambStarted || !spaceConv) return;
+    ambStarted = true;
+    const sr = ctx.sampleRate, len = sr * 4, buf = ctx.createBuffer(2, len, sr), ramp = 4096;
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c); let last = 0;
+      for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; }   // 低めに偏った、やわらかいノイズ
+      for (let i = 0; i < ramp; i++) { const k = i / ramp; d[i] *= k; d[len - 1 - i] *= k; }   // つなぎ目のプツッを防ぐ
+    }
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 80;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = AMB_LP;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(ctx.destination);
+    const send = ctx.createGain(); send.gain.value = AMB_REVERB; g.connect(send); send.connect(spaceConv);
+    const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.08; lg.gain.value = AMB_VOL * 0.35;   // ごくゆっくり強弱をつける
+    lfo.connect(lg); lg.connect(g.gain);
+    src.start(); lfo.start();
+    g.gain.setTargetAtTime(AMB_VOL, ctx.currentTime, 1.2);
+  }
+  function updateAudioSpace(ex, ey, ez, camQ, tx, ty, tz) {   // 毎フレーム：耳（カメラ）の位置と向き、筒の位置を音の世界へ反映
+    const ctx = waterCtx;
+    if (!ctx || ctx.state !== 'running') return;
+    ambientStart(ctx);
+    if (!waterPan) return;
+    if (!spaceVec) spaceVec = { f: new THREE.Vector3(), u: new THREE.Vector3() };
+    spaceVec.f.set(0, 0, -1).applyQuaternion(camQ); spaceVec.u.set(0, 1, 0).applyQuaternion(camQ);
+    const L = ctx.listener, f = spaceVec.f, u = spaceVec.u;
+    if (L.positionX) {
+      L.positionX.value = ex; L.positionY.value = ey; L.positionZ.value = ez;
+      L.forwardX.value = f.x; L.forwardY.value = f.y; L.forwardZ.value = f.z;
+      L.upX.value = u.x; L.upY.value = u.y; L.upZ.value = u.z;
+    } else { L.setPosition(ex, ey, ez); L.setOrientation(f.x, f.y, f.z, u.x, u.y, u.z); }
+    if (waterPan.positionX) { waterPan.positionX.value = tx; waterPan.positionY.value = ty; waterPan.positionZ.value = tz; }
+    else waterPan.setPosition(tx, ty, tz);
+  }
   function waterEnsure() {
     try {
       if (!waterCtx) {
@@ -4128,7 +4190,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
         waterBus = waterCtx.createDynamicsCompressor();   // 素材の粒が重なって大きくなりすぎても音割れしないように
         waterBus.threshold.value = -10; waterBus.ratio.value = 4; waterBus.attack.value = 0.002; waterBus.release.value = 0.08;
-        waterBus.connect(waterCtx.destination);
+        try { spaceBuild(waterCtx, waterBus); } catch (e) { waterBus.connect(waterCtx.destination); }   // 筒の位置から鳴らす（失敗したら従来どおり）
         waterSampleDecode();
         w1aDecode(); w1bDecode(); stepDecode();
         skinDecode('strong'); skinDecode('weak');
@@ -4226,7 +4288,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     const dur = (dir > 0 ? 0.36 : 0.46) * WATER_BURST_SCALE;   // 引き抜く時は少し長く続く
     const out = ctx.createGain();
     out.gain.value = clamp(WATER_VOL * waterWetGain() * (0.55 + 0.45 * pw) * 1.3, 0, 4);
-    out.connect(ctx.destination);
+    out.connect(waterBus || ctx.destination);
     // (1) 背景のかすかな高音のざわつき（6〜9kHz付近）。WATER_HISSが0なら鳴らさない
     if (WATER_HISS > 0) {
       const src = ctx.createBufferSource(); src.buffer = waterNoise; src.loop = true;
@@ -4658,6 +4720,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     const cam = R.camera;
     cam.quaternion.copy(T.camQ);
     const ex = P.x + CAM_OFFSET.x, ey = P.y + 1.6 + CAM_OFFSET.y, ez = P.z + CAM_OFFSET.z;
+    if (R.h) { try { updateAudioSpace(ex, ey, ez, T.camQ, R.h.position.x + inp.lqx, R.h.position.y + inp.lqy, R.h.position.z + inp.lqz); } catch (err) {} }   // 音の耳(カメラ)と、液体の筒（音源）の位置
     if (R.sun) R.sun.intensity = sunP.i;   // 太陽光の強さ
     if (R.light) {   // 動かせる光源
       if (lightP.follow) {   // 視線の先に常に置く（VR分割中でも視線で動かせる）

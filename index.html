@@ -4269,7 +4269,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     const ctx = waterCtx;
     if (!ctx || ctx.state !== 'running') return;
     ambientStart(ctx);
-    if (!waterPan) return;
+    if (!waterPan && !breath.pan) return;
     if (!spaceVec) spaceVec = { f: new THREE.Vector3(), u: new THREE.Vector3() };
     spaceVec.f.set(0, 0, -1).applyQuaternion(camQ); spaceVec.u.set(0, 1, 0).applyQuaternion(camQ);
     const L = ctx.listener, f = spaceVec.f, u = spaceVec.u;
@@ -4278,6 +4278,13 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
       L.forwardX.value = f.x; L.forwardY.value = f.y; L.forwardZ.value = f.z;
       L.upX.value = u.x; L.upY.value = u.y; L.upZ.value = u.z;
     } else { L.setPosition(ex, ey, ez); L.setOrientation(f.x, f.y, f.z, u.x, u.y, u.z); }
+    if (breath.pan) {   // 呼吸音の音源：最初の耳（カメラ）の位置から、初期の正面（-Z）へ BR_SRC_DIST m 先にワールド固定（見回しても動かない）
+      if (!breath.srcPos) breath.srcPos = { x: ex, y: ey, z: ez - BR_SRC_DIST };
+      const bp = breath.srcPos;
+      if (breath.pan.positionX) { breath.pan.positionX.value = bp.x; breath.pan.positionY.value = bp.y; breath.pan.positionZ.value = bp.z; }
+      else breath.pan.setPosition(bp.x, bp.y, bp.z);
+    }
+    if (!waterPan) return;
     if (waterPan.positionX) { waterPan.positionX.value = tx; waterPan.positionY.value = ty; waterPan.positionZ.value = tz; }
     else waterPan.setPosition(tx, ty, tz);
   }
@@ -4287,6 +4294,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   // 呼吸の速さ: 動きが遅い・止まっている時は通常の速さ。速く往復するとそのリズムに合わせて速くなり、止まると時間をかけて通常へ戻る。
   //   速さは「前へ動き出す」回数の間隔（1往復の長さ）から測る。速すぎる時は2回に1回のように間引いて合わせる。
   // 設定値はすべて BR に入っていて、表示側の「位置調整」パネル最下部の「呼吸音の調整」からその場で変えられる。
+  const BR_SRC_DIST = 2;   // m: 呼吸音の発生源を、初期位置の正面（-Z）のこの距離に固定する
   const BR_DEF = {
     on: true,        // false: 呼吸音を鳴らさない
     vol: 0.1,       // 呼吸の音量
@@ -4384,7 +4392,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   ];
   const BR_NASAL = { f: [250, 1100, 2200, 3200], b: [60, 140, 180, 220], a: [1, 0.12, 0.08, 0.04] };   // 「ん」（鼻にこもった低い響き）
   const BR = Object.assign({}, BR_VOICE_DEF, BR_DEF);
-  const breath = { trigReq: false, armed: false, seqEnd: 0, cur: null, out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0, vRef: BR.base, vLast: 0, vNext: 0, voices: [], deco: null, lastVow: -1, forceVow: -1, bus: null, dry: null, wet: null, cq: [], cg: [], fout: null, fbp: [], fg: [], lastPh: { a: '', n: '' }, vRun: { n: 0, last: -99, p: 0 }, cnt: 0 };
+  const breath = { pan: null, srcPos: null, trigReq: false, armed: false, seqEnd: 0, cur: null, out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0, vRef: BR.base, vLast: 0, vNext: 0, voices: [], deco: null, lastVow: -1, forceVow: -1, bus: null, dry: null, wet: null, cq: [], cg: [], fout: null, fbp: [], fg: [], lastPh: { a: '', n: '' }, vRun: { n: 0, last: -99, p: 0 }, cnt: 0 };
   function breathStroke(nowSec) {   // 前へ動き出した時に呼ぶ：往復の間隔からリズムを測る
     const p = nowSec - breath.lastAt;
     if (p < 0.25) return;   // 手ぶれの細かい向き変えは無視
@@ -4453,7 +4461,12 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (old) { oldG.gain.setValueAtTime(1, t); oldG.gain.linearRampToValueAtTime(0, t + 0.04); old.stop(t + 0.08); }
   }
   function breathInit(ctx) {
-    const out = ctx.createGain(); out.gain.value = BR.vol; out.connect(ctx.destination);
+    const out = ctx.createGain(); out.gain.value = BR.vol;
+    if (SPACE_ON) {   // 呼吸音の音源は、初期位置の BR_SRC_DIST m 前にワールド固定で置く（位置は updateAudioSpace が設定）
+      const bp = ctx.createPanner();
+      bp.panningModel = 'HRTF'; bp.distanceModel = 'inverse'; bp.refDistance = BR_SRC_DIST; bp.rolloffFactor = 0;   // 距離で音量は変えない（今までと同じ音量）
+      out.connect(bp); bp.connect(ctx.destination); breath.pan = bp;
+    } else out.connect(ctx.destination);
     if (spaceConv) { const send = ctx.createGain(); send.gain.value = BR.rev; out.connect(send); send.connect(spaceConv); breath.send = send; }
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = BR.bright; lp.Q.value = 0.707;
     breath.out = out; breath.lp = lp;

@@ -506,7 +506,7 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="bgstep" data-bk="z" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-z" data-bk="z" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="z" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-z">0.00</span></div>
       <button type="button" class="mini" id="dBtnBgReset" style="width:100%; margin-top:4px">bg.glbをリセット</button>
       <p class="postitle" style="margin:10px 0 6px">part.glbの光沢（0=マット 〜 1=つるつる）</p>
-      <div class="prow"><span class="pl">光沢</span><button type="button" class="bgstep" data-gk="v" data-d="-1" data-step="0.05">−</button><input type="range" id="gl-rng-v" data-gk="v" min="0" max="1" step="0.01"><button type="button" class="bgstep" data-gk="v" data-d="1" data-step="0.05">＋</button><span class="pv" id="gl-val-v">0.45</span></div>
+      <div class="prow"><span class="pl">光沢</span><button type="button" class="bgstep" data-gk="v" data-d="-1" data-step="0.05">−</button><input type="range" id="gl-rng-v" data-gk="v" min="0" max="1" step="0.01"><button type="button" class="bgstep" data-gk="v" data-d="1" data-step="0.05">＋</button><span class="pv" id="gl-val-v">0.70</span></div>
       <button type="button" class="mini" id="dBtnGlReset" style="width:100%; margin-top:4px">光沢をリセット</button>
       <p class="postitle" style="margin:10px 0 6px">揺れの球の位置・大きさ（変更中は球を表示）</p>
       <div class="prow"><span class="pl">間隔</span><button type="button" class="dpstep" data-sk="sep" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-sep" data-sk="sep" min="0" max="1.5" step="0.01" value="0.57"><button type="button" class="dpstep" data-sk="sep" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-sep">0.57</span></div>
@@ -645,10 +645,10 @@ body.stereo .dispbar{opacity:.55}
   // bg.glbの位置（表示側パネル専用。操作側とは同期しない）
   const BG_DEFAULT = { x: -2.9, y: -0.2, z: 2.45 };
   const bgP = Object.assign({}, BG_DEFAULT);
-  const GLOSS_DEFAULT = 0.45;          // partの光沢の初期値（= 1 − 従来の粗さ0.55。表示側パネル専用で、操作側とは同期しない）
+  const GLOSS_DEFAULT = 0.7;           // partの光沢の初期値（光沢＝1−粗さ。従来の見た目は0.45。表示側パネル専用で、操作側とは同期しない）
   const partGloss = { v: GLOSS_DEFAULT };
   // 動かせる光源（表示側パネル専用。操作側とは同期しない）
-  const LIGHT_DEFAULT = { x: 0.5, y: 1.8, z: 0.45, i: 0.5, d: 6, fd: 0.6 };   // 位置(m)・強さ・届く距離(m)・視線追従の距離(m)
+  const LIGHT_DEFAULT = { x: -1.0, y: 1.8, z: 0.45, i: 0.5, d: 6, fd: 0.6 };   // 位置(m)・強さ・届く距離(m)・視線追従の距離(m)
   const SUN_DEFAULT = 0;   // 太陽光の強さの初期値
   const sunP = { i: SUN_DEFAULT };
   const lightP = Object.assign({ color: '#6f7276', follow: false, marker: true, shadow: true }, LIGHT_DEFAULT);

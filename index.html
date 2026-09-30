@@ -4178,6 +4178,70 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (waterPan.positionX) { waterPan.positionX.value = tx; waterPan.positionY.value = ty; waterPan.positionZ.value = tz; }
     else waterPan.setPosition(tx, ty, tz);
   }
+  // ---- 呼吸音（合成音）：動きの往復のリズムに合わせて速さが変わる ----
+  // 動きが遅い・止まっている時は通常の速さ。速く往復するとそのリズムに合わせて速くなり、止まると時間をかけて通常の速さへ戻る。
+  // 速さは「前へ動き出す」回数の間隔（1往復の長さ）から測る。速すぎる時は2回に1回のように間引いて合わせる。
+  const BREATH_ON = true;              // false: 呼吸音を鳴らさない
+  const BREATH_BASE_RATE = 0.27;       // 回/秒: 通常の呼吸の速さ（約16回/分）
+  const BREATH_MAX_RATE = 1.3;         // 回/秒: いちばん速い呼吸（約78回/分）
+  const BREATH_UP_SEC = 0.6;           // 秒: 動きが速くなった時、呼吸がその速さに追いつくまでの時間
+  const BREATH_DOWN_SEC = 7;           // 秒: 動きが止まった後、通常の速さへ戻っていく時間（大きいほどゆっくり）
+  const BREATH_HOLD_MIN = 1.2;         // 秒: 往復が途絶えても、この間は直前のリズムを保つ（往復の長さの1.8倍と比べて長い方）
+  const BREATH_VOL = 0.45;             // 呼吸の音量
+  const BREATH_REVERB = 0.35;          // 呼吸に足す響きの量
+  const breath = { out: null, noise: null, rate: BREATH_BASE_RATE, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0 };
+  function breathStroke(nowSec) {   // 前へ動き出した時に呼ぶ：往復の間隔からリズムを測る
+    const p = nowSec - breath.lastAt;
+    if (p < 0.25) return;   // 手ぶれの細かい向き変えは無視
+    breath.lastAt = nowSec;
+    if (p < 4) { const f = 1 / p; breath.fs = breath.fs > 0 ? breath.fs * 0.5 + f * 0.5 : f; }
+    else breath.fs = 0;     // 間が空いた後の最初の1回は、まだリズムが分からない
+  }
+  function breathInit(ctx) {
+    const sr = ctx.sampleRate, len = sr * 3, buf = ctx.createBuffer(1, len, sr), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    breath.noise = buf;
+    const out = ctx.createGain(); out.gain.value = 1; out.connect(ctx.destination);
+    if (spaceConv && BREATH_REVERB > 0) { const send = ctx.createGain(); send.gain.value = BREATH_REVERB; out.connect(send); send.connect(spaceConv); }
+    breath.out = out;
+  }
+  function breathBurst(ctx, t, period, inten) {   // 1回の呼吸：吸う（ゆっくり立ち上がる）→ 吐く（すぐ立ち上がりゆっくり消える）
+    const inh = period * 0.38, exh = period * 0.5;
+    const v = BREATH_VOL * (0.6 + 0.7 * inten) * (0.9 + 0.2 * Math.random());
+    const src = ctx.createBufferSource(); src.buffer = breath.noise; src.loop = true;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.8;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
+    const g = ctx.createGain();
+    const f0 = 800 + 500 * inten;   // 速い呼吸ほど、息の音が高く・軽くなる
+    bp.frequency.setValueAtTime(f0, t); bp.frequency.linearRampToValueAtTime(f0 * 1.6, t + inh); bp.frequency.linearRampToValueAtTime(f0 * 0.75, t + inh + exh);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v * 0.75, t + inh * 0.6);
+    g.gain.linearRampToValueAtTime(v * 0.6, t + inh);
+    g.gain.linearRampToValueAtTime(v, t + inh + exh * 0.18);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + inh + exh);
+    src.connect(bp); bp.connect(lp); lp.connect(g); g.connect(breath.out);
+    src.start(t, Math.random() * 1.5); src.stop(t + inh + exh + 0.05);
+  }
+  function updateBreath(nowSec) {   // 毎フレーム（表示側）：呼吸の速さを動きに合わせ、次の呼吸の時刻になったら鳴らす
+    if (!BREATH_ON) return;
+    const ctx = waterCtx;
+    if (!ctx || ctx.state !== 'running') return;
+    if (!breath.out) breathInit(ctx);
+    let target = BREATH_BASE_RATE;
+    if (breath.fs > 0 && nowSec - breath.lastAt < Math.max(BREATH_HOLD_MIN, 1.8 / breath.fs)) {
+      let r = breath.fs; while (r > BREATH_MAX_RATE) r /= 2;   // 速すぎる時は2回に1回のように合わせる
+      target = clamp(r, BREATH_BASE_RATE, BREATH_MAX_RATE);
+    }
+    const dt = clamp(nowSec - breath.lastUpd, 0, 0.1); breath.lastUpd = nowSec;
+    breath.rate += (target - breath.rate) * (1 - Math.exp(-dt / (target > breath.rate ? BREATH_UP_SEC : BREATH_DOWN_SEC)));
+    const tNow = ctx.currentTime;
+    if (tNow >= breath.nextAt - 0.03) {
+      const t0 = Math.max(tNow, breath.nextAt), period = (1 / breath.rate) * (0.95 + 0.1 * Math.random());
+      const inten = clamp((breath.rate - BREATH_BASE_RATE) / (BREATH_MAX_RATE - BREATH_BASE_RATE), 0, 1);
+      breathBurst(ctx, t0, period, inten);
+      breath.nextAt = t0 + period;
+    }
+  }
   function waterEnsure() {
     try {
       if (!waterCtx) {
@@ -4403,6 +4467,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     let fire = 0;
     if (wStroke.dir !== 1 && a - wStroke.lo > WATER_HYST_DEG) { fire = 1; wStroke.dir = 1; wStroke.hi = a; wStroke.lo = a; }
     else if (wStroke.dir !== -1 && wStroke.hi - a > WATER_HYST_DEG) { fire = -1; wStroke.dir = -1; wStroke.hi = a; wStroke.lo = a; }
+    if (fire === 1) breathStroke(nowSec);   // 往復のリズムを呼吸音へ伝える
     if (fire === -1) w1aArmed = !intro;                     // 戻り始めた（この動きの間に1回だけ鳴らす。導入中は鳴らさない）
     else if (fire === 1) w1aArmed = false;                  // 前へ動き出したら、まだ鳴らしていなくてもやめる（鳴っている音は最後まで鳴らす）
     if (w1aArmed && !intro && wStroke.dir === -1 && a >= W1A_MIN_DEG && w1aStart(nowSec)) w1aArmed = false;
@@ -4720,6 +4785,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     const cam = R.camera;
     cam.quaternion.copy(T.camQ);
     const ex = P.x + CAM_OFFSET.x, ey = P.y + 1.6 + CAM_OFFSET.y, ez = P.z + CAM_OFFSET.z;
+    try { updateBreath(now / 1000); } catch (err) {}   // 呼吸音（動きのリズムに合わせて速さが変わる）
     if (R.h) { try { updateAudioSpace(ex, ey, ez, T.camQ, R.h.position.x + inp.lqx, R.h.position.y + inp.lqy, R.h.position.z + inp.lqz); } catch (err) {} }   // 音の耳(カメラ)と、液体の筒（音源）の位置
     if (R.sun) R.sun.intensity = sunP.i;   // 太陽光の強さ
     if (R.light) {   // 動かせる光源

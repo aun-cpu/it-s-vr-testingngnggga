@@ -4424,8 +4424,11 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     { // 呼吸が速くなった時は、今鳴っている息をすばやく止めて、その場で新しい速さの息に切り替える
       const c = breath.cur;
       if (c && tNow >= breath.seqEnd && tNow < c.end && tNow - c.t > 0.15 && breath.rate > c.rate * 1.1 + 0.05) {
-        c.cut.gain.setTargetAtTime(0, tNow, 0.012);
-        breath.nextAt = tNow;
+        c.cut.gain.cancelScheduledValues(tNow);   // 急に切らず、今の大きさから約0.07秒かけて下げる（新しい息の立ち上がりと重ねてつなぐ）
+        c.cut.gain.setValueAtTime(c.cut.gain.value, tNow);
+        c.cut.gain.linearRampToValueAtTime(0, tNow + 0.07);
+        c.end = tNow + 0.07;
+        breath.nextAt = tNow + 0.02;
       }
     }
     if (tNow >= breath.nextAt - 0.03) {

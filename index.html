@@ -505,6 +505,9 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="bgstep" data-bk="y" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-y" data-bk="y" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="y" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-y">0.00</span></div>
       <div class="prow"><span class="pl">Z 前後</span><button type="button" class="bgstep" data-bk="z" data-d="-1" data-step="0.05">−</button><input type="range" id="bg-rng-z" data-bk="z" min="-50" max="50" step="0.01"><button type="button" class="bgstep" data-bk="z" data-d="1" data-step="0.05">＋</button><span class="pv" id="bg-val-z">0.00</span></div>
       <button type="button" class="mini" id="dBtnBgReset" style="width:100%; margin-top:4px">bg.glbをリセット</button>
+      <p class="postitle" style="margin:10px 0 6px">part.glbの光沢（0=マット 〜 1=つるつる）</p>
+      <div class="prow"><span class="pl">光沢</span><button type="button" class="bgstep" data-gk="v" data-d="-1" data-step="0.05">−</button><input type="range" id="gl-rng-v" data-gk="v" min="0" max="1" step="0.01"><button type="button" class="bgstep" data-gk="v" data-d="1" data-step="0.05">＋</button><span class="pv" id="gl-val-v">0.45</span></div>
+      <button type="button" class="mini" id="dBtnGlReset" style="width:100%; margin-top:4px">光沢をリセット</button>
       <p class="postitle" style="margin:10px 0 6px">揺れの球の位置・大きさ（変更中は球を表示）</p>
       <div class="prow"><span class="pl">間隔</span><button type="button" class="dpstep" data-sk="sep" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-sep" data-sk="sep" min="0" max="1.5" step="0.01" value="0.57"><button type="button" class="dpstep" data-sk="sep" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-sep">0.57</span></div>
       <div class="prow"><span class="pl">Y 上下</span><button type="button" class="dpstep" data-sk="oy" data-d="-1" data-step="0.01">−</button><input type="range" id="sph-rng-oy" data-sk="oy" min="-1" max="1" step="0.01" value="0"><button type="button" class="dpstep" data-sk="oy" data-d="1" data-step="0.01">＋</button><span class="pv" id="sph-val-oy">0.00</span></div>
@@ -640,8 +643,10 @@ body.stereo .dispbar{opacity:.55}
   };
   const POS_KEYS = Object.keys(POS_DEFAULT);
   // bg.glbの位置（表示側パネル専用。操作側とは同期しない）
-  const BG_DEFAULT = { x: -2.9, y: 0, z: 2.45 };
+  const BG_DEFAULT = { x: -2.9, y: -0.2, z: 2.45 };
   const bgP = Object.assign({}, BG_DEFAULT);
+  const GLOSS_DEFAULT = 0.45;          // partの光沢の初期値（= 1 − 従来の粗さ0.55。表示側パネル専用で、操作側とは同期しない）
+  const partGloss = { v: GLOSS_DEFAULT };
   // 動かせる光源（表示側パネル専用。操作側とは同期しない）
   const LIGHT_DEFAULT = { x: 0.5, y: 1.8, z: 0.45, i: 0.5, d: 6, fd: 0.6 };   // 位置(m)・強さ・届く距離(m)・視線追従の距離(m)
   const SUN_DEFAULT = 0;   // 太陽光の強さの初期値
@@ -1007,6 +1012,13 @@ body.stereo .dispbar{opacity:.55}
   document.querySelectorAll('button[data-bk]').forEach((b) => b.addEventListener('click', () => setBgPos(b.dataset.bk, bgP[b.dataset.bk] + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.05'))));
   $('#dBtnBgReset').addEventListener('click', () => { Object.assign(bgP, BG_DEFAULT); syncBgUi(); buzz(15); });
   syncBgUi();
+  // part.glbの光沢（表示側専用）
+  function syncGlUi() { $('#gl-rng-v').value = partGloss.v; $('#gl-val-v').textContent = partGloss.v.toFixed(2); }
+  function setGloss(v) { partGloss.v = clamp(Math.round(v * 100) / 100, 0, 1); syncGlUi(); }
+  $('#gl-rng-v').addEventListener('input', (e) => setGloss(parseFloat(e.target.value)));
+  document.querySelectorAll('button[data-gk]').forEach((b) => b.addEventListener('click', () => setGloss(partGloss.v + parseFloat(b.dataset.d) * parseFloat(b.dataset.step || '0.05'))));
+  $('#dBtnGlReset').addEventListener('click', () => { setGloss(GLOSS_DEFAULT); buzz(15); });
+  syncGlUi();
 
   // ---- 動かせる光源（表示側専用） ----
   const LK_FIXED = { x: 2, y: 2, z: 2, i: 2, d: 1, fd: 2 };
@@ -3375,6 +3387,13 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     });
   }
   const hToonMats = [];   // {mat, origColor, litColor, origTransparent, origOpacity}: 各材質の元の状態とオン/オフを切り替えるための情報
+  let glossApplied = -1, glossCount = -1;
+  function applyPartGloss() {   // 光沢＝1−粗さ。濡れの表現（粗さを下げる処理）はこの上に重なる
+    if (partGloss.v === glossApplied && hToonMats.length === glossCount) return;
+    glossApplied = partGloss.v; glossCount = hToonMats.length;
+    const r = Math.max(0.04, 1 - partGloss.v);
+    for (let i = 0; i < hToonMats.length; i++) { const m = hToonMats[i].mat; if (m && m.isMeshStandardMaterial) m.roughness = r; }
+  }
   function applyToon(o) {
     if (!o.isMesh || !o.material) return;
     o.castShadow = true;
@@ -4495,6 +4514,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     if (hMixer) hMixer.update(dt);                           // idleは時間経過でループ再生
     if (hgMixer) hgMixer.update(dt);                         // h.glbのidleもループ再生
     try { applyPartThin(inp.pth); } catch (err) {}   // partの材質2/3の細さ（スライダーの値。変わった時だけ頂点を更新）
+    try { applyPartGloss(); } catch (err) {}   // partの光沢（表示側パネルのスライダーの値。変わった時だけ更新）
     updateSoftEdgeUniforms();   // pubic系メッシュの位置・ぼかし（スライダーの値）
     if (R && R.bg) R.bg.position.set(bgP.x, bgP.y, bgP.z);   // bg.glbの位置（表示側パネルの値）
     if (R && R.hg) {   // h.glbの位置・サイズ・傾き（パネルの値）＋ partの揺れ・押し出しを HG_FOLLOW の割合だけ反映（partはhの部位のため）

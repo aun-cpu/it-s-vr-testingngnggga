@@ -539,6 +539,9 @@ body.stereo .dispbar{opacity:.55}
       <div class="prow"><span class="pl">音量のばらつき</span><button type="button" class="bgstep" data-brk="vvol" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-vvol" data-brk="vvol" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="vvol" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-vvol">0</span></div>
       <div class="prow"><span class="pl">間隔のばらつき</span><button type="button" class="bgstep" data-brk="vper" data-d="-1" data-step="0.01">−</button><input type="range" id="br-rng-vper" data-brk="vper" min="0" max="0.5" step="0.01"><button type="button" class="bgstep" data-brk="vper" data-d="1" data-step="0.01">＋</button><span class="pv" id="br-val-vper">0</span></div>
       <div class="prow"><span class="pl">高さのばらつき</span><button type="button" class="bgstep" data-brk="vpit" data-d="-1" data-step="0.01">−</button><input type="range" id="br-rng-vpit" data-brk="vpit" min="0" max="0.3" step="0.01"><button type="button" class="bgstep" data-brk="vpit" data-d="1" data-step="0.01">＋</button><span class="pv" id="br-val-vpit">0</span></div>
+      <p class="postitle" style="margin:10px 0 4px; opacity:.75">▼ 速い呼吸での切れ（すーはー → すは）</p>
+      <div class="prow"><span class="pl">速い時: 立ち上がりを保つ</span><button type="button" class="bgstep" data-brk="fkeep" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-fkeep" data-brk="fkeep" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="fkeep" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-fkeep">0</span></div>
+      <div class="prow"><span class="pl">速い時: 余韻を削る</span><button type="button" class="bgstep" data-brk="ftail" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-ftail" data-brk="ftail" min="0" max="1" step="0.05"><button type="button" class="bgstep" data-brk="ftail" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-ftail">0</span></div>
       <p class="postitle" style="margin:10px 0 4px; opacity:.75">▼ リズム</p>
       <div class="prow"><span class="pl">通常の速さ(回/秒)</span><button type="button" class="bgstep" data-brk="base" data-d="-1" data-step="0.01">−</button><input type="range" id="br-rng-base" data-brk="base" min="0.1" max="0.6" step="0.01"><button type="button" class="bgstep" data-brk="base" data-d="1" data-step="0.01">＋</button><span class="pv" id="br-val-base">0</span></div>
       <div class="prow"><span class="pl">最速(回/秒)</span><button type="button" class="bgstep" data-brk="max" data-d="-1" data-step="0.05">−</button><input type="range" id="br-rng-max" data-brk="max" min="0.6" max="2.5" step="0.05"><button type="button" class="bgstep" data-brk="max" data-d="1" data-step="0.05">＋</button><span class="pv" id="br-val-max">0</span></div>
@@ -4225,33 +4228,35 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
   // 設定値はすべて BR に入っていて、表示側の「位置調整」パネル最下部の「呼吸音の調整」からその場で変えられる。
   const BR_DEF = {
     on: true,        // false: 呼吸音を鳴らさない
-    vol: 0.45,       // 呼吸の音量
-    rev: 0.35,       // 呼吸に足す響きの量
-    bright: 16000,   // Hz: 高音のカット（小さいほどこもって柔らかい。大きいと実質なし）
-    ivol: 0.7,       // 速い呼吸ほど大きくなる量
+    vol: 0.1,       // 呼吸の音量
+    rev: 0,       // 呼吸に足す響きの量
+    bright: 5000,   // Hz: 高音のカット（小さいほどこもって柔らかい。大きいと実質なし）
+    ivol: 0.5,       // 速い呼吸ほど大きくなる量
     ipitch: 0.15,    // 速い呼吸ほど音が高く・軽くなる量（0.15＝15%高く）
     vvol: 0.2,       // 1回ごとの音量のばらつき
-    vper: 0.1,       // 1回ごとの間隔のばらつき
+    vper: 0.19,       // 1回ごとの間隔のばらつき
     vpit: 0,         // 1回ごとの高さのばらつき
-    gr: 0.7,         // 吸う⇔吐くの音量差（＋で吸う方が大きく、−で吐く方が大きい）
-    tr: 0.32,        // 1回の呼吸のうち、吸う側に使う区間の割合（timeRatio）
+    gr: -0.2,         // 吸う⇔吐くの音量差（＋で吸う方が大きく、−で吐く方が大きい）
+    tr: 0.29,        // 1回の呼吸のうち、吸う側に使う区間の割合（timeRatio）
     ia: 0.7,         // 吸う: 立ち上がり（直線）に使う割合（inhaleAttack）
     ir: 0.94,        // 吸う: 区間のうち音が鳴っている割合（inhaleRatio）
-    ea: 0.3,         // 吐く: 立ち上がりに使う割合（exhaleAttack）
-    er: 0.7,         // 吐く: 区間のうち音が鳴っている割合（exhaleRatio）
-    density: 8000,   // 個/秒: ベルベットノイズの粒の密度（小さいほどパチパチした粗い息）
+    ea: 0.2,         // 吐く: 立ち上がりに使う割合（exhaleAttack）
+    er: 0.35,         // 吐く: 区間のうち音が鳴っている割合（exhaleRatio）
+    density: 20000,   // 個/秒: ベルベットノイズの粒の密度（小さいほどパチパチした粗い息）
     combf: 3100,     // Hz: コムフィルタの周波数
-    combs: 0.9,      // コムフィルタの強さ
-    notchf: 2.5,     // ノッチの位置（コム周波数に対する倍率）
+    combs: 0.86,      // コムフィルタの強さ
+    notchf: 2.88,     // ノッチの位置（コム周波数に対する倍率）
     notchs: 1,       // ノッチの深さ（0で無効）
     peakf: 1850,     // Hz: ピークEQの中心
     peakg: 7,        // dB: ピークEQの持ち上げ量
     peakbw: 4000,    // Hz: ピークEQの幅
     base: 0.3,       // 回/秒: 通常の呼吸の速さ（約18回/分）
-    max: 1.3,        // 回/秒: いちばん速い呼吸（約78回/分）
-    up: 0.6,         // 秒: 動きが速くなった時、呼吸がその速さに追いつくまでの時間
-    down: 7,         // 秒: 動きが止まった後、通常の速さへ戻っていく時間（大きいほどゆっくり）
-    hold: 1.2        // 秒: 往復が途絶えても、この間は直前のリズムを保つ（往復の長さの1.8倍と比べて長い方）
+    max: 2.5,        // 回/秒: いちばん速い呼吸（約150回/分）
+    up: 5,         // 秒: 動きが速くなった時、呼吸がその速さに追いつくまでの時間
+    down: 1,         // 秒: 動きが止まった後、通常の速さへ戻っていく時間（大きいほどゆっくり）
+    hold: 1.2,       // 秒: 往復が途絶えても、この間は直前のリズムを保つ（往復の長さの1.8倍と比べて長い方）
+    fkeep: 0.6,      // 速い呼吸で「すー」「はー」の立ち上がりを通常の長さに近く保つ度合い（0=全体を均等に縮める）
+    ftail: 0.6       // 速い呼吸で余韻（減衰・息継ぎの間）を削る度合い（0=均等に縮める。大きいほど「すは」のように短く切れる）
   };
   const BR = Object.assign({}, BR_DEF);
   const breath = { out: null, send: null, lp: null, src: null, srcGain: null, pb: 1, regenT: 0, rate: BR.base, fs: 0, lastAt: -10, lastUpd: 0, nextAt: 0 };
@@ -4329,20 +4334,28 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     breath.out = out; breath.lp = lp;
     breathMakeSource(ctx);
   }
-  function breathEnv(u) {   // 1回の呼吸の音量の形（u: 0〜1）。吸う＝直線で立ち上がり→2乗で減衰、吐く＝2乗で立ち上がり→ゆるやかに減衰
-    const gi = BR.gr < 0 ? 1 + BR.gr : 1, ge = BR.gr > 0 ? 1 - BR.gr : 1;
+  function breathSegs(period) {   // 1回の呼吸の区間の境目（0〜1）。速い呼吸ほど、立ち上がりは保ち、余韻と間を削ってから全体を1回分に収める
+    const c = clamp(period * BR.base, 0.02, 1);   // 通常の呼吸に対する短さ（1=通常）
+    const ka = Math.pow(c, 1 - BR.fkeep), kr = Math.pow(c, 1 + BR.ftail);
     const tIA = BR.tr * BR.ia * BR.ir, tIS = BR.tr * BR.ir;
     const tEA = (1 - BR.tr) * BR.ea * BR.er + BR.tr, tET = (1 - BR.tr) * BR.er + BR.tr;
-    if (u < tIA) return gi * u / tIA;
-    if (u < tIS) { const w = (u - tIA) / (tIS - tIA); return gi * (1 - w) * (1 - w); }
-    if (u >= BR.tr && u < tEA) { const w = (u - BR.tr) / (tEA - BR.tr); return ge * w * w; }
-    if (u >= tEA && u < tET) { const w = (u - tEA) / (tET - tEA); return ge * (1 - w * w); }
+    const w = [tIA * ka, (tIS - tIA) * kr, (BR.tr - tIS) * kr, (tEA - BR.tr) * ka, (tET - tEA) * kr, (1 - tET) * kr];
+    const T = w[0] + w[1] + w[2] + w[3] + w[4] + w[5];
+    return { tIA: w[0] / T, tIS: (w[0] + w[1]) / T, tr: (w[0] + w[1] + w[2]) / T, tEA: (w[0] + w[1] + w[2] + w[3]) / T, tET: (w[0] + w[1] + w[2] + w[3] + w[4]) / T };
+  }
+  function breathEnv(u, S) {   // 1回の呼吸の音量の形（u: 0〜1）。吸う＝直線で立ち上がり→2乗で減衰、吐く＝2乗で立ち上がり→ゆるやかに減衰
+    const gi = BR.gr < 0 ? 1 + BR.gr : 1, ge = BR.gr > 0 ? 1 - BR.gr : 1;
+    if (u < S.tIA) return gi * u / S.tIA;
+    if (u < S.tIS) { const w = (u - S.tIA) / (S.tIS - S.tIA); return gi * (1 - w) * (1 - w); }
+    if (u >= S.tr && u < S.tEA) { const w = (u - S.tr) / (S.tEA - S.tr); return ge * w * w; }
+    if (u >= S.tEA && u < S.tET) { const w = (u - S.tEA) / (S.tET - S.tEA); return ge * (1 - w * w); }
     return 0;
   }
   function breathBurst(ctx, t, period, inten) {   // 1回の呼吸を鳴らす（音源は鳴らしっぱなしで、その音量だけを1回分の形で通す）
     const amp = (0.6 + BR.ivol * inten) * breathRand(BR.vvol);
     const n = clamp(Math.round(period * 200), 128, 2048), curve = new Float32Array(n);
-    for (let i = 0; i < n; i++) curve[i] = breathEnv(i / n) * amp;
+    const S = breathSegs(period);
+    for (let i = 0; i < n; i++) curve[i] = breathEnv(i / n, S) * amp;
     const g = ctx.createGain(); g.gain.value = 0;
     g.gain.setValueCurveAtTime(curve, t, period);
     breath.lp.connect(g); g.connect(breath.out);
@@ -4373,7 +4386,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
 
   // ---- 呼吸音の調整UI（表示側パネル） ----
   const BR_DG = { vol: 2, rev: 2, bright: 0, ivol: 2, ipitch: 2, vvol: 2, vper: 2, vpit: 2, gr: 2, tr: 2, ia: 2, ir: 2, ea: 2, er: 2,
-    density: 0, combf: 0, combs: 2, notchf: 2, notchs: 2, peakf: 0, peakg: 1, peakbw: 0, base: 2, max: 2, up: 1, down: 1, hold: 1 };
+    density: 0, combf: 0, combs: 2, notchf: 2, notchs: 2, peakf: 0, peakg: 1, peakbw: 0, base: 2, max: 2, up: 1, down: 1, hold: 1, fkeep: 2, ftail: 2 };
   const BR_SRC = { density: 1, combf: 1, combs: 1, notchf: 1, notchs: 1, peakf: 1, peakg: 1, peakbw: 1 };   // 音源の波形を作り直す項目
   function breathApplyAudio() {   // 音量・響き・高音カットは今鳴っている音にも即反映
     const ctx = waterCtx;

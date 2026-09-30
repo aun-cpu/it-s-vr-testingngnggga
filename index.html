@@ -4015,6 +4015,47 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     try { w1aSrc.playbackRate.setTargetAtTime(w1aRate(vel), waterCtx.currentTime, 0.04); } catch (e) {}
   }
   w1aFetch();
+  // ---- playerがpartに触れた瞬間の音。触れた勢い（角速度）で 肌強.mp3 / 肌弱.mp3 を使い分ける。弱すぎる接触は鳴らさない ----
+  const SKIN_ON = true;              // false: 鳴らさない
+  const SKIN_MIN_VEL = 8;            // 度/秒: これ未満の弱い接触は鳴らさない
+  const SKIN_STRONG_VEL = 30;        // 度/秒: これ以上なら肌強.mp3、MIN以上〜これ未満なら肌弱.mp3
+  const SKIN_VOL = 1.0;              // 音量
+  const SKIN_MIN_GAP = 0.2;          // 秒: 続けて鳴らす最短の間隔（角度の揺れで連打されないように）
+  const skinSnd = {
+    strong: { url: '肌強.mp3', buf: null, raw: null, state: 'idle' },   // idle → fetched → ready / failed
+    weak:   { url: '肌弱.mp3', buf: null, raw: null, state: 'idle' }
+  };
+  let skinLastAt = -10;
+  function skinFetch(k) {
+    const o = skinSnd[k];
+    if (!SKIN_ON || o.state !== 'idle') return;
+    o.state = 'loading';
+    try {
+      fetch(o.url).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); })
+        .then(function (buf) { o.raw = buf; o.state = 'fetched'; skinDecode(k); })
+        .catch(function (e) { o.state = 'failed'; console.info('[肌] 読み込めませんでした: ' + o.url, e && e.message); });
+    } catch (e) { o.state = 'failed'; }
+  }
+  function skinDecode(k) {
+    const o = skinSnd[k];
+    if (!waterCtx || o.state !== 'fetched' || !o.raw) return;
+    const raw = o.raw; o.raw = null; o.state = 'decoding';
+    new Promise(function (res, rej) { waterCtx.decodeAudioData(raw, res, rej); }).then(function (buf) {
+      o.buf = buf; o.state = 'ready';
+    }).catch(function (e) { o.state = 'failed'; console.info('[肌] 解凍できませんでした: ' + o.url, e && e.message); });
+  }
+  function skinPlay(vel, nowSec) {   // vel: 触れた瞬間の押し込む速さ（度/秒）
+    if (!SKIN_ON || !(vel >= SKIN_MIN_VEL) || nowSec - skinLastAt < SKIN_MIN_GAP) return;
+    if (!waterCtx || waterCtx.state !== 'running') return;
+    const o = vel >= SKIN_STRONG_VEL ? skinSnd.strong : skinSnd.weak;
+    if (o.state !== 'ready' || !o.buf) return;
+    skinLastAt = nowSec;
+    const src = waterCtx.createBufferSource(); src.buffer = o.buf;
+    const g = waterCtx.createGain(); g.gain.value = SKIN_VOL;
+    src.connect(g); g.connect(waterBus || waterCtx.destination);
+    src.start();
+  }
+  skinFetch('strong'); skinFetch('weak');
   function waterEnsure() {
     try {
       if (!waterCtx) {
@@ -4030,6 +4071,7 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
         waterBus.connect(waterCtx.destination);
         waterSampleDecode();
         w1aDecode();
+        skinDecode('strong'); skinDecode('weak');
       }
       if (waterCtx.state === 'suspended') waterCtx.resume();
       return waterCtx;
@@ -4414,7 +4456,9 @@ float lkFade(float freq, float pf) { return smoothstep(pf * 1.5, pf * 4.0, 1.0 /
     tiltSmoothPrev = tiltSmooth;
     updateWaterSound(tiltSmooth + introOffset, tiltLive && !frontIntro, tiltSmoothVel, now / 1000);   // 棒が前／後ろへ動き出したら水音
     // 接触の深さ（次フレームの揺れの計算で使う）。導入中・角度データが無い間は接触なし
+    const jellyDepthPrev = jellyDepthDeg;
     jellyDepthDeg = (tiltLive && !frontIntro) ? Math.max(0, tiltSmooth + introOffset - CONTACT_START_DEG) : 0;
+    if (jellyDepthPrev <= 0 && jellyDepthDeg > 0) skinPlay(tiltSmoothVel, now / 1000);   // playerがpartに触れた瞬間、その勢いで肌の音を鳴らす
     // 2action: 選んだ軸の角度で再生位置を決める。-20°=先頭フレーム／0°=5フレーム目／8°=最終フレーム（区分線形）
     if (playerAct && tiltLive) {
       const duration = playerAct.getClip().duration;
